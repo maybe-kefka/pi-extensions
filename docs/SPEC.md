@@ -72,7 +72,8 @@
 ### 4.3 面板结构（TUI，展开态）
 
 ```
-<模型名> | 窗口: 128k | 已用: 62,500 tokens (48.8%)
+<模型名>
+窗口: 128k | 已用: 48.8%
 ────────── 上下文占用 ──────────
 系统提示词      5,200 ████░░░░░░  10.4%
 上下文文件      3,100 ██░░░░░░░░   6.2%
@@ -86,9 +87,12 @@
 分类合计       50,000 (≈估算)
 ```
 
+- 总览两行（`renderOverviewLines`）：第一行模型名（`model` role，加粗高亮），第二行 `窗口: <window> | 已用: <percent>`——已用以百分比显示（0-1 比例 → 一位小数 %），不再单独列 tokens 绝对值
+
 - bar 宽 10：`█` × round(ratio×10) + `░` × 余量
 - tokens 千分位逗号；百分比一位小数
 - 窗口：`128k`（< 1000 → 原值；≥ 1000 → `Math.round(n/1000)k`；≥ 1e6 → `M`）
+- 模型名单独一行（`renderOverviewLines` 第一行），第二行 `窗口: <window> | 已用: <percent>`
 
 ## 5. 已加载资源区块
 
@@ -124,10 +128,10 @@
 
 | 场景 | 行为 |
 |---|---|
-| `getContextUsage().tokens === null`（compact 后） | 总览行 `已用: 待更新`，percent 显示 `--`；分类区块照常显示 |
+| `getContextUsage().tokens === null`（compact 后） | 总览第二行 `已用: 待更新`；分类区块照常显示 |
 | 空会话 / 无消息 | 对话消息行 tokens=0，bar 全空 |
 | 无 MCP 配置文件 | `mcps (0)` |
-| 模型无 contextWindow | 窗口显示 `--`，percent `--` |
+| 模型无 contextWindow | 窗口显示 `--`，已用 `--` |
 | 配置文件 JSON 损坏/缺失 mcpServers 键 | 跳过该文件，不报错 |
 | 非 TUI 模式 | 单行 notify：`context 48.8% (62,500/128,000) · skills 3 · plugins 4 · mcps 2` |
 

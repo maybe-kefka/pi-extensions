@@ -114,20 +114,16 @@ export interface OverviewLineOptions {
 }
 
 /**
- * Render the overview line: `<model> | 窗口: <window> | 已用: <tokens> (<percent>)`.
- * SPEC §6: percent shows "(--)" when tokens are unknown (post-compaction) or
- * when the context window is unknown.
+ * Render the overview as two lines: model on its own line, then
+ * `<窗口: <window> | 已用: <percent>>`. SPEC §6: 已用 shows "待更新" when
+ * tokens are unknown (post-compaction) and "--" when the context window is
+ * unknown; percent renders as a percentage (0-1 ratio).
  */
-export function renderOverviewLine(opts: OverviewLineOptions): string {
+export function renderOverviewLines(opts: OverviewLineOptions): string[] {
 	const window_ = opts.contextWindow && opts.contextWindow > 0 ? formatCompact(opts.contextWindow) : "--";
-	const percentText = opts.percent !== null ? ` (${formatPercent(opts.percent)})` : " (--)";
-	let used: string;
-	if (opts.tokens === null) {
-		used = "待更新";
-	} else {
-		used = `${formatTokens(opts.tokens)} tokens`;
-	}
-	return `${opts.model} | 窗口: ${window_} | 已用: ${used}${percentText}`;
+	const used =
+		opts.percent !== null ? formatPercent(opts.percent) : opts.tokens === null ? "待更新" : "--";
+	return [opts.model, `窗口: ${window_} | 已用: ${used}`];
 }
 
 /**
@@ -177,6 +173,7 @@ const TOTAL_SEPARATOR = "──────────────";
 
 /** Role of a panel row, used by renderers to pick theme colors. */
 export type PanelRowRole =
+	| "model"
 	| "overview"
 	| "category-header"
 	| "category"
@@ -194,7 +191,9 @@ export interface PanelRow {
 /** Assemble the full panel as role-tagged rows (renderer-friendly). */
 export function buildPanelRows(data: PanelData): PanelRow[] {
 	const rows: PanelRow[] = [];
-	rows.push({ role: "overview", text: renderOverviewLine(data.overview) });
+	const [model, meta] = renderOverviewLines(data.overview);
+	rows.push({ role: "model", text: model });
+	rows.push({ role: "overview", text: meta });
 	rows.push({ role: "category-header", text: CATEGORY_HEADER });
 
 	const catWidth = data.categories.reduce((max, c) => Math.max(max, displayWidth(c.label) + 2), 0);

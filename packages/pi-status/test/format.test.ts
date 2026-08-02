@@ -14,7 +14,7 @@ import {
 	padDisplay,
 	pluginItemLabels,
 	renderBarRow,
-	renderOverviewLine,
+	renderOverviewLines,
 	renderSummaryLine,
 	renderTotalLine,
 	renderYamlList,
@@ -137,26 +137,29 @@ describe("renderTotalLine", () => {
 	});
 });
 
-describe("renderOverviewLine", () => {
-	it("renders model, window, tokens and percent", () => {
+describe("renderOverviewLines", () => {
+	it("renders model on its own line, window + percent usage on the next", () => {
 		expect(
-			renderOverviewLine({ model: "deepseek-v4-flash", contextWindow: 128000, tokens: 62500, percent: 0.488 }),
-		).toBe("deepseek-v4-flash | 窗口: 128k | 已用: 62,500 tokens (48.8%)");
+			renderOverviewLines({ model: "deepseek-v4-flash", contextWindow: 128000, tokens: 62500, percent: 0.488 }),
+		).toEqual(["deepseek-v4-flash", "窗口: 128k | 已用: 48.8%"]);
 	});
 
-	it("shows 待更新 with -- percent when tokens are unknown", () => {
-		expect(renderOverviewLine({ model: "m", contextWindow: 128000, tokens: null, percent: null })).toBe(
-			"m | 窗口: 128k | 已用: 待更新 (--)",
-		);
+	it("shows 待更新 when tokens are unknown", () => {
+		expect(renderOverviewLines({ model: "m", contextWindow: 128000, tokens: null, percent: null })).toEqual([
+			"m",
+			"窗口: 128k | 已用: 待更新",
+		]);
 	});
 
-	it("shows -- window and -- percent when context window is unknown or zero", () => {
-		expect(renderOverviewLine({ model: "m", contextWindow: null, tokens: 100, percent: null })).toBe(
-			"m | 窗口: -- | 已用: 100 tokens (--)",
-		);
-		expect(renderOverviewLine({ model: "m", contextWindow: 0, tokens: 100, percent: null })).toBe(
-			"m | 窗口: -- | 已用: 100 tokens (--)",
-		);
+	it("shows -- window and -- usage when context window is unknown or zero", () => {
+		expect(renderOverviewLines({ model: "m", contextWindow: null, tokens: 100, percent: null })).toEqual([
+			"m",
+			"窗口: -- | 已用: --",
+		]);
+		expect(renderOverviewLines({ model: "m", contextWindow: 0, tokens: 100, percent: null })).toEqual([
+			"m",
+			"窗口: -- | 已用: --",
+		]);
 	});
 });
 
@@ -232,7 +235,8 @@ describe("buildPanelLines", () => {
 		});
 
 		expect(lines).toEqual([
-			"deepseek-v4-flash | 窗口: 128k | 已用: 62,500 tokens (48.8%)",
+			"deepseek-v4-flash",
+			"窗口: 128k | 已用: 48.8%",
 			"────────── 上下文占用 ──────────",
 			"系统提示词    5,200 █░░░░░░░░░  10.4%",
 			"上下文文件    3,100 █░░░░░░░░░   6.2%",
@@ -277,6 +281,7 @@ describe("buildPanelRows", () => {
 	it("tags each row with a role, in panel order", () => {
 		const rows = buildPanelRows(data);
 		expect(rows.map((r) => r.role)).toEqual([
+			"model",
 			"overview",
 			"category-header",
 			"category",
