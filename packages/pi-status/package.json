@@ -1,6 +1,6 @@
 {
   "name": "@kefka/pi-status",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Pi extension: /status panel showing context usage breakdown and loaded resources",
   "type": "module",
   "license": "UNLICENSED",
