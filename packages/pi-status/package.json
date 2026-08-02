@@ -4,12 +4,19 @@
   "description": "Pi extension: /status panel showing context usage breakdown and loaded resources",
   "type": "module",
   "license": "UNLICENSED",
+  "files": [
+    "src"
+  ],
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "prepublishOnly": "npm run typecheck && npm test"
   },
-  "dependencies": {
-    "@earendil-works/pi-tui": "^0.83.0"
+  "peerDependencies": {
+    "@earendil-works/pi-tui": "*"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "^0.83.0"
   },
   "pi": {
     "extensions": ["./src/index.ts"]
