@@ -126,34 +126,33 @@ export function renderOverviewLine(opts: OverviewLineOptions): string {
 	return `${opts.model} | 窗口: ${window_} | 已用: ${used}`;
 }
 
-/** Render the skills line: `skills (N): name, name`. */
-export function renderSkillsLine(skills: Array<{ name: string }>): string {
-	if (skills.length === 0) return "skills (0)";
-	return `skills (${skills.length}): ${skills.map((s) => s.name).join(", ")}`;
+/**
+ * YAML-style block: `header` followed by `  - item` lines.
+ * Empty item list renders just the header (e.g. `skills (0)`).
+ */
+export function renderYamlList(header: string, items: string[]): string[] {
+	if (items.length === 0) return [header];
+	return [header, ...items.map((item) => `  - ${item}`)];
 }
 
-/** Render the plugins line with per-plugin tool/command counts (zero omitted). */
-export function renderPluginsLine(plugins: Array<{ display: string; tools: number; commands: number }>): string {
-	if (plugins.length === 0) return "plugins (0)";
-	const parts = plugins.map((p) => {
+/** Per-plugin item labels (tool/command counts, zero omitted). */
+export function pluginItemLabels(plugins: Array<{ display: string; tools: number; commands: number }>): string[] {
+	return plugins.map((p) => {
 		const bits: string[] = [];
 		if (p.tools > 0) bits.push(`${p.tools} ${p.tools === 1 ? "tool" : "tools"}`);
 		if (p.commands > 0) bits.push(`${p.commands} ${p.commands === 1 ? "cmd" : "cmds"}`);
 		return bits.length > 0 ? `${p.display} (${bits.join(", ")})` : p.display;
 	});
-	return `plugins (${plugins.length}): ${parts.join(", ")}`;
 }
 
-/** Render the mcps line with disabled flag and ~-abbreviated source. */
-export function renderMcpsLine(mcps: Array<{ name: string; source: string; disabled: boolean }>): string {
-	if (mcps.length === 0) return "mcps (0)";
+/** Per-mcp item labels with disabled flag and ~-abbreviated source. */
+export function mcpItemLabels(mcps: Array<{ name: string; source: string; disabled: boolean }>): string[] {
 	const home = homedir();
-	const parts = mcps.map((m) => {
+	return mcps.map((m) => {
 		const src = m.source.startsWith(home) ? `~${m.source.slice(home.length)}` : m.source;
 		const flag = m.disabled ? " (disabled)" : "";
 		return `${m.name}${flag} [${src}]`;
 	});
-	return `mcps (${mcps.length}): ${parts.join(", ")}`;
 }
 
 export interface PanelData {
@@ -220,9 +219,15 @@ export function buildPanelRows(data: PanelData): PanelRow[] {
 	rows.push({ role: "separator", text: TOTAL_SEPARATOR });
 	rows.push({ role: "total", text: renderTotalLine("分类合计", data.total, "(≈估算)", catWidth) });
 	rows.push({ role: "resource-header", text: RESOURCES_HEADER });
-	rows.push({ role: "resource", text: renderSkillsLine(data.skills) });
-	rows.push({ role: "resource", text: renderPluginsLine(data.plugins) });
-	rows.push({ role: "resource", text: renderMcpsLine(data.mcps) });
+	for (const line of renderYamlList(`skills (${data.skills.length}):`, data.skills.map((s) => s.name))) {
+		rows.push({ role: "resource", text: line });
+	}
+	for (const line of renderYamlList(`plugins (${data.plugins.length}):`, pluginItemLabels(data.plugins))) {
+		rows.push({ role: "resource", text: line });
+	}
+	for (const line of renderYamlList(`mcps (${data.mcps.length}):`, mcpItemLabels(data.mcps))) {
+		rows.push({ role: "resource", text: line });
+	}
 	return rows;
 }
 

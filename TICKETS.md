@@ -82,3 +82,16 @@
 - 组件每帧读模块态 `setStatusData()`，后续 `/status` 原地刷新；面板固定位置，更新即时可见
 - `ctx.ui.setStatus` 带时间戳 + 摘要，数据未变时也有可见反馈
 - 非 TUI 仍 notify 单行摘要；`npm test` + `npm run typecheck` 全绿（65 tests）
+
+## T10 YAML 资源块 + 输入自动收起 ✅
+文件：`src/format.ts` + `src/index.ts`
+验收：
+- 资源区改为 YAML 风格：`skills (3):` + `  - name` 逐项；空列表单行；`renderYamlList` / `pluginItemLabels` / `mcpItemLabels` 纯函数 TDD
+- `pi.on("input")` 在用户提交下一条消息时 `setWidget(key, undefined)` 收起面板；/status 本身不触发 input，不受影响
+- `npm test` + `npm run typecheck` 全绿（65 tests）
+文件：`src/widget.ts` + `src/index.ts`（移除 `src/entry-renderer.ts`）
+验收：
+- `ctx.ui.setWidget("pi-status", factory)` 渲染全量面板在编辑器上方；同 key 替换，无累积、不抢焦点
+- 组件每帧读模块态 `setStatusData()`，后续 `/status` 原地刷新；面板固定位置，更新即时可见
+- `ctx.ui.setStatus` 带时间戳 + 摘要，数据未变时也有可见反馈
+- 非 TUI 仍 notify 单行摘要；`npm test` + `npm run typecheck` 全绿（65 tests）

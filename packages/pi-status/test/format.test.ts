@@ -9,15 +9,15 @@ import {
 	formatCompact,
 	formatPercent,
 	formatTokens,
+	mcpItemLabels,
 	normalizeUsagePercent,
 	padDisplay,
+	pluginItemLabels,
 	renderBarRow,
-	renderMcpsLine,
 	renderOverviewLine,
-	renderPluginsLine,
-	renderSkillsLine,
 	renderSummaryLine,
 	renderTotalLine,
+	renderYamlList,
 } from "../src/format.js";
 
 describe("formatTokens", () => {
@@ -154,49 +154,55 @@ describe("renderOverviewLine", () => {
 	});
 });
 
-describe("renderSkillsLine", () => {
-	it("lists skill names", () => {
-		expect(renderSkillsLine([{ name: "docx" }, { name: "pdf" }, { name: "chinese-novelist" }])).toBe(
-			"skills (3): docx, pdf, chinese-novelist",
-		);
+describe("renderYamlList", () => {
+	it("renders header plus indented dash items", () => {
+		expect(renderYamlList("skills (3)", ["docx", "pdf", "chinese-novelist"])).toEqual([
+			"skills (3)",
+			"  - docx",
+			"  - pdf",
+			"  - chinese-novelist",
+		]);
 	});
 
-	it("handles empty list", () => {
-		expect(renderSkillsLine([])).toBe("skills (0)");
+	it("renders just the header when empty", () => {
+		expect(renderYamlList("skills (0)", [])).toEqual(["skills (0)"]);
 	});
 });
 
-describe("renderPluginsLine", () => {
-	it("lists plugins with tool/command counts (singular/plural, zero omitted)", () => {
+describe("pluginItemLabels", () => {
+	it("builds per-plugin labels with tool/command counts (singular/plural, zero omitted)", () => {
 		const plugins = [
 			{ display: "npm:pi-subagents", tools: 2, commands: 1 },
 			{ display: "status.ts", tools: 0, commands: 1 },
 			{ display: "npm:pi-simplify", tools: 1, commands: 0 },
 		];
-		expect(renderPluginsLine(plugins)).toBe(
-			"plugins (3): npm:pi-subagents (2 tools, 1 cmd), status.ts (1 cmd), npm:pi-simplify (1 tool)",
-		);
+		expect(pluginItemLabels(plugins)).toEqual([
+			"npm:pi-subagents (2 tools, 1 cmd)",
+			"status.ts (1 cmd)",
+			"npm:pi-simplify (1 tool)",
+		]);
 	});
 
 	it("handles empty list", () => {
-		expect(renderPluginsLine([])).toBe("plugins (0)");
+		expect(pluginItemLabels([])).toEqual([]);
 	});
 });
 
-describe("renderMcpsLine", () => {
-	it("lists servers with disabled flag and ~-abbreviated source", () => {
+describe("mcpItemLabels", () => {
+	it("builds per-server labels with disabled flag and ~-abbreviated source", () => {
 		const home = homedir();
 		const mcps = [
 			{ name: "github", source: join(home, ".agents", "mcp.json"), disabled: false },
 			{ name: "filesystem", source: "/proj/.pi/mcp.json", disabled: true },
 		];
-		expect(renderMcpsLine(mcps)).toBe(
-			`mcps (2): github [~/.agents/mcp.json], filesystem (disabled) [/proj/.pi/mcp.json]`,
-		);
+		expect(mcpItemLabels(mcps)).toEqual([
+			"github [~/.agents/mcp.json]",
+			"filesystem (disabled) [/proj/.pi/mcp.json]",
+		]);
 	});
 
 	it("handles empty list", () => {
-		expect(renderMcpsLine([])).toBe("mcps (0)");
+		expect(mcpItemLabels([])).toEqual([]);
 	});
 });
 
@@ -233,9 +239,13 @@ describe("buildPanelLines", () => {
 			"──────────────",
 			"分类合计     50,000 (≈估算)",
 			"────────── 已加载资源 ──────────",
-			"skills (2): docx, pdf",
-			"plugins (1): npm:pi-mcp-adapter (1 tool)",
-			"mcps (1): github [~/.agents/mcp.json]",
+			"skills (2):",
+			"  - docx",
+			"  - pdf",
+			"plugins (1):",
+			"  - npm:pi-mcp-adapter (1 tool)",
+			"mcps (1):",
+			"  - github [~/.agents/mcp.json]",
 		]);
 	});
 });
@@ -274,9 +284,13 @@ describe("buildPanelRows", () => {
 			"separator",
 			"total",
 			"resource-header",
-			"resource",
-			"resource",
-			"resource",
+			"resource", // skills (2):
+			"resource", //   - docx
+			"resource", //   - pdf
+			"resource", // plugins (1):
+			"resource", //   - npm:pi-mcp-adapter (1 tool)
+			"resource", // mcps (1):
+			"resource", //   - github [~/.agents/mcp.json]
 		]);
 	});
 

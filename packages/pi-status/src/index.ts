@@ -19,6 +19,16 @@ import { summarizeResources } from "./resources.js";
 import { renderStatusWidget, setStatusData, STATUS_WIDGET_KEY } from "./widget.js";
 
 export default function statusExtension(pi: ExtensionAPI): void {
+	// Collapse the panel when the user submits their next message. /status is
+	// handled before the input event fires, so running /status itself never
+	// triggers this.
+	pi.on("input", (_event, ctx) => {
+		if (ctx.mode === "tui") {
+			ctx.ui.setWidget(STATUS_WIDGET_KEY, undefined);
+		}
+		return { action: "continue" };
+	});
+
 	pi.registerCommand("status", {
 		description: "Show context usage breakdown and loaded resources",
 		handler: async (_args, ctx) => {
