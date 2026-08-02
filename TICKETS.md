@@ -67,11 +67,18 @@
 - 非 TUI 仍 notify 单行摘要
 - `npm test` + `npm run typecheck` 全绿（63 tests）
 
-## T8 单条目替换语义（对话不被 status 塞满） ✅
+## T8 单条目替换语义（对话不被 status 塞满） ✅（已被 T9 取代）
 文件：`src/entry-renderer.ts` + `src/index.ts`
+验收（历史）：
+- 每个会话 leaf 路径只 append 一条 `status` 条目；后续 `/status` 不再追加
+- 渲染组件每帧读模块态快照 `setStatusData()`，同一条目原地刷新
+- 重放回退 + customType 升版 `status-panel` → `status`（遗留条目静默跳过）
+- **结构性缺陷**：聊天条目原地更新不可见（不滚动视口、不回到眼前），数据未变时零反馈 → 被 T9 取代
+
+## T9 回归 widget 方案（固定面板，更新即见） ✅
+文件：`src/widget.ts` + `src/index.ts`（移除 `src/entry-renderer.ts`）
 验收：
-- 每个会话 leaf 路径只 append 一条 `status` 条目（`buildContextEntries` 判定）；后续 `/status` 不再追加
-- 渲染组件每帧读模块态快照 `setStatusData()`，同一条目原地刷新；`ctx.ui.setStatus` 触发重绘 + 页脚摘要
-- **重放回退**：/reload 重放先于 `session_start` 恢复，渲染器回退读条目自身数据，面板不空白
-- **customType 升版** `status-panel` → `status`：旧累积条目无渲染器静默跳过
-- 非 TUI 不写会话；`npm test` + `npm run typecheck` 全绿（66 tests）
+- `ctx.ui.setWidget("pi-status", factory)` 渲染全量面板在编辑器上方；同 key 替换，无累积、不抢焦点
+- 组件每帧读模块态 `setStatusData()`，后续 `/status` 原地刷新；面板固定位置，更新即时可见
+- `ctx.ui.setStatus` 带时间戳 + 摘要，数据未变时也有可见反馈
+- 非 TUI 仍 notify 单行摘要；`npm test` + `npm run typecheck` 全绿（65 tests）

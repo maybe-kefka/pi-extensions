@@ -1,8 +1,8 @@
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { beforeEach, describe, expect, it } from "vitest";
-import type { CustomEntry, Theme } from "@earendil-works/pi-coding-agent";
-import { renderStatusEntry, setStatusData, STATUS_ENTRY_TYPE } from "../src/entry-renderer.js";
+import type { Theme } from "@earendil-works/pi-coding-agent";
+import { renderStatusWidget, setStatusData, STATUS_WIDGET_KEY } from "../src/widget.js";
 import { buildPanelLines, type PanelData } from "../src/format.js";
 
 /** Minimal theme stub: colors pass through unchanged so rendered text is plain. */
@@ -34,12 +34,8 @@ const otherData: PanelData = {
 	overview: { ...data.overview, tokens: 70000, percent: 0.547 },
 };
 
-function makeEntry(snapshot: PanelData | undefined): CustomEntry<PanelData> {
-	return { type: "custom", customType: STATUS_ENTRY_TYPE, data: snapshot } as unknown as CustomEntry<PanelData>;
-}
-
 /** Text pads lines to render width (differential rendering); normalize for asserts. */
-function renderLines(component: ReturnType<typeof renderStatusEntry>, width: number): string[] {
+function renderLines(component: ReturnType<typeof renderStatusWidget>, width: number): string[] {
 	return (component?.render(width) ?? []).map((line) => line.trimEnd());
 }
 
@@ -47,29 +43,23 @@ beforeEach(() => {
 	setStatusData(null);
 });
 
-describe("renderStatusEntry", () => {
-	it("renders the live module snapshot (set by the command before append)", () => {
+describe("renderStatusWidget", () => {
+	it("renders the full panel from the module snapshot", () => {
 		setStatusData(data);
-		const component = renderStatusEntry(makeEntry(data), { expanded: true }, stubTheme);
+		const component = renderStatusWidget(stubTheme);
 		expect(renderLines(component, 200)).toEqual(buildPanelLines(data));
 	});
 
-	it("falls back to the entry's own persisted data when no snapshot is set (replay before restore)", () => {
-		const component = renderStatusEntry(makeEntry(data), { expanded: false }, stubTheme);
-		expect(renderLines(component, 200)).toEqual(buildPanelLines(data));
+	it("renders a placeholder hint when no snapshot is set", () => {
+		const component = renderStatusWidget(stubTheme);
+		expect(renderLines(component, 100)).toEqual(["[status] 运行 /status 查看上下文占用"]);
 	});
 
-	it("renders a placeholder when neither snapshot nor entry data exists", () => {
-		const component = renderStatusEntry(makeEntry(undefined), { expanded: false }, stubTheme);
-		expect(renderLines(component, 100)).toEqual(["[status] 等待数据"]);
-	});
-
-	it("updates the SAME component in place when the snapshot changes (replacement semantics)", () => {
+	it("updates the SAME component in place when the snapshot changes", () => {
 		setStatusData(data);
-		const component = renderStatusEntry(makeEntry(data), { expanded: false }, stubTheme);
+		const component = renderStatusWidget(stubTheme);
 		expect(renderLines(component, 200)).toEqual(buildPanelLines(data));
 
-		// Simulate a later /status run: new snapshot, same entry object in session.
 		setStatusData(otherData);
 		expect(renderLines(component, 200)).toEqual(buildPanelLines(otherData));
 	});
