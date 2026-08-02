@@ -25,6 +25,7 @@ export default function statusExtension(pi: ExtensionAPI): void {
 	pi.on("input", (_event, ctx) => {
 		if (ctx.mode === "tui") {
 			ctx.ui.setWidget(STATUS_WIDGET_KEY, undefined);
+			ctx.ui.setStatus(STATUS_WIDGET_KEY, undefined);
 		}
 		return { action: "continue" };
 	});

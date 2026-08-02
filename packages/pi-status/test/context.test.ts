@@ -164,6 +164,14 @@ describe("contextMessagesFromEntries", () => {
 		]);
 	});
 
+	it("projects custom_message entries as role custom messages (participate in context)", () => {
+		const entries = [
+			{ type: "custom_message", customType: "plan-mode", content: "Plan mode enabled", display: true },
+			{ type: "custom", customType: "status-panel", data: { some: "snapshot" } },
+		];
+		expect(contextMessagesFromEntries(entries)).toEqual([{ role: "custom", content: "Plan mode enabled" }]);
+	});
+
 	it("skips summary entries without text", () => {
 		expect(contextMessagesFromEntries([{ type: "compaction", summary: "" }])).toEqual([]);
 	});
