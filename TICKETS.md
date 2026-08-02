@@ -61,7 +61,8 @@
 文件：`src/entry-renderer.ts` + `src/index.ts`（移除 `src/overlay.ts`）
 验收：
 - `registerEntryRenderer("status-panel", renderStatusEntry)` + TUI 模式 `pi.appendEntry`，快照出现在对话流（不抢键盘、无行数上限、不参与 LLM 上下文）
-- 折叠态单行摘要（`renderSummaryLine`）；展开态全量面板（`buildPanelRows` 按角色着色）
+- **恒渲染全量面板**（`buildPanelRows` 按角色着色），不做折叠态
+- `getContextUsage().percent` 为 0-100 百分数 → index.ts 边界归一化为 0-1 比例（修复 1157.4% 双乘 bug）
 - `buildPanelRows` 与 `buildPanelLines` 输出一致；`renderSummaryLine` 覆盖未知 usage 边界
 - 非 TUI 仍 notify 单行摘要
 - `npm test` + `npm run typecheck` 全绿（63 tests）

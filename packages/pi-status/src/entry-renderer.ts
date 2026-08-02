@@ -3,13 +3,13 @@
  *
  * The command appends a CustomEntry (pi.appendEntry) which is rendered inside
  * the conversation like an LLM message — scrollable, no line limit, and never
- * sent to the LLM. Collapsed (default): one summary line. Expanded (toggle
- * tools expansion): the full role-tagged panel, colored per row role.
+ * sent to the LLM. Always renders the full role-tagged panel; the collapsed
+ * summary variant was removed because users expect the complete breakdown.
  */
 
 import type { CustomEntry, EntryRenderer, Theme } from "@earendil-works/pi-coding-agent";
 import { Container, Text } from "@earendil-works/pi-tui";
-import { buildPanelRows, renderSummaryLine, type PanelData, type PanelRowRole } from "./format.js";
+import { buildPanelRows, type PanelData, type PanelRowRole } from "./format.js";
 
 /** customType used for both appendEntry and registerEntryRenderer. */
 export const STATUS_ENTRY_TYPE = "status-panel";
@@ -29,13 +29,10 @@ function colorForRole(role: PanelRowRole, theme: Theme, text: string): string {
 	}
 }
 
-export const renderStatusEntry: EntryRenderer<PanelData> = (entry, { expanded }, theme) => {
+export const renderStatusEntry: EntryRenderer<PanelData> = (entry, _options, theme) => {
 	const data = entry.data;
 	if (!data) {
 		return new Text(theme.fg("dim", "[status] 无数据"), 0, 0);
-	}
-	if (!expanded) {
-		return new Text(theme.fg("muted", renderSummaryLine(data)), 0, 0);
 	}
 
 	const container = new Container();

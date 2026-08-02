@@ -3,7 +3,7 @@ import { homedir } from "node:os";
 import { describe, expect, it } from "vitest";
 import type { CustomEntry, Theme } from "@earendil-works/pi-coding-agent";
 import { renderStatusEntry, STATUS_ENTRY_TYPE } from "../src/entry-renderer.js";
-import { buildPanelLines, renderSummaryLine, type PanelData } from "../src/format.js";
+import { buildPanelLines, type PanelData } from "../src/format.js";
 
 /** Minimal theme stub: colors pass through unchanged so rendered text is plain. */
 const stubTheme = {
@@ -37,14 +37,11 @@ function renderLines(component: ReturnType<typeof renderStatusEntry>, width: num
 }
 
 describe("renderStatusEntry", () => {
-	it("renders the compact summary line when collapsed", () => {
-		const component = renderStatusEntry(entry, { expanded: false }, stubTheme);
-		expect(renderLines(component, 200)).toEqual([renderSummaryLine(data)]);
-	});
-
-	it("renders the full role-tagged panel when expanded", () => {
-		const component = renderStatusEntry(entry, { expanded: true }, stubTheme);
-		expect(renderLines(component, 200)).toEqual(buildPanelLines(data));
+	it("renders the full role-tagged panel (collapsed and expanded alike)", () => {
+		const collapsed = renderStatusEntry(entry, { expanded: false }, stubTheme);
+		const expanded = renderStatusEntry(entry, { expanded: true }, stubTheme);
+		expect(renderLines(collapsed, 200)).toEqual(buildPanelLines(data));
+		expect(renderLines(expanded, 200)).toEqual(buildPanelLines(data));
 	});
 
 	it("renders a placeholder when entry data is missing", () => {

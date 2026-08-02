@@ -29,17 +29,16 @@
 
 ### 2.1 输出通道
 - **TUI 模式**（`ctx.mode === "tui"`）：`pi.appendEntry("status-panel", PanelData)` 把快照写入会话，由 `registerEntryRenderer("status-panel", renderStatusEntry)` 渲染进**对话流**（像 LLM 输出一样滚动展示，无行数上限）；custom 条目**不进 LLM 上下文**，也不会计入下一次 `/status` 的上下文估算
-  - 折叠态（默认）：单行摘要 `context 48.8% (62,500/128,000) · skills 3 · plugins 4 · mcps 2`
-  - 展开态（切换工具输出展开）：`buildPanelRows` 全量面板，按行角色着色
+  - **恒渲染全量面板**（`buildPanelRows` 按行角色着色）——不做折叠态，/status 就是要看完整 breakdown
   - 每次运行追加一条快照 → 对话内留存**上下文占用历史**；会话存档（session.json）持久化，重开回放
 - **非 TUI 模式**（rpc / json / print）：降级为 `ctx.ui.notify(renderSummaryLine(data), "info")` 单行摘要，不写会话
-- 渲染器模块：`src/entry-renderer.ts`（`renderStatusEntry`，collapsed/expanded 两态）
+- 渲染器模块：`src/entry-renderer.ts`（`renderStatusEntry`，全量面板）
 
 ## 3. 数据源
 
 | 数据 | 来源 | 用途 |
 |---|---|---|
-| 总占用 tokens / contextWindow / percent | `ctx.getContextUsage()` | 总览行（**权威**，基于最后一次 assistant usage） |
+| 总占用 tokens / contextWindow / percent | `ctx.getContextUsage()` | 总览行（**权威**，基于最后一次 assistant usage）；**percent 为 0-100 百分数，index.ts 边界归一化为 0-1 比例**再进纯函数层 |
 | 对话消息列表 | `ctx.sessionManager.buildSessionContext()` | 按角色归类估算 tokens |
 | 系统提示构成 | `ctx.getSystemPromptOptions()` | customPrompt / promptGuidelines / appendSystemPrompt / contextFiles / skills / toolSnippets |
 | 活动模型 | `ctx.model` | 总览行模型名 |
