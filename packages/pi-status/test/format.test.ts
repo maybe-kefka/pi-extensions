@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
 	bar,
 	buildPanelLines,
+	buildPanelRows,
 	displayWidth,
 	formatCompact,
 	formatPercent,
@@ -14,6 +15,7 @@ import {
 	renderOverviewLine,
 	renderPluginsLine,
 	renderSkillsLine,
+	renderSummaryLine,
 	renderTotalLine,
 } from "../src/format.js";
 
@@ -222,5 +224,80 @@ describe("buildPanelLines", () => {
 			"plugins (1): npm:pi-mcp-adapter (1 tool)",
 			"mcps (1): github [~/.agents/mcp.json]",
 		]);
+	});
+});
+
+describe("buildPanelRows", () => {
+	const data = {
+		overview: { model: "deepseek-v4-flash", contextWindow: 128000, tokens: 62500, percent: 0.488 },
+		categories: [
+			{ key: "system", label: "系统提示词", tokens: 5200 },
+			{ key: "contextFiles", label: "上下文文件", tokens: 3100 },
+			{ key: "skills", label: "技能", tokens: 1400 },
+			{ key: "tools", label: "工具定义", tokens: 9800 },
+			{ key: "conversation", label: "对话消息", tokens: 30500 },
+		],
+		ratios: { system: 0.104, contextFiles: 0.062, skills: 0.028, tools: 0.196, conversation: 0.61 },
+		conversation: { user: 12000, assistant: 10200, toolResult: 8300 },
+		total: 50000,
+		skills: [{ name: "docx" }, { name: "pdf" }],
+		plugins: [{ display: "npm:pi-mcp-adapter", tools: 1, commands: 0 }],
+		mcps: [{ name: "github", source: join(homedir(), ".agents", "mcp.json"), disabled: false }],
+	};
+
+	it("tags each row with a role, in panel order", () => {
+		const rows = buildPanelRows(data);
+		expect(rows.map((r) => r.role)).toEqual([
+			"overview",
+			"category-header",
+			"category",
+			"category",
+			"category",
+			"category",
+			"category",
+			"conversation",
+			"conversation",
+			"conversation",
+			"separator",
+			"total",
+			"resource-header",
+			"resource",
+			"resource",
+			"resource",
+		]);
+	});
+
+	it("text matches buildPanelLines output", () => {
+		expect(buildPanelRows(data).map((r) => r.text)).toEqual(buildPanelLines(data));
+	});
+});
+
+describe("renderSummaryLine", () => {
+	it("renders a compact one-liner with counts", () => {
+		const line = renderSummaryLine({
+			overview: { model: "m", contextWindow: 128000, tokens: 62500, percent: 0.488 },
+			categories: [],
+			ratios: {},
+			conversation: { user: 0, assistant: 0, toolResult: 0 },
+			total: 0,
+			skills: [{ name: "docx" }, { name: "pdf" }, { name: "pdf" }],
+			plugins: [{ display: "p", tools: 1, commands: 0 }],
+			mcps: [{ name: "g", source: "s", disabled: false }],
+		});
+		expect(line).toBe("context 48.8% (62,500/128,000) · skills 3 · plugins 1 · mcps 1");
+	});
+
+	it("shows ? when usage is unknown", () => {
+		const line = renderSummaryLine({
+			overview: { model: "m", contextWindow: null, tokens: null, percent: null },
+			categories: [],
+			ratios: {},
+			conversation: { user: 0, assistant: 0, toolResult: 0 },
+			total: 0,
+			skills: [],
+			plugins: [],
+			mcps: [],
+		});
+		expect(line).toBe("context -- (?/?) · skills 0 · plugins 0 · mcps 0");
 	});
 });

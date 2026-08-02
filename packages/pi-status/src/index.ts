@@ -2,19 +2,22 @@
  * @kefka/pi-status — /status extension.
  *
  * Thin wiring layer: pulls data from the pi extension API, delegates to the
- * pure modules (context / format / resources / mcp-config), and renders the
- * panel as a full-screen overlay (TUI mode, Esc/Ctrl+C closes) or a
- * single-line notify in non-TUI modes.
+ * pure modules (context / format / resources / mcp-config), and appends the
+ * snapshot as a chat entry (TUI mode, rendered by entry-renderer.ts) or
+ * emits a single-line notify (non-TUI modes).
  */
 
-import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { computeContextBreakdown, contextMessagesFromEntries } from "./context.js";
-import { buildPanelLines } from "./format.js";
+import { renderStatusEntry, STATUS_ENTRY_TYPE } from "./entry-renderer.js";
+import { renderSummaryLine, type PanelData } from "./format.js";
 import { listMcpServers } from "./mcp-config.js";
-import { StatusOverlay } from "./overlay.js";
 import { summarizeResources } from "./resources.js";
 
 export default function statusExtension(pi: ExtensionAPI): void {
+	// Render status snapshots inside the chat transcript (not sent to the LLM).
+	pi.registerEntryRenderer<PanelData>(STATUS_ENTRY_TYPE, renderStatusEntry);
+
 	pi.registerCommand("status", {
 		description: "Show context usage breakdown and loaded resources",
 		handler: async (_args, ctx) => {
@@ -46,7 +49,7 @@ export default function statusExtension(pi: ExtensionAPI): void {
 
 			const modelName = ctx.model?.name ?? ctx.model?.id ?? "未知模型";
 
-			const lines = buildPanelLines({
+			const data: PanelData = {
 				overview: { model: modelName, contextWindow, tokens, percent },
 				categories: breakdown.categories,
 				ratios: breakdown.ratios,
@@ -55,17 +58,12 @@ export default function statusExtension(pi: ExtensionAPI): void {
 				skills: resources.skills,
 				plugins: resources.plugins,
 				mcps: resources.mcps,
-			});
+			};
 
 			if (ctx.mode === "tui") {
-				await ctx.ui.custom<void>((_tui, _theme, _kb, done) => {
-					return new StatusOverlay({ lines, onClose: () => done() });
-				}, { overlay: true });
+				pi.appendEntry<PanelData>(STATUS_ENTRY_TYPE, data);
 			} else {
-				ctx.ui.notify(
-					`context ${percent !== null ? `${(percent * 100).toFixed(1)}%` : "--"} (${tokens ?? "?"}/${contextWindow ?? "?"}) · skills ${resources.skills.length} · plugins ${resources.plugins.length} · mcps ${resources.mcps.length}`,
-					"info",
-				);
+				ctx.ui.notify(renderSummaryLine(data), "info");
 			}
 		},
 	});
