@@ -43,16 +43,16 @@
 - mcps 透传自 mcp-config
 - 空输入不崩溃
 
-## T5 index.ts 组装（薄层）
-文件：`src/index.ts`
+## T5 index.ts 组装（薄层） ✅
+文件：`src/index.ts` + `src/overlay.ts`
 验收：
-- `registerCommand("status")`；TUI → setWidget 面板 + 8s 自动清除（重复调用重置定时器）；非 TUI → notify 单行
+- `registerCommand("status")`；TUI → `ctx.ui.custom` 全屏 overlay（Esc/Ctrl+C 关闭，无行数上限）；非 TUI → notify 单行
 - `getContextUsage()` 为 undefined 时优雅降级
 - 与 T1–T4 模块接线正确
 
-## T6 端到端验证
+## T6 端到端验证 ✅
 验收：
 - monorepo 根 `pi` 启动，项目信任后 `/status` 可用
-- 面板显示总览 + 五分类 + 已加载资源；8s 后消失
-- `/reload` 后修改生效；`npm test` + `npm run typecheck` 全绿
+- 面板显示总览 + 五分类 + 已加载资源（overlay 全量 16 行）；Esc 关闭
+- `/reload` 后修改生效；`npm test` + `npm run typecheck` 全绿（56 tests）
 - 全局 `~/.pi/agent/settings.json` 无新增条目（未污染全局）

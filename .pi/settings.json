@@ -1,3 +1,3 @@
 {
-  "extensions": ["./packages/pi-status/src/index.ts"]
+  "extensions": ["/data/data/com.termux/files/home/projects/pi-extensions/packages/pi-status/src/index.ts"]
 }
