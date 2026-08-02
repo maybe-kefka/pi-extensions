@@ -22,11 +22,11 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
-          node-version: 22
+          node-version: 24 # npm >= 11.5.1 才支持 OIDC 认证
           registry-url: https://registry.npmjs.org/
           cache: npm
 
@@ -38,4 +38,5 @@ jobs:
           npm run typecheck
 
       - name: Publish @kefka/pi-status
-        run: npm publish -w @kefka/pi-status --access public --provenance
+        # provenance 由 Trusted Publishing (OIDC) 自动生成，无需 --provenance
+        run: npm publish -w @kefka/pi-status --access public

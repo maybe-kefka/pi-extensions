@@ -4,6 +4,10 @@
   "description": "Pi extension: /status panel showing context usage breakdown and loaded resources",
   "type": "module",
   "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/maybe-kefka/pi-extensions.git"
+  },
   "files": [
     "src"
   ],
