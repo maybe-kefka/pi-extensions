@@ -1,18 +1,32 @@
 /**
  * Chat-transcript renderer for /status snapshots.
  *
- * The command appends a CustomEntry (pi.appendEntry) which is rendered inside
- * the conversation like an LLM message — scrollable, no line limit, and never
- * sent to the LLM. Always renders the full role-tagged panel; the collapsed
- * summary variant was removed because users expect the complete breakdown.
+ * Replacement semantics: only ONE status entry ever renders. The command keeps
+ * the latest snapshot in module state (setStatusData) and appends a session
+ * entry only once per session. The renderer gates on entry.data being the
+ * current snapshot (reference equality), so accumulated/duplicate entries from
+ * older versions return undefined and are never added to the chat.
+ *
+ * The returned component is non-caching and reads the module snapshot on every
+ * frame, so later /status runs update the SAME panel in place instead of
+ * appending new ones — the conversation never fills with status entries.
+ *
+ * Entries never participate in LLM context.
  */
 
-import type { CustomEntry, EntryRenderer, Theme } from "@earendil-works/pi-coding-agent";
-import { Container, Text } from "@earendil-works/pi-tui";
+import type { EntryRenderer, Theme } from "@earendil-works/pi-coding-agent";
+import { truncateToWidth } from "@earendil-works/pi-tui";
 import { buildPanelRows, type PanelData, type PanelRowRole } from "./format.js";
 
 /** customType used for both appendEntry and registerEntryRenderer. */
 export const STATUS_ENTRY_TYPE = "status-panel";
+
+let currentData: PanelData | null = null;
+
+/** Set the snapshot the status entry renders (call before appending/updating). */
+export function setStatusData(data: PanelData | null): void {
+	currentData = data;
+}
 
 function colorForRole(role: PanelRowRole, theme: Theme, text: string): string {
 	switch (role) {
@@ -30,15 +44,23 @@ function colorForRole(role: PanelRowRole, theme: Theme, text: string): string {
 }
 
 export const renderStatusEntry: EntryRenderer<PanelData> = (entry, _options, theme) => {
-	const data = entry.data;
-	if (!data) {
-		return new Text(theme.fg("dim", "[status] 无数据"), 0, 0);
+	// Gate: only the entry holding the current snapshot renders. Older entries
+	// (e.g. duplicates accumulated before replacement semantics) are skipped.
+	if (entry.data !== currentData) {
+		return undefined;
 	}
 
-	const container = new Container();
-	for (const row of buildPanelRows(data)) {
-		container.addChild(new Text(colorForRole(row.role, theme, row.text), 0, 0));
-	}
-	return container;
+	return {
+		render(width: number): string[] {
+			if (!currentData) {
+				return [truncateToWidth(theme.fg("dim", "[status] 等待数据"), width)];
+			}
+			return buildPanelRows(currentData).map((row) =>
+				truncateToWidth(colorForRole(row.role, theme, row.text), width),
+			);
+		},
+		invalidate(): void {
+			// No cached state.
+		},
+	};
 };
-
