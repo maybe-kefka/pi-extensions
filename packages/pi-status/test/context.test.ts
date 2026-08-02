@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
 	computeContextBreakdown,
+	contextMessagesFromEntries,
 	estimateMessageTokens,
 	estimateTextTokens,
 	type ChatMessageLike,
@@ -26,7 +27,7 @@ describe("estimateMessageTokens", () => {
 			estimateMessageTokens({
 				role: "user",
 				content: [{ type: "image", data: "", mimeType: "image/png" }],
-			}),
+			} as unknown as ChatMessageLike),
 		).toBe(1200);
 	});
 
@@ -39,12 +40,12 @@ describe("estimateMessageTokens", () => {
 					{ type: "thinking", thinking: "bbbb" },
 					{ type: "toolCall", id: "1", name: "bash", arguments: { command: "ls" } },
 				],
-			}),
+			} as unknown as ChatMessageLike),
 		).toBe(7); // (4 + 4 + 4 + 14) / 4 = 26/4 -> ceil = 7
 	});
 
 	it("counts toolResult content", () => {
-		expect(estimateMessageTokens({ role: "toolResult", toolName: "bash", content: [{ type: "text", text: "abcdefgh" }] })).toBe(2);
+		expect(estimateMessageTokens({ role: "toolResult", toolName: "bash", content: [{ type: "text", text: "abcdefgh" }] } as unknown as ChatMessageLike)).toBe(2);
 	});
 
 	it("counts bashExecution command + output", () => {
@@ -52,8 +53,8 @@ describe("estimateMessageTokens", () => {
 	});
 
 	it("counts summary messages", () => {
-		expect(estimateMessageTokens({ role: "compactionSummary", summary: "abc", tokensBefore: 0 })).toBe(1);
-		expect(estimateMessageTokens({ role: "branchSummary", summary: "abcd", fromId: "x" })).toBe(1);
+		expect(estimateMessageTokens({ role: "compactionSummary", summary: "abc", tokensBefore: 0 } as unknown as ChatMessageLike)).toBe(1);
+		expect(estimateMessageTokens({ role: "branchSummary", summary: "abcd", fromId: "x" } as unknown as ChatMessageLike)).toBe(1);
 	});
 
 	it("returns 0 for unknown roles", () => {
@@ -73,7 +74,7 @@ describe("computeContextBreakdown", () => {
 			messages: [
 				{ role: "user", content: "gggg" }, // 1
 				{ role: "assistant", content: [{ type: "text", text: "hhhh" }] }, // 1
-				{ role: "toolResult", toolName: "bash", content: [{ type: "text", text: "iiii" }] }, // 1
+				{ role: "toolResult", toolName: "bash", content: [{ type: "text", text: "iiii" }] } as ChatMessageLike, // 1
 				{ role: "bashExecution", command: "j", output: "kkkk" }, // 5 -> 2
 			],
 		};
@@ -119,7 +120,7 @@ describe("computeContextBreakdown", () => {
 			toolSnippets: {},
 			messages: [
 				{ role: "user", content: "gggg" }, // 1 -> user
-				{ role: "custom", customType: "x", content: "hhhhhhhh", display: false }, // 2 -> other
+				{ role: "custom", customType: "x", content: "hhhhhhhh", display: false } as ChatMessageLike, // 2 -> other
 			],
 		});
 		expect(result.conversation.user).toBe(1);
@@ -141,5 +142,29 @@ describe("computeContextBreakdown", () => {
 		});
 		// "bbbb\ncccc" = 9 chars -> 3
 		expect(result.categories.find((c) => c.key === "system")?.tokens).toBe(3);
+	});
+});
+
+describe("contextMessagesFromEntries", () => {
+	it("projects message entries and summary entries in order", () => {
+		const entries = [
+			{ type: "label", label: "x" },
+			{ type: "message", message: { role: "user", content: "hi" } },
+			{ type: "model_change", provider: "p", modelId: "m" },
+			{ type: "compaction", summary: "early part" },
+			{ type: "message", message: { role: "assistant", content: [{ type: "text", text: "yo" }] } },
+			{ type: "branch_summary", summary: "left branch" },
+			{ type: "custom", customType: "x", data: {} },
+		];
+		expect(contextMessagesFromEntries(entries)).toEqual([
+			{ role: "user", content: "hi" },
+			{ role: "compactionSummary", summary: "early part" },
+			{ role: "assistant", content: [{ type: "text", text: "yo" }] },
+			{ role: "branchSummary", summary: "left branch" },
+		]);
+	});
+
+	it("skips summary entries without text", () => {
+		expect(contextMessagesFromEntries([{ type: "compaction", summary: "" }])).toEqual([]);
 	});
 });

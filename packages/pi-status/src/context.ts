@@ -7,13 +7,36 @@
 
 export interface ChatMessageLike {
 	role: string;
-	content?:
-		| string
-		| Array<{ type: string; text?: string; thinking?: string; name?: string; arguments?: unknown; [key: string]: unknown }>;
+	content?: string | Array<{ type: string; text?: string; thinking?: string; name?: string; arguments?: unknown }>;
 	summary?: string;
 	command?: string;
 	output?: string;
-	[key: string]: unknown;
+}
+
+export interface SessionEntryLike {
+	type: string;
+	message?: ChatMessageLike;
+	summary?: string;
+}
+
+/**
+ * Project session entries (from buildContextEntries) into an LLM message view,
+ * mirroring the subset of pi's buildSessionContext relevant to token estimation:
+ * message entries pass through, compaction/branch summaries become summary
+ * messages, everything else is skipped.
+ */
+export function contextMessagesFromEntries(entries: SessionEntryLike[]): ChatMessageLike[] {
+	const messages: ChatMessageLike[] = [];
+	for (const entry of entries) {
+		if (entry.type === "message" && entry.message) {
+			messages.push(entry.message);
+		} else if (entry.type === "compaction" && entry.summary) {
+			messages.push({ role: "compactionSummary", summary: entry.summary });
+		} else if (entry.type === "branch_summary" && entry.summary) {
+			messages.push({ role: "branchSummary", summary: entry.summary });
+		}
+	}
+	return messages;
 }
 
 export interface ContextFileLike {
