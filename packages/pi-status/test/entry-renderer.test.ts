@@ -48,19 +48,20 @@ beforeEach(() => {
 });
 
 describe("renderStatusEntry", () => {
-	it("renders the full panel for the entry holding the current snapshot", () => {
+	it("renders the live module snapshot (set by the command before append)", () => {
 		setStatusData(data);
 		const component = renderStatusEntry(makeEntry(data), { expanded: true }, stubTheme);
 		expect(renderLines(component, 200)).toEqual(buildPanelLines(data));
 	});
 
-	it("returns undefined for entries that are not the current snapshot (older duplicates)", () => {
-		setStatusData(data);
-		expect(renderStatusEntry(makeEntry(otherData), { expanded: false }, stubTheme)).toBeUndefined();
+	it("falls back to the entry's own persisted data when no snapshot is set (replay before restore)", () => {
+		const component = renderStatusEntry(makeEntry(data), { expanded: false }, stubTheme);
+		expect(renderLines(component, 200)).toEqual(buildPanelLines(data));
 	});
 
-	it("returns undefined when no snapshot is set", () => {
-		expect(renderStatusEntry(makeEntry(data), { expanded: false }, stubTheme)).toBeUndefined();
+	it("renders a placeholder when neither snapshot nor entry data exists", () => {
+		const component = renderStatusEntry(makeEntry(undefined), { expanded: false }, stubTheme);
+		expect(renderLines(component, 100)).toEqual(["[status] 等待数据"]);
 	});
 
 	it("updates the SAME component in place when the snapshot changes (replacement semantics)", () => {
