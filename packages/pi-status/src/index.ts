@@ -3,38 +3,21 @@
  *
  * Thin wiring layer: pulls data from the pi extension API, delegates to the
  * pure modules (context / format / resources / mcp-config), and renders the
- * panel as a TUI widget (auto-cleared after 8s) or a single-line notify in
- * non-TUI modes.
+ * panel as a full-screen overlay (TUI mode, Esc/Ctrl+C closes) or a
+ * single-line notify in non-TUI modes.
  */
 
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { computeContextBreakdown, contextMessagesFromEntries } from "./context.js";
 import { buildPanelLines } from "./format.js";
 import { listMcpServers } from "./mcp-config.js";
+import { StatusOverlay } from "./overlay.js";
 import { summarizeResources } from "./resources.js";
-
-const WIDGET_KEY = "pi-status";
-const AUTO_CLEAR_MS = 8000;
-
-let clearTimer: ReturnType<typeof setTimeout> | null = null;
-
-function clearWidget(ctx: ExtensionCommandContext): void {
-	try {
-		ctx.ui.setWidget(WIDGET_KEY, undefined);
-	} catch {
-		// Session may have switched; widget is cleaned up by the runtime.
-	}
-}
 
 export default function statusExtension(pi: ExtensionAPI): void {
 	pi.registerCommand("status", {
 		description: "Show context usage breakdown and loaded resources",
 		handler: async (_args, ctx) => {
-			if (clearTimer !== null) {
-				clearTimeout(clearTimer);
-				clearTimer = null;
-			}
-
 			const usage = ctx.getContextUsage();
 			const tokens = usage?.tokens ?? null;
 			const contextWindow = usage?.contextWindow ?? null;
@@ -75,8 +58,9 @@ export default function statusExtension(pi: ExtensionAPI): void {
 			});
 
 			if (ctx.mode === "tui") {
-				ctx.ui.setWidget(WIDGET_KEY, lines);
-				clearTimer = setTimeout(() => clearWidget(ctx), AUTO_CLEAR_MS);
+				await ctx.ui.custom<void>((_tui, _theme, _kb, done) => {
+					return new StatusOverlay({ lines, onClose: () => done() });
+				}, { overlay: true });
 			} else {
 				ctx.ui.notify(
 					`context ${percent !== null ? `${(percent * 100).toFixed(1)}%` : "--"} (${tokens ?? "?"}/${contextWindow ?? "?"}) · skills ${resources.skills.length} · plugins ${resources.plugins.length} · mcps ${resources.mcps.length}`,

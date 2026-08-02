@@ -8,6 +8,9 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
+  "dependencies": {
+    "@earendil-works/pi-tui": "^0.83.0"
+  },
   "pi": {
     "extensions": ["./src/index.ts"]
   }

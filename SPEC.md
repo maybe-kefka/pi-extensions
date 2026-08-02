@@ -16,7 +16,7 @@
 - 不发布 npm（v1 仅项目级本地加载）
 
 ### 1.3 依赖原则
-- **零运行时依赖**：不 import 任何第三方运行时包
+- **运行时依赖仅一个**：`@earendil-works/pi-tui`（`matchesKey` / `truncateToWidth`，overlay 组件用；随 pi 安装，仓库已可解析）
 - `@earendil-works/pi-coding-agent` 仅作**类型导入**（devDependency）
 - token 估算用本地 `chars/4` 启发式（与 pi 内部 `estimateTokens` 同口径），不 import 其运行时实现
 
@@ -28,9 +28,9 @@
 - 仅命令，不注册 tool，不依赖 typebox
 
 ### 2.1 输出通道
-- **TUI 模式**（`ctx.mode === "tui"`）：`ctx.ui.setWidget("pi-status", lines)` 多行面板；**8 秒后自动清除**（`setTimeout` → `setWidget(key, undefined)`）；连续调用先清除旧定时器
+- **TUI 模式**（`ctx.mode === "tui"`）：`ctx.ui.custom(factory, { overlay: true })` 全屏覆盖层——**无行数上限**（widget 的 10 行限制不适用），Esc / Ctrl+C 关闭
 - **非 TUI 模式**（rpc / json / print）：降级为 `ctx.ui.notify(单行摘要, "info")`
-- widget key 固定为 `"pi-status"`
+- overlay 组件：`src/overlay.ts` 的 `StatusOverlay`（`handleInput` + `render(width)`，行超宽用 `truncateToWidth`）
 
 ## 3. 数据源
 
@@ -122,12 +122,13 @@
 
 ```
 packages/pi-status/
-├── package.json      # @kefka/pi-status + pi.extensions
+├── package.json      # @kefka/pi-status + pi.extensions + deps(pi-tui)
 ├── tsconfig.json
 ├── src/
-│   ├── index.ts      # 薄层：registerCommand、取 API 数据、调聚合、渲染、8s 清除
+│   ├── index.ts      # 薄层：registerCommand、取 API 数据、调聚合、渲染、overlay/notify
+│   ├── overlay.ts    # StatusOverlay 组件（handleInput/render），TUI 全屏展示
 │   ├── context.ts    # 纯函数：computeContextBreakdown / estimateTextTokens
-│   ├── format.ts     # 纯函数：tokens/percent/bar/displayWidth/行渲染
+│   ├── format.ts     # 纯函数：tokens/percent/bar/displayWidth/行渲染/面板组装
 │   ├── resources.ts  # 纯函数：summarizeResources（skills/plugins/mcps 聚合）
 │   └── mcp-config.ts # 纯函数：listMcpServers（配置发现+解析）
 └── test/             # vitest：context / format / mcp-config / resources
