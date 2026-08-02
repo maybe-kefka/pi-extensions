@@ -30,9 +30,10 @@
 ### 2.1 输出通道
 - **TUI 模式**（`ctx.mode === "tui"`）：`pi.appendEntry("status-panel", PanelData)` 把快照写入会话，由 `registerEntryRenderer("status-panel", renderStatusEntry)` 渲染进**对话流**（像 LLM 输出一样滚动展示，无行数上限）；custom 条目**不进 LLM 上下文**，也不会计入下一次 `/status` 的上下文估算
   - **恒渲染全量面板**（`buildPanelRows` 按行角色着色）——不做折叠态，/status 就是要看完整 breakdown
-  - 每次运行追加一条快照 → 对话内留存**上下文占用历史**；会话存档（session.json）持久化，重开回放
+  - **单条目替换语义**：每个会话 leaf 路径只 append 一条 status 条目（`buildContextEntries` 判定）；后续 `/status` 只更新模块态快照 `setStatusData()`，已渲染的组件**每帧读模块态**原地刷新（`ctx.ui.setStatus` 保证重绘 + 页脚摘要反馈）。旧版本累积的多条历史条目按 `entry.data` 引用门控返回 `undefined`，不再渲染
+  - 会话存档（session.json）持久化；`session_start` 时从最后一条 status 条目恢复快照，重启后面板仍在
 - **非 TUI 模式**（rpc / json / print）：降级为 `ctx.ui.notify(renderSummaryLine(data), "info")` 单行摘要，不写会话
-- 渲染器模块：`src/entry-renderer.ts`（`renderStatusEntry`，全量面板）
+- 渲染器模块：`src/entry-renderer.ts`（`renderStatusEntry`，全量面板 + 门控 + 每帧读快照）
 
 ## 3. 数据源
 
