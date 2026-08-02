@@ -31,6 +31,14 @@ export function formatPercent(ratio: number | null): string {
 	return `${(ratio * 100).toFixed(1)}%`;
 }
 
+/**
+ * Convert getContextUsage().percent (already a 0-100 percentage) to a 0-1
+ * ratio for the pure formatting layer. Null passes through.
+ */
+export function normalizeUsagePercent(percent: number | null): number | null {
+	return percent === null ? null : percent / 100;
+}
+
 /** ASCII bar of `width` cells; ratio clamped to [0, 1]. */
 export function bar(ratio: number, width = 10): string {
 	const clamped = Math.max(0, Math.min(1, ratio));
@@ -101,6 +109,7 @@ export interface OverviewLineOptions {
 	model: string;
 	contextWindow: number | null;
 	tokens: number | null;
+	/** Context usage as a 0-1 ratio (NOT the 0-100 percentage from getContextUsage()). */
 	percent: number | null;
 }
 

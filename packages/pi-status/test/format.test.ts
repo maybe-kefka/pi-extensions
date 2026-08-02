@@ -9,6 +9,7 @@ import {
 	formatCompact,
 	formatPercent,
 	formatTokens,
+	normalizeUsagePercent,
 	padDisplay,
 	renderBarRow,
 	renderMcpsLine,
@@ -57,6 +58,18 @@ describe("formatPercent", () => {
 	it("returns -- for null or non-finite", () => {
 		expect(formatPercent(null)).toBe("--");
 		expect(formatPercent(Number.NaN)).toBe("--");
+	});
+});
+
+describe("normalizeUsagePercent", () => {
+	it("converts a 0-100 percentage to a 0-1 ratio", () => {
+		expect(normalizeUsagePercent(11.5736)).toBeCloseTo(0.115736);
+		expect(normalizeUsagePercent(100)).toBe(1);
+		expect(normalizeUsagePercent(0)).toBe(0);
+	});
+
+	it("passes null through", () => {
+		expect(normalizeUsagePercent(null)).toBeNull();
 	});
 });
 

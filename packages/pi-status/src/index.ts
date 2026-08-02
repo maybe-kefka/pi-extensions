@@ -10,7 +10,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { computeContextBreakdown, contextMessagesFromEntries } from "./context.js";
 import { renderStatusEntry, STATUS_ENTRY_TYPE } from "./entry-renderer.js";
-import { renderSummaryLine, type PanelData } from "./format.js";
+import { normalizeUsagePercent, renderSummaryLine, type PanelData } from "./format.js";
 import { listMcpServers } from "./mcp-config.js";
 import { summarizeResources } from "./resources.js";
 
@@ -21,10 +21,12 @@ export default function statusExtension(pi: ExtensionAPI): void {
 	pi.registerCommand("status", {
 		description: "Show context usage breakdown and loaded resources",
 		handler: async (_args, ctx) => {
-			const usage = ctx.getContextUsage();
+		const usage = ctx.getContextUsage();
 			const tokens = usage?.tokens ?? null;
 			const contextWindow = usage?.contextWindow ?? null;
-			const percent = usage?.percent ?? null;
+			// getContextUsage().percent is already a 0-100 percentage (tokens/window*100);
+			// normalizeUsagePercent converts it to a 0-1 ratio for the pure layer.
+			const percent = normalizeUsagePercent(usage?.percent ?? null);
 
 			const options = ctx.getSystemPromptOptions();
 			const skills = options.skills ?? [];
