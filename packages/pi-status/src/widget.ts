@@ -27,6 +27,8 @@ export function setStatusData(data: PanelData | null): void {
 
 function colorForRole(role: PanelRowRole, theme: Theme, text: string): string {
 	switch (role) {
+		case "model":
+			return theme.bold(theme.fg("accent", text));
 		case "overview":
 			return theme.fg("accent", text);
 		case "category-header":
