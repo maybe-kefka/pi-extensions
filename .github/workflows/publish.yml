@@ -1,0 +1,41 @@
+name: publish
+
+# 发布 @kefka/pi-status 到 npm，用 Trusted Publishing（OIDC）自动认证，
+# 无需 NPM_TOKEN，且自动满足 2FA（--provenance 附带来源签名）。
+#
+# 前置条件（npm 侧，一次性配置）：
+#   npmjs.com → Account → Trusted Publishing → Add
+#   OIDC 主体：owner=maybe-kefka, repo=pi-extensions, workflow=publish.yml
+#
+# 发布方式：git tag v0.1.0 && git push origin v0.1.0
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  id-token: write # OIDC：npm registry 据此签发一次性发布凭据
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org/
+          cache: npm
+
+      - run: npm ci
+
+      - name: Quality gates
+        run: |
+          npm test
+          npm run typecheck
+
+      - name: Publish @kefka/pi-status
+        run: npm publish -w @kefka/pi-status --access public --provenance
