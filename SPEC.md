@@ -50,9 +50,9 @@
 
 | 分类 | 计算来源 |
 |---|---|
-| 系统提示词 | customPrompt + promptGuidelines.join + appendSystemPrompt（不含 contextFiles/skills/toolSnippets） |
-| 上下文文件 | contextFiles 各 `path + content` |
-| 技能 | skills 各 `name + description + content` |
+| 系统提示词 | customPrompt + promptGuidelines（以 `\n` 连接）+ appendSystemPrompt（不含 contextFiles/skills/toolSnippets） |
+| 上下文文件 | contextFiles 各 `path + \n + content` |
+| 技能 | skills 各 `name + description`（Skill 类型无 content；系统提示只注入元数据） |
 | 工具定义 | toolSnippets 各 value（`description + promptSnippet` 的实际聚合文本） |
 | 对话消息 | buildSessionContext 的消息列表按角色归类 |
 
