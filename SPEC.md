@@ -28,13 +28,14 @@
 - 仅命令，不注册 tool，不依赖 typebox
 
 ### 2.1 输出通道
-- **TUI 模式**（`ctx.mode === "tui"`）：`pi.appendEntry("status", PanelData)` 把快照写入会话，由 `registerEntryRenderer("status", renderStatusEntry)` 渲染进**对话流**（像 LLM 输出一样滚动展示，无行数上限）；custom 条目**不进 LLM 上下文**，也不会计入下一次 `/status` 的上下文估算
+- **TUI 模式**（`ctx.mode === "tui"`）：`ctx.ui.setWidget("pi-status", factory)` 把全量面板渲染成**编辑器上方的固定 widget**（SPEC 原始设计）
   - **恒渲染全量面板**（`buildPanelRows` 按行角色着色）——不做折叠态，/status 就是要看完整 breakdown
-  - **单条目替换语义**：每个会话 leaf 路径只 append 一条 `status` 条目（`buildContextEntries` 判定，compaction 后自动允许重 append）；后续 `/status` 只更新模块态快照 `setStatusData()`，已渲染组件**每帧读模块态**原地刷新（`ctx.ui.setStatus` 保证重绘 + 页脚摘要反馈）
-  - **重放回退**：渲染器优先读模块态，未恢复时（/reload 的重放发生在 `session_start` 之前）回退读条目自身持久化数据——面板永不空白、永不重复
-  - **旧类型惰性**：v1 的 `status-panel` 条目（累积时代遗留）无渲染器，静默跳过
+  - **同 key 原地替换**：每次 `/status` 用同一 key 调 `setWidget`，旧面板被替换，**无累积、不抢焦点**；面板固定在屏幕上，每次更新**即时可见**（无需滚动聊天）
+  - 组件每帧读模块态快照（`setStatusData()`），后续 `/status` 原地刷新
+  - **页脚反馈**：`ctx.ui.setStatus` 带更新时间戳 + 单行摘要，即使上下文数据未变也每次可见确认
 - **非 TUI 模式**（rpc / json / print）：降级为 `ctx.ui.notify(renderSummaryLine(data), "info")` 单行摘要，不写会话
-- 渲染器模块：`src/entry-renderer.ts`（`renderStatusEntry`，全量面板 + 每帧读快照 + 重放回退）
+- widget 组件模块：`src/widget.ts`（`renderStatusWidget` + `setStatusData`）
+- **方案沿革**：overlay（劫持键盘）→ 聊天条目 appendEntry（原地更新不可见，chat 无法回滚视口）→ **widget（最终方案，回归 SPEC 原始设计）**
 
 ## 3. 数据源
 
@@ -129,13 +130,13 @@ packages/pi-status/
 ├── package.json      # @kefka/pi-status + pi.extensions + deps(pi-tui)
 ├── tsconfig.json
 ├── src/
-│   ├── index.ts      # 薄层：registerCommand + registerEntryRenderer、取 API 数据、调聚合、appendEntry/notify
-│   ├── entry-renderer.ts # 对话内渲染：renderStatusEntry（collapsed 摘要 / expanded 全量面板，按角色着色）
+│   ├── index.ts      # 薄层：registerCommand、取 API 数据、调聚合、setWidget/setStatus/notify
+│   ├── widget.ts     # 固定 widget 渲染：renderStatusWidget（全量面板，每帧读快照）+ setStatusData
 │   ├── context.ts    # 纯函数：computeContextBreakdown / estimateTextTokens
 │   ├── format.ts     # 纯函数：tokens/percent/bar/displayWidth/行渲染/buildPanelRows/renderSummaryLine
 │   ├── resources.ts  # 纯函数：summarizeResources（skills/plugins/mcps 聚合）
 │   └── mcp-config.ts # 纯函数：listMcpServers（配置发现+解析）
-└── test/             # vitest：context / format / entry-renderer / mcp-config / resources
+└── test/             # vitest：context / format / widget / mcp-config / resources
 ```
 
 - `index.ts` 不写业务逻辑、不做单测；其余模块全部纯函数 + 单测（TDD）

@@ -2,37 +2,23 @@
  * @kefka/pi-status — /status extension.
  *
  * Thin wiring layer: pulls data from the pi extension API, delegates to the
- * pure modules (context / format / resources / mcp-config), and maintains a
- * single status snapshot in the chat (TUI mode) or a single-line notify
- * (non-TUI modes).
+ * pure modules (context / format / resources / mcp-config), and shows the
+ * snapshot as a fixed widget above the editor (TUI mode) or a single-line
+ * notify (non-TUI modes).
  *
- * TUI mode keeps ONE "status-panel" session entry per session; subsequent
- * /status runs update the panel in place (see entry-renderer.ts), so the
- * conversation never fills with status entries.
+ * TUI mode uses setWidget with a stable key: every /status run replaces the
+ * same panel in place (visible immediately, no accumulation, no keyboard
+ * capture). The footer status carries a timestamp + summary as feedback.
  */
 
-import type { CustomEntry, ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { computeContextBreakdown, contextMessagesFromEntries } from "./context.js";
-import { renderStatusEntry, setStatusData, STATUS_ENTRY_TYPE } from "./entry-renderer.js";
 import { normalizeUsagePercent, renderSummaryLine, type PanelData } from "./format.js";
 import { listMcpServers } from "./mcp-config.js";
 import { summarizeResources } from "./resources.js";
+import { renderStatusWidget, setStatusData, STATUS_WIDGET_KEY } from "./widget.js";
 
 export default function statusExtension(pi: ExtensionAPI): void {
-	// Render the single status snapshot inside the chat transcript.
-	pi.registerEntryRenderer<PanelData>(STATUS_ENTRY_TYPE, renderStatusEntry);
-
-	// Restore the persisted snapshot when a session loads or switches.
-	pi.on("session_start", (_event, ctx) => {
-		let restored: PanelData | null = null;
-		for (const entry of ctx.sessionManager.getEntries()) {
-			if (entry.type === "custom" && entry.customType === STATUS_ENTRY_TYPE) {
-				restored = (entry as CustomEntry<PanelData>).data ?? null;
-			}
-		}
-		setStatusData(restored);
-	});
-
 	pi.registerCommand("status", {
 		description: "Show context usage breakdown and loaded resources",
 		handler: async (_args, ctx) => {
@@ -79,17 +65,12 @@ export default function statusExtension(pi: ExtensionAPI): void {
 
 			if (ctx.mode === "tui") {
 				setStatusData(data);
-				// Append the session entry only once per session leaf path; later
-				// runs just update the module snapshot (panel refreshes on redraw).
-				const hasEntry = ctx.sessionManager
-					.buildContextEntries()
-					.some((e) => e.type === "custom" && e.customType === STATUS_ENTRY_TYPE);
-				if (!hasEntry) {
-					pi.appendEntry<PanelData>(STATUS_ENTRY_TYPE, data);
-				}
-				// Guaranteed redraw so the existing panel refreshes with the new
-				// snapshot; the footer status doubles as confirmation feedback.
-				ctx.ui.setStatus("pi-status", renderSummaryLine(data));
+				// Same widget key -> replaces the previous panel in place.
+				ctx.ui.setWidget(STATUS_WIDGET_KEY, (_tui, theme) => renderStatusWidget(theme));
+				// Footer feedback: timestamp changes every run, so /status always
+				// gives visible confirmation even when context data is unchanged.
+				const time = new Date().toLocaleTimeString();
+				ctx.ui.setStatus(STATUS_WIDGET_KEY, `${time} · ${renderSummaryLine(data)}`);
 			} else {
 				ctx.ui.notify(renderSummaryLine(data), "info");
 			}
