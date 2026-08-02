@@ -1,0 +1,6 @@
+node_modules/
+dist/
+*.log
+.pi/npm/
+.pi/extensions/
+.pi/git/

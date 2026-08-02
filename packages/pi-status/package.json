@@ -1,0 +1,14 @@
+{
+  "name": "@kefka/pi-status",
+  "version": "0.1.0",
+  "description": "Pi extension: /status panel showing context usage breakdown and loaded resources",
+  "type": "module",
+  "license": "UNLICENSED",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "pi": {
+    "extensions": ["./src/index.ts"]
+  }
+}
