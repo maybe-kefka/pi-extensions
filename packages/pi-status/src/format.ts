@@ -162,15 +162,31 @@ const CATEGORY_HEADER = "────────── 上下文占用 ──�
 const RESOURCES_HEADER = "────────── 已加载资源 ──────────";
 const TOTAL_SEPARATOR = "──────────────";
 
-/** Assemble the full multi-line panel shown as the /status widget. */
-export function buildPanelLines(data: PanelData): string[] {
-	const lines: string[] = [];
-	lines.push(renderOverviewLine(data.overview));
-	lines.push(CATEGORY_HEADER);
+/** Role of a panel row, used by renderers to pick theme colors. */
+export type PanelRowRole =
+	| "overview"
+	| "category-header"
+	| "category"
+	| "conversation"
+	| "separator"
+	| "total"
+	| "resource-header"
+	| "resource";
+
+export interface PanelRow {
+	role: PanelRowRole;
+	text: string;
+}
+
+/** Assemble the full panel as role-tagged rows (renderer-friendly). */
+export function buildPanelRows(data: PanelData): PanelRow[] {
+	const rows: PanelRow[] = [];
+	rows.push({ role: "overview", text: renderOverviewLine(data.overview) });
+	rows.push({ role: "category-header", text: CATEGORY_HEADER });
 
 	const catWidth = data.categories.reduce((max, c) => Math.max(max, displayWidth(c.label) + 2), 0);
 	for (const c of data.categories) {
-		lines.push(renderBarRow({ label: c.label, tokens: c.tokens, ratio: data.ratios[c.key] ?? 0, labelWidth: catWidth }));
+		rows.push({ role: "category", text: renderBarRow({ label: c.label, tokens: c.tokens, ratio: data.ratios[c.key] ?? 0, labelWidth: catWidth }) });
 	}
 
 	const subs: Array<{ label: string; tokens: number }> = [
@@ -179,21 +195,38 @@ export function buildPanelLines(data: PanelData): string[] {
 		{ label: "工具结果", tokens: data.conversation.toolResult },
 	];
 	for (const s of subs) {
-		lines.push(
-			renderBarRow({
-				label: `  ${s.label}`,
-				tokens: s.tokens,
-				ratio: data.total > 0 ? s.tokens / data.total : 0,
-				labelWidth: catWidth,
-			}),
+		rows.push(
+			{
+				role: "conversation",
+				text: renderBarRow({
+					label: `  ${s.label}`,
+					tokens: s.tokens,
+					ratio: data.total > 0 ? s.tokens / data.total : 0,
+					labelWidth: catWidth,
+				}),
+			},
 		);
 	}
 
-	lines.push(TOTAL_SEPARATOR);
-	lines.push(renderTotalLine("分类合计", data.total, "(≈估算)", catWidth));
-	lines.push(RESOURCES_HEADER);
-	lines.push(renderSkillsLine(data.skills));
-	lines.push(renderPluginsLine(data.plugins));
-	lines.push(renderMcpsLine(data.mcps));
-	return lines;
+	rows.push({ role: "separator", text: TOTAL_SEPARATOR });
+	rows.push({ role: "total", text: renderTotalLine("分类合计", data.total, "(≈估算)", catWidth) });
+	rows.push({ role: "resource-header", text: RESOURCES_HEADER });
+	rows.push({ role: "resource", text: renderSkillsLine(data.skills) });
+	rows.push({ role: "resource", text: renderPluginsLine(data.plugins) });
+	rows.push({ role: "resource", text: renderMcpsLine(data.mcps) });
+	return rows;
+}
+
+/** Assemble the full multi-line panel text (plain, no theme colors). */
+export function buildPanelLines(data: PanelData): string[] {
+	return buildPanelRows(data).map((row) => row.text);
+}
+
+/** Single-line summary used for the collapsed entry and non-TUI notify. */
+export function renderSummaryLine(data: PanelData): string {
+	const { tokens, contextWindow, percent } = data.overview;
+	const p = formatPercent(percent);
+	const t = tokens === null ? "?" : formatTokens(tokens);
+	const w = contextWindow === null || contextWindow <= 0 ? "?" : formatTokens(contextWindow);
+	return `context ${p} (${t}/${w}) · skills ${data.skills.length} · plugins ${data.plugins.length} · mcps ${data.mcps.length}`;
 }

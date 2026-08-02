@@ -50,9 +50,18 @@
 - `getContextUsage()` 为 undefined 时优雅降级
 - 与 T1–T4 模块接线正确
 
-## T6 端到端验证 ✅
-验收：
+## T6 端到端验证 ✅（overlay 方案，已被 T7 取代）
+验收（历史）：
 - monorepo 根 `pi` 启动，项目信任后 `/status` 可用
 - 面板显示总览 + 五分类 + 已加载资源（overlay 全量 16 行）；Esc 关闭
 - `/reload` 后修改生效；`npm test` + `npm run typecheck` 全绿（56 tests）
 - 全局 `~/.pi/agent/settings.json` 无新增条目（未污染全局）
+
+## T7 对话框内条目渲染（appendEntry + entry-renderer） ✅
+文件：`src/entry-renderer.ts` + `src/index.ts`（移除 `src/overlay.ts`）
+验收：
+- `registerEntryRenderer("status-panel", renderStatusEntry)` + TUI 模式 `pi.appendEntry`，快照出现在对话流（不抢键盘、无行数上限、不参与 LLM 上下文）
+- 折叠态单行摘要（`renderSummaryLine`）；展开态全量面板（`buildPanelRows` 按角色着色）
+- `buildPanelRows` 与 `buildPanelLines` 输出一致；`renderSummaryLine` 覆盖未知 usage 边界
+- 非 TUI 仍 notify 单行摘要
+- `npm test` + `npm run typecheck` 全绿（63 tests）

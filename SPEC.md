@@ -10,13 +10,13 @@
 
 ### 1.2 非目标（v1 明确不做）
 - 不注册 LLM 可调用的工具（仅命令）
-- 不做全屏覆盖层（`ui.custom`）——v1 用 widget 面板
+- **不抢键盘焦点**——v1 用对话内条目（`appendEntry` + `registerEntryRenderer`），不用全屏 overlay / `ui.custom`，也不用 widget（面板超 widget 10 行上限）
 - 不展示 MCP 服务器的**连接状态**（扩展 API 未暴露，v1 只列出配置）
 - 不引入 lint、不做构建步骤（jiti 直载 TS）
 - 不发布 npm（v1 仅项目级本地加载）
 
 ### 1.3 依赖原则
-- **运行时依赖仅一个**：`@earendil-works/pi-tui`（`matchesKey` / `truncateToWidth`，overlay 组件用；随 pi 安装，仓库已可解析）
+- **运行时依赖仅一个**：`@earendil-works/pi-tui`（`Container` / `Text`，entry-renderer 用；随 pi 安装，仓库已可解析）
 - `@earendil-works/pi-coding-agent` 仅作**类型导入**（devDependency）
 - token 估算用本地 `chars/4` 启发式（与 pi 内部 `estimateTokens` 同口径），不 import 其运行时实现
 
@@ -28,9 +28,12 @@
 - 仅命令，不注册 tool，不依赖 typebox
 
 ### 2.1 输出通道
-- **TUI 模式**（`ctx.mode === "tui"`）：`ctx.ui.custom(factory, { overlay: true })` 全屏覆盖层——**无行数上限**（widget 的 10 行限制不适用），Esc / Ctrl+C 关闭
-- **非 TUI 模式**（rpc / json / print）：降级为 `ctx.ui.notify(单行摘要, "info")`
-- overlay 组件：`src/overlay.ts` 的 `StatusOverlay`（`handleInput` + `render(width)`，行超宽用 `truncateToWidth`）
+- **TUI 模式**（`ctx.mode === "tui"`）：`pi.appendEntry("status-panel", PanelData)` 把快照写入会话，由 `registerEntryRenderer("status-panel", renderStatusEntry)` 渲染进**对话流**（像 LLM 输出一样滚动展示，无行数上限）；custom 条目**不进 LLM 上下文**，也不会计入下一次 `/status` 的上下文估算
+  - 折叠态（默认）：单行摘要 `context 48.8% (62,500/128,000) · skills 3 · plugins 4 · mcps 2`
+  - 展开态（切换工具输出展开）：`buildPanelRows` 全量面板，按行角色着色
+  - 每次运行追加一条快照 → 对话内留存**上下文占用历史**；会话存档（session.json）持久化，重开回放
+- **非 TUI 模式**（rpc / json / print）：降级为 `ctx.ui.notify(renderSummaryLine(data), "info")` 单行摘要，不写会话
+- 渲染器模块：`src/entry-renderer.ts`（`renderStatusEntry`，collapsed/expanded 两态）
 
 ## 3. 数据源
 
@@ -63,7 +66,7 @@
 - 分类占比：**分母 = 五分类估算合计**（内部比例），非 usage tokens
 - 面板底部显示"分类合计（≈估算）"，与总览行可能略有出入（usage 含格式开销）——属预期，SPEC 明示
 
-### 4.3 面板结构（TUI）
+### 4.3 面板结构（TUI，展开态）
 
 ```
 <模型名> | 窗口: 128k | 已用: 62,500 tokens (48.8%)
@@ -125,13 +128,13 @@ packages/pi-status/
 ├── package.json      # @kefka/pi-status + pi.extensions + deps(pi-tui)
 ├── tsconfig.json
 ├── src/
-│   ├── index.ts      # 薄层：registerCommand、取 API 数据、调聚合、渲染、overlay/notify
-│   ├── overlay.ts    # StatusOverlay 组件（handleInput/render），TUI 全屏展示
+│   ├── index.ts      # 薄层：registerCommand + registerEntryRenderer、取 API 数据、调聚合、appendEntry/notify
+│   ├── entry-renderer.ts # 对话内渲染：renderStatusEntry（collapsed 摘要 / expanded 全量面板，按角色着色）
 │   ├── context.ts    # 纯函数：computeContextBreakdown / estimateTextTokens
-│   ├── format.ts     # 纯函数：tokens/percent/bar/displayWidth/行渲染/面板组装
+│   ├── format.ts     # 纯函数：tokens/percent/bar/displayWidth/行渲染/buildPanelRows/renderSummaryLine
 │   ├── resources.ts  # 纯函数：summarizeResources（skills/plugins/mcps 聚合）
 │   └── mcp-config.ts # 纯函数：listMcpServers（配置发现+解析）
-└── test/             # vitest：context / format / mcp-config / resources
+└── test/             # vitest：context / format / entry-renderer / mcp-config / resources
 ```
 
 - `index.ts` 不写业务逻辑、不做单测；其余模块全部纯函数 + 单测（TDD）
