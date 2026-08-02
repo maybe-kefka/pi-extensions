@@ -29,6 +29,17 @@ npm run typecheck     # 各包 tsc --noEmit
 - 在本仓库目录启动 `pi`，首次启动信任项目后 `/status` 可用
 - 改代码后 `/reload` 生效
 
-## 发布（未来）
+## 发布
 
-每个包已声明 `pi.extensions`，可 `pi install ./packages/pi-status` 或发布 npm 后 `pi install npm:@kefka/pi-status`。
+`@kefka/pi-status` 已发布到 npm。安装：
+
+```bash
+pi install npm:@kefka/pi-status   # 从 npm
+pi install ./packages/pi-status   # 本地路径（开发）
+```
+
+发布新版本：
+
+```bash
+npm run publish:pi-status   # prepublishOnly 自动跑 typecheck + test
+```

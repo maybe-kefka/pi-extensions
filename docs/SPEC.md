@@ -12,8 +12,7 @@
 - 不注册 LLM 可调用的工具（仅命令）
 - **不抢键盘焦点**——v1 用固定 widget（`ctx.ui.setWidget`，同 key 原地替换）；不用全屏 overlay / `ui.custom`（劫持输入），也不用对话条目（`appendEntry` 方案已弃：append-only 会话无法让原地更新回到视口）
 - 不展示 MCP 服务器的**连接状态**（扩展 API 未暴露，v1 只列出配置 + 可判定的工具数）
-- 不引入 lint、不做构建步骤（jiti 直载 TS）
-- 不发布 npm（v1 仅项目级本地加载）
+- 不引入 lint、不做构建步骤（jiti 直载 TS，npm 包直接发布 TS 源码 + `pi.extensions` 入口）
 
 ### 1.3 依赖原则
 - **运行时依赖仅一个**：`@earendil-works/pi-tui`（`truncateToWidth` / `Component`，widget 组件用；随 pi 安装，仓库已可解析）
