@@ -30,6 +30,7 @@ describe("summarizeResources", () => {
 			{ name: "pdf", description: "PDF files" },
 		]);
 		expect(result.mcps).toHaveLength(1);
+		expect(result.mcps[0]).toEqual({ name: "github", source: "/home/u/.agents/mcp.json", disabled: false, tools: 0 });
 
 		// builtin tools excluded; plugins sorted by display name (basename for paths)
 		expect(result.plugins.map((p) => p.display)).toEqual([
@@ -62,6 +63,28 @@ describe("summarizeResources", () => {
 			mcps: [],
 		});
 		expect(result.plugins.map((p) => p.display)).toEqual(["hello.ts", "status.ts"]);
+	});
+
+	it("counts pi-mcp-adapter tools per server by name prefix", () => {
+		const result = summarizeResources({
+			tools: [
+				{ name: "github_get_repo", sourceInfo: { source: "npm:pi-mcp-adapter" } },
+				{ name: "github_list_issues", sourceInfo: { source: "npm:pi-mcp-adapter" } },
+				{ name: "github", sourceInfo: { source: "npm:pi-mcp-adapter" } }, // collides w/ server name, no _ suffix
+				{ name: "github_watcher_extra", sourceInfo: { source: "npm:other" } }, // not adapter
+				{ name: "filesystem_read", sourceInfo: { source: "npm:pi-mcp-adapter" } }, // other server
+			],
+			commands: [],
+			skills: [],
+			mcps: [
+				{ name: "github", source: "/home/u/.agents/mcp.json", disabled: false },
+				{ name: "filesystem", source: "/home/u/.agents/mcp.json", disabled: false },
+			],
+		});
+		expect(result.mcps).toEqual([
+			{ name: "github", source: "/home/u/.agents/mcp.json", disabled: false, tools: 2 },
+			{ name: "filesystem", source: "/home/u/.agents/mcp.json", disabled: false, tools: 1 },
+		]);
 	});
 
 	it("handles empty input without crashing", () => {

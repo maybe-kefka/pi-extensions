@@ -32,9 +32,11 @@ describe("formatTokens", () => {
 });
 
 describe("formatCompact", () => {
-	it("formats thousands as k", () => {
+	it("formats thousands as k with rounding", () => {
 		expect(formatCompact(128000)).toBe("128k");
 		expect(formatCompact(1000)).toBe("1k");
+		expect(formatCompact(1500)).toBe("2k");
+		expect(formatCompact(1499)).toBe("1k");
 	});
 
 	it("formats millions as M with one decimal", () => {
@@ -142,15 +144,19 @@ describe("renderOverviewLine", () => {
 		).toBe("deepseek-v4-flash | 窗口: 128k | 已用: 62,500 tokens (48.8%)");
 	});
 
-	it("shows 待更新 when tokens are unknown", () => {
+	it("shows 待更新 with -- percent when tokens are unknown", () => {
 		expect(renderOverviewLine({ model: "m", contextWindow: 128000, tokens: null, percent: null })).toBe(
-			"m | 窗口: 128k | 已用: 待更新",
+			"m | 窗口: 128k | 已用: 待更新 (--)",
 		);
 	});
 
-	it("shows -- when context window is unknown or zero", () => {
-		expect(renderOverviewLine({ model: "m", contextWindow: null, tokens: 100, percent: null })).toBe("m | 窗口: -- | 已用: 100 tokens");
-		expect(renderOverviewLine({ model: "m", contextWindow: 0, tokens: 100, percent: null })).toBe("m | 窗口: -- | 已用: 100 tokens");
+	it("shows -- window and -- percent when context window is unknown or zero", () => {
+		expect(renderOverviewLine({ model: "m", contextWindow: null, tokens: 100, percent: null })).toBe(
+			"m | 窗口: -- | 已用: 100 tokens (--)",
+		);
+		expect(renderOverviewLine({ model: "m", contextWindow: 0, tokens: 100, percent: null })).toBe(
+			"m | 窗口: -- | 已用: 100 tokens (--)",
+		);
 	});
 });
 
@@ -189,14 +195,14 @@ describe("pluginItemLabels", () => {
 });
 
 describe("mcpItemLabels", () => {
-	it("builds per-server labels with disabled flag and ~-abbreviated source", () => {
+	it("builds per-server labels with tools count, disabled flag and ~-abbreviated source", () => {
 		const home = homedir();
 		const mcps = [
-			{ name: "github", source: join(home, ".agents", "mcp.json"), disabled: false },
-			{ name: "filesystem", source: "/proj/.pi/mcp.json", disabled: true },
+			{ name: "github", source: join(home, ".agents", "mcp.json"), disabled: false, tools: 5 },
+			{ name: "filesystem", source: "/proj/.pi/mcp.json", disabled: true, tools: 0 },
 		];
 		expect(mcpItemLabels(mcps)).toEqual([
-			"github [~/.agents/mcp.json]",
+			"github (5 tools) [~/.agents/mcp.json]",
 			"filesystem (disabled) [/proj/.pi/mcp.json]",
 		]);
 	});
@@ -222,7 +228,7 @@ describe("buildPanelLines", () => {
 			total: 50000,
 			skills: [{ name: "docx" }, { name: "pdf" }],
 			plugins: [{ display: "npm:pi-mcp-adapter", tools: 1, commands: 0 }],
-			mcps: [{ name: "github", source: join(homedir(), ".agents", "mcp.json"), disabled: false }],
+			mcps: [{ name: "github", source: join(homedir(), ".agents", "mcp.json"), disabled: false, tools: 5 }],
 		});
 
 		expect(lines).toEqual([
@@ -245,7 +251,7 @@ describe("buildPanelLines", () => {
 			"plugins (1):",
 			"  - npm:pi-mcp-adapter (1 tool)",
 			"mcps (1):",
-			"  - github [~/.agents/mcp.json]",
+			"  - github (5 tools) [~/.agents/mcp.json]",
 		]);
 	});
 });
@@ -265,7 +271,7 @@ describe("buildPanelRows", () => {
 		total: 50000,
 		skills: [{ name: "docx" }, { name: "pdf" }],
 		plugins: [{ display: "npm:pi-mcp-adapter", tools: 1, commands: 0 }],
-		mcps: [{ name: "github", source: join(homedir(), ".agents", "mcp.json"), disabled: false }],
+		mcps: [{ name: "github", source: join(homedir(), ".agents", "mcp.json"), disabled: false, tools: 5 }],
 	};
 
 	it("tags each row with a role, in panel order", () => {

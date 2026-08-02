@@ -10,13 +10,13 @@ export function formatTokens(n: number): string {
 	return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 }
 
-/** Compact display: 128000 -> "128k", 2.5e6 -> "2.5M". */
+/** Compact display: 128000 -> "128k", 2.5e6 -> "2.5M" (k: SPEC §4.3 Math.round). */
 export function formatCompact(n: number): string {
 	if (n >= 1_000_000) {
 		return `${trimDecimal(n / 1_000_000)}M`;
 	}
 	if (n >= 1000) {
-		return `${trimDecimal(n / 1000)}k`;
+		return `${Math.round(n / 1000)}k`;
 	}
 	return String(n);
 }
@@ -113,17 +113,21 @@ export interface OverviewLineOptions {
 	percent: number | null;
 }
 
-/** Render the overview line: `<model> | 窗口: <window> | 已用: <tokens> (<percent>)`. */
+/**
+ * Render the overview line: `<model> | 窗口: <window> | 已用: <tokens> (<percent>)`.
+ * SPEC §6: percent shows "(--)" when tokens are unknown (post-compaction) or
+ * when the context window is unknown.
+ */
 export function renderOverviewLine(opts: OverviewLineOptions): string {
 	const window_ = opts.contextWindow && opts.contextWindow > 0 ? formatCompact(opts.contextWindow) : "--";
+	const percentText = opts.percent !== null ? ` (${formatPercent(opts.percent)})` : " (--)";
 	let used: string;
 	if (opts.tokens === null) {
 		used = "待更新";
 	} else {
 		used = `${formatTokens(opts.tokens)} tokens`;
-		if (opts.percent !== null) used += ` (${formatPercent(opts.percent)})`;
 	}
-	return `${opts.model} | 窗口: ${window_} | 已用: ${used}`;
+	return `${opts.model} | 窗口: ${window_} | 已用: ${used}${percentText}`;
 }
 
 /**
@@ -145,13 +149,14 @@ export function pluginItemLabels(plugins: Array<{ display: string; tools: number
 	});
 }
 
-/** Per-mcp item labels with disabled flag and ~-abbreviated source. */
-export function mcpItemLabels(mcps: Array<{ name: string; source: string; disabled: boolean }>): string[] {
+/** Per-mcp item labels: `name (N tools) [src]` (tools omitted when 0/unknown). */
+export function mcpItemLabels(mcps: Array<{ name: string; source: string; disabled: boolean; tools?: number }>): string[] {
 	const home = homedir();
 	return mcps.map((m) => {
 		const src = m.source.startsWith(home) ? `~${m.source.slice(home.length)}` : m.source;
 		const flag = m.disabled ? " (disabled)" : "";
-		return `${m.name}${flag} [${src}]`;
+		const tools = m.tools && m.tools > 0 ? ` (${m.tools} ${m.tools === 1 ? "tool" : "tools"})` : "";
+		return `${m.name}${flag}${tools} [${src}]`;
 	});
 }
 
@@ -163,7 +168,7 @@ export interface PanelData {
 	total: number;
 	skills: Array<{ name: string }>;
 	plugins: Array<{ display: string; tools: number; commands: number }>;
-	mcps: Array<{ name: string; source: string; disabled: boolean }>;
+	mcps: Array<{ name: string; source: string; disabled: boolean; tools?: number }>;
 }
 
 const CATEGORY_HEADER = "────────── 上下文占用 ──────────";

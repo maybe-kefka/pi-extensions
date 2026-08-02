@@ -17,19 +17,24 @@ export interface SessionEntryLike {
 	type: string;
 	message?: ChatMessageLike;
 	summary?: string;
+	content?: ChatMessageLike["content"];
 }
 
 /**
  * Project session entries (from buildContextEntries) into an LLM message view,
  * mirroring the subset of pi's buildSessionContext relevant to token estimation:
  * message entries pass through, compaction/branch summaries become summary
- * messages, everything else is skipped.
+ * messages, custom_message entries become role "custom" messages (they DO
+ * participate in LLM context). Plain `custom` entries (appendEntry, e.g. the
+ * status snapshot) are skipped — they never enter the context.
  */
 export function contextMessagesFromEntries(entries: SessionEntryLike[]): ChatMessageLike[] {
 	const messages: ChatMessageLike[] = [];
 	for (const entry of entries) {
 		if (entry.type === "message" && entry.message) {
 			messages.push(entry.message);
+		} else if (entry.type === "custom_message" && entry.content) {
+			messages.push({ role: "custom", content: entry.content });
 		} else if (entry.type === "compaction" && entry.summary) {
 			messages.push({ role: "compactionSummary", summary: entry.summary });
 		} else if (entry.type === "branch_summary" && entry.summary) {

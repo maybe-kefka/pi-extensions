@@ -10,13 +10,13 @@
 
 ### 1.2 非目标（v1 明确不做）
 - 不注册 LLM 可调用的工具（仅命令）
-- **不抢键盘焦点**——v1 用对话内条目（`appendEntry` + `registerEntryRenderer`），不用全屏 overlay / `ui.custom`，也不用 widget（面板超 widget 10 行上限）
-- 不展示 MCP 服务器的**连接状态**（扩展 API 未暴露，v1 只列出配置）
+- **不抢键盘焦点**——v1 用固定 widget（`ctx.ui.setWidget`，同 key 原地替换）；不用全屏 overlay / `ui.custom`（劫持输入），也不用对话条目（`appendEntry` 方案已弃：append-only 会话无法让原地更新回到视口）
+- 不展示 MCP 服务器的**连接状态**（扩展 API 未暴露，v1 只列出配置 + 可判定的工具数）
 - 不引入 lint、不做构建步骤（jiti 直载 TS）
 - 不发布 npm（v1 仅项目级本地加载）
 
 ### 1.3 依赖原则
-- **运行时依赖仅一个**：`@earendil-works/pi-tui`（`Container` / `Text`，entry-renderer 用；随 pi 安装，仓库已可解析）
+- **运行时依赖仅一个**：`@earendil-works/pi-tui`（`truncateToWidth` / `Component`，widget 组件用；随 pi 安装，仓库已可解析）
 - `@earendil-works/pi-coding-agent` 仅作**类型导入**（devDependency）
 - token 估算用本地 `chars/4` 启发式（与 pi 内部 `estimateTokens` 同口径），不 import 其运行时实现
 
@@ -29,10 +29,11 @@
 
 ### 2.1 输出通道
 - **TUI 模式**（`ctx.mode === "tui"`）：`ctx.ui.setWidget("pi-status", factory)` 把全量面板渲染成**编辑器上方的固定 widget**（SPEC 原始设计）
-  - **恒渲染全量面板**（`buildPanelRows` 按行角色着色）——不做折叠态，/status 就是要看完整 breakdown
+  - **恒渲染全量面板**（`buildPanelRows` 按行角色着色）——不渲染折叠摘要行，/status 就是要看完整 breakdown；区别于“输入自动收起”（见下）
   - **同 key 原地替换**：每次 `/status` 用同一 key 调 `setWidget`，旧面板被替换，**无累积、不抢焦点**；面板固定在屏幕上，每次更新**即时可见**（无需滚动聊天）
   - 组件每帧读模块态快照（`setStatusData()`），后续 `/status` 原地刷新
   - **页脚反馈**：`ctx.ui.setStatus` 带更新时间戳 + 单行摘要，即使上下文数据未变也每次可见确认
+  - **下次输入自动收起**：`pi.on("input")` 在用户提交下一条消息时 `setWidget(key, undefined)` 收起面板（/status 命令先于 input 事件处理，不会自收起），页脚状态一并清除
 - **非 TUI 模式**（rpc / json / print）：降级为 `ctx.ui.notify(renderSummaryLine(data), "info")` 单行摘要，不写会话
 - widget 组件模块：`src/widget.ts`（`renderStatusWidget` + `setStatusData`）
 - **方案沿革**：overlay（劫持键盘）→ 聊天条目 appendEntry（原地更新不可见，chat 无法回滚视口）→ **widget（最终方案，回归 SPEC 原始设计）**
@@ -42,7 +43,7 @@
 | 数据 | 来源 | 用途 |
 |---|---|---|
 | 总占用 tokens / contextWindow / percent | `ctx.getContextUsage()` | 总览行（**权威**，基于最后一次 assistant usage）；**percent 为 0-100 百分数，index.ts 边界归一化为 0-1 比例**再进纯函数层 |
-| 对话消息列表 | `ctx.sessionManager.buildSessionContext()` | 按角色归类估算 tokens |
+| 对话消息列表 | `ctx.sessionManager.buildContextEntries()` → `contextMessagesFromEntries()`（等价于 pi 的 `buildSessionContext` 转换子集：message / custom_message / compaction / branch_summary 进入估算，自定义 `custom` 条目——如 status 快照本身——不进上下文，避免反馈循环） | 按角色归类估算 tokens |
 | 系统提示构成 | `ctx.getSystemPromptOptions()` | customPrompt / promptGuidelines / appendSystemPrompt / contextFiles / skills / toolSnippets |
 | 活动模型 | `ctx.model` | 总览行模型名 |
 | 已加载扩展与工具 | `pi.getAllTools()` + `pi.getCommands()` | plugins 清单（按 `sourceInfo.source` 去重） |
@@ -59,7 +60,7 @@
 | 上下文文件 | contextFiles 各 `path + \n + content` |
 | 技能 | skills 各 `name + description`（Skill 类型无 content；系统提示只注入元数据） |
 | 工具定义 | toolSnippets 各 value（`description + promptSnippet` 的实际聚合文本） |
-| 对话消息 | buildSessionContext 的消息列表按角色归类 |
+| 对话消息 | buildContextEntries → contextMessagesFromEntries 的消息列表按角色归类 |
 
 对话消息内部细分：**用户 / 助手 / 工具结果**（toolResult + bashExecution 归入工具结果；custom / branchSummary / compactionSummary 归入对话合计但不单独列行，占比显示在"对话消息"行）。
 
@@ -116,7 +117,7 @@
   5. `~/.config/mcp/mcp.json`
 - 解析：JSON 顶层 `mcpServers` 对象的键即服务器名；`disabled: true` 的服务器标注 `(disabled)`
 - 格式：`mcps (2):` + `  - github (5 tools) [~/.agents/mcp.json]` 逐项列出（`mcpItemLabels`）
-  - 工具数 = 该来源下 `getAllTools()` 中属于 pi-mcp-adapter 插件且名称以服务器名前缀开头的工具数；无法判定时为 0 并省略 `(N tools)`
+  - 工具数 = 该来源下 `getAllTools()` 中属于 pi-mcp-adapter 插件（`sourceInfo.source` 含 `pi-mcp-adapter`）且名称以 `<服务器名下划线化>_` 为前缀的工具数（`countMcpTools`，与 pi-mcp-adapter 默认 `server` 前缀命名一致）；无法判定时为 0 并省略 `(N tools)`
 - **明确局限**：反映"已配置"，非"已连接"；连接状态 v1 不可得
 
 ## 6. 边界情况
