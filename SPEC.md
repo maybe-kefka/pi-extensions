@@ -93,11 +93,18 @@
 
 ### 5.1 skills
 - 来源：`getSystemPromptOptions().skills`（当前加载进系统提示的技能）
-- 格式：`skills (3): chinese-novelist, docx, pdf`（数量 + 逗号分隔名称）
+- 格式（YAML 风格，`renderYamlList`）：
+  ```
+  skills (3):
+    - chinese-novelist
+    - docx
+    - pdf
+  ```
+  - 空列表仅一行 `skills (0):`
 
 ### 5.2 plugins
 - 来源：`getAllTools()` + `getCommands()` 的 `sourceInfo.source` 去重（排除 builtin 工具来源，若可辨）
-- 格式：`plugins (4): npm:pi-subagents (2 tools, 1 cmd), ...`——每个来源列出贡献的工具数/命令数
+- 格式：`plugins (4):` + `  - npm:pi-subagents (2 tools, 1 cmd)` 逐项列出（`pluginItemLabels`），每个来源列出贡献的工具数/命令数
 - 项目本地扩展（path 来源）以 basename 显示
 
 ### 5.3 mcps（方案 A：配置解析）
@@ -108,7 +115,7 @@
   4. `~/.agents/mcp/mcp.json`
   5. `~/.config/mcp/mcp.json`
 - 解析：JSON 顶层 `mcpServers` 对象的键即服务器名；`disabled: true` 的服务器标注 `(disabled)`
-- 格式：`mcps (2): github (5 tools) [~/.agents/mcp.json], filesystem (8 tools) [.pi/mcp.json]`
+- 格式：`mcps (2):` + `  - github (5 tools) [~/.agents/mcp.json]` 逐项列出（`mcpItemLabels`）
   - 工具数 = 该来源下 `getAllTools()` 中属于 pi-mcp-adapter 插件且名称以服务器名前缀开头的工具数；无法判定时为 0 并省略 `(N tools)`
 - **明确局限**：反映"已配置"，非"已连接"；连接状态 v1 不可得
 
