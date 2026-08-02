@@ -70,8 +70,8 @@
 ## T8 单条目替换语义（对话不被 status 塞满） ✅
 文件：`src/entry-renderer.ts` + `src/index.ts`
 验收：
-- 每个会话 leaf 路径只 append 一条 `status-panel` 条目（`buildContextEntries` 判定）；后续 `/status` 不再追加
+- 每个会话 leaf 路径只 append 一条 `status` 条目（`buildContextEntries` 判定）；后续 `/status` 不再追加
 - 渲染组件每帧读模块态快照 `setStatusData()`，同一条目原地刷新；`ctx.ui.setStatus` 触发重绘 + 页脚摘要
-- 旧条目按 `entry.data` 引用门控返回 `undefined`（不渲染，不占行）
-- `session_start` 从最后一条 status 条目恢复快照，重启回放仍显示
+- **重放回退**：/reload 重放先于 `session_start` 恢复，渲染器回退读条目自身数据，面板不空白
+- **customType 升版** `status-panel` → `status`：旧累积条目无渲染器静默跳过
 - 非 TUI 不写会话；`npm test` + `npm run typecheck` 全绿（66 tests）

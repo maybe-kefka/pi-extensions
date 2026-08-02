@@ -1,15 +1,16 @@
 /**
  * Chat-transcript renderer for /status snapshots.
  *
- * Replacement semantics: only ONE status entry ever renders. The command keeps
- * the latest snapshot in module state (setStatusData) and appends a session
- * entry only once per session. The renderer gates on entry.data being the
- * current snapshot (reference equality), so accumulated/duplicate entries from
- * older versions return undefined and are never added to the chat.
+ * Replacement semantics: the command appends at most ONE session entry (type
+ * STATUS_ENTRY_TYPE) per session leaf path, so the conversation never fills
+ * with status entries. The rendered component is non-caching and reads the
+ * module snapshot (setStatusData) on every frame — later /status runs refresh
+ * the SAME panel in place.
  *
- * The returned component is non-caching and reads the module snapshot on every
- * frame, so later /status runs update the SAME panel in place instead of
- * appending new ones — the conversation never fills with status entries.
+ * Fallback: on replay (app start / /reload) the module snapshot may not be
+ * restored yet (reload rebuilds the transcript BEFORE session_start fires), so
+ * render() falls back to the entry's own persisted data — the panel is never
+ * blank and never duplicated (only one entry of this type can exist).
  *
  * Entries never participate in LLM context.
  */
@@ -18,12 +19,15 @@ import type { EntryRenderer, Theme } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth } from "@earendil-works/pi-tui";
 import { buildPanelRows, type PanelData, type PanelRowRole } from "./format.js";
 
-/** customType used for both appendEntry and registerEntryRenderer. */
-export const STATUS_ENTRY_TYPE = "status-panel";
+/**
+ * v2 customType. The old "status-panel" entries accumulated before replacement
+ * semantics have no renderer for this type and are silently skipped.
+ */
+export const STATUS_ENTRY_TYPE = "status";
 
 let currentData: PanelData | null = null;
 
-/** Set the snapshot the status entry renders (call before appending/updating). */
+/** Set the live snapshot the status entry renders (call before appending/updating). */
 export function setStatusData(data: PanelData | null): void {
 	currentData = data;
 }
@@ -44,18 +48,13 @@ function colorForRole(role: PanelRowRole, theme: Theme, text: string): string {
 }
 
 export const renderStatusEntry: EntryRenderer<PanelData> = (entry, _options, theme) => {
-	// Gate: only the entry holding the current snapshot renders. Older entries
-	// (e.g. duplicates accumulated before replacement semantics) are skipped.
-	if (entry.data !== currentData) {
-		return undefined;
-	}
-
 	return {
 		render(width: number): string[] {
-			if (!currentData) {
+			const data = currentData ?? entry.data;
+			if (!data) {
 				return [truncateToWidth(theme.fg("dim", "[status] 等待数据"), width)];
 			}
-			return buildPanelRows(currentData).map((row) =>
+			return buildPanelRows(data).map((row) =>
 				truncateToWidth(colorForRole(row.role, theme, row.text), width),
 			);
 		},
