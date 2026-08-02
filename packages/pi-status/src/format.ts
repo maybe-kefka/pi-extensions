@@ -3,6 +3,8 @@
  * All functions are side-effect free and unit-tested.
  */
 
+import { homedir } from "node:os";
+
 /** Format a token count with thousands separators. */
 export function formatTokens(n: number): string {
 	return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
@@ -74,6 +76,7 @@ export interface BarRowOptions {
 }
 
 const TOKEN_COL_WIDTH = 7;
+const PERCENT_COL_WIDTH = 6;
 
 /** Render one bar row: `<label> <tokens> <bar> <percent>`. */
 export function renderBarRow(opts: BarRowOptions): string {
@@ -81,7 +84,7 @@ export function renderBarRow(opts: BarRowOptions): string {
 	const labelWidth = Math.max(opts.labelWidth ?? minWidth, minWidth);
 	const label = padDisplay(opts.label, labelWidth);
 	const tokens = formatTokens(opts.tokens).padStart(TOKEN_COL_WIDTH);
-	return `${label}${tokens} ${bar(opts.ratio)}  ${formatPercent(opts.ratio)}`;
+	return `${label}${tokens} ${bar(opts.ratio)} ${formatPercent(opts.ratio).padStart(PERCENT_COL_WIDTH)}`;
 }
 
 /** Render a non-bar total line: `<label> <tokens> [note]`. */
@@ -92,4 +95,105 @@ export function renderTotalLine(label: string, tokens: number, note?: string, la
 	const t = formatTokens(tokens).padStart(TOKEN_COL_WIDTH);
 	const suffix = note ? ` ${note}` : "";
 	return `${l}${t}${suffix}`;
+}
+
+export interface OverviewLineOptions {
+	model: string;
+	contextWindow: number | null;
+	tokens: number | null;
+	percent: number | null;
+}
+
+/** Render the overview line: `<model> | 窗口: <window> | 已用: <tokens> (<percent>)`. */
+export function renderOverviewLine(opts: OverviewLineOptions): string {
+	const window_ = opts.contextWindow && opts.contextWindow > 0 ? formatCompact(opts.contextWindow) : "--";
+	let used: string;
+	if (opts.tokens === null) {
+		used = "待更新";
+	} else {
+		used = `${formatTokens(opts.tokens)} tokens`;
+		if (opts.percent !== null) used += ` (${formatPercent(opts.percent)})`;
+	}
+	return `${opts.model} | 窗口: ${window_} | 已用: ${used}`;
+}
+
+/** Render the skills line: `skills (N): name, name`. */
+export function renderSkillsLine(skills: Array<{ name: string }>): string {
+	if (skills.length === 0) return "skills (0)";
+	return `skills (${skills.length}): ${skills.map((s) => s.name).join(", ")}`;
+}
+
+/** Render the plugins line with per-plugin tool/command counts (zero omitted). */
+export function renderPluginsLine(plugins: Array<{ display: string; tools: number; commands: number }>): string {
+	if (plugins.length === 0) return "plugins (0)";
+	const parts = plugins.map((p) => {
+		const bits: string[] = [];
+		if (p.tools > 0) bits.push(`${p.tools} ${p.tools === 1 ? "tool" : "tools"}`);
+		if (p.commands > 0) bits.push(`${p.commands} ${p.commands === 1 ? "cmd" : "cmds"}`);
+		return bits.length > 0 ? `${p.display} (${bits.join(", ")})` : p.display;
+	});
+	return `plugins (${plugins.length}): ${parts.join(", ")}`;
+}
+
+/** Render the mcps line with disabled flag and ~-abbreviated source. */
+export function renderMcpsLine(mcps: Array<{ name: string; source: string; disabled: boolean }>): string {
+	if (mcps.length === 0) return "mcps (0)";
+	const home = homedir();
+	const parts = mcps.map((m) => {
+		const src = m.source.startsWith(home) ? `~${m.source.slice(home.length)}` : m.source;
+		const flag = m.disabled ? " (disabled)" : "";
+		return `${m.name}${flag} [${src}]`;
+	});
+	return `mcps (${mcps.length}): ${parts.join(", ")}`;
+}
+
+export interface PanelData {
+	overview: OverviewLineOptions;
+	categories: Array<{ key: string; label: string; tokens: number }>;
+	ratios: Record<string, number>;
+	conversation: { user: number; assistant: number; toolResult: number };
+	total: number;
+	skills: Array<{ name: string }>;
+	plugins: Array<{ display: string; tools: number; commands: number }>;
+	mcps: Array<{ name: string; source: string; disabled: boolean }>;
+}
+
+const CATEGORY_HEADER = "────────── 上下文占用 ──────────";
+const RESOURCES_HEADER = "────────── 已加载资源 ──────────";
+const TOTAL_SEPARATOR = "──────────────";
+
+/** Assemble the full multi-line panel shown as the /status widget. */
+export function buildPanelLines(data: PanelData): string[] {
+	const lines: string[] = [];
+	lines.push(renderOverviewLine(data.overview));
+	lines.push(CATEGORY_HEADER);
+
+	const catWidth = data.categories.reduce((max, c) => Math.max(max, displayWidth(c.label) + 2), 0);
+	for (const c of data.categories) {
+		lines.push(renderBarRow({ label: c.label, tokens: c.tokens, ratio: data.ratios[c.key] ?? 0, labelWidth: catWidth }));
+	}
+
+	const subs: Array<{ label: string; tokens: number }> = [
+		{ label: "用户", tokens: data.conversation.user },
+		{ label: "助手", tokens: data.conversation.assistant },
+		{ label: "工具结果", tokens: data.conversation.toolResult },
+	];
+	for (const s of subs) {
+		lines.push(
+			renderBarRow({
+				label: `  ${s.label}`,
+				tokens: s.tokens,
+				ratio: data.total > 0 ? s.tokens / data.total : 0,
+				labelWidth: catWidth,
+			}),
+		);
+	}
+
+	lines.push(TOTAL_SEPARATOR);
+	lines.push(renderTotalLine("分类合计", data.total, "(≈估算)", catWidth));
+	lines.push(RESOURCES_HEADER);
+	lines.push(renderSkillsLine(data.skills));
+	lines.push(renderPluginsLine(data.plugins));
+	lines.push(renderMcpsLine(data.mcps));
+	return lines;
 }

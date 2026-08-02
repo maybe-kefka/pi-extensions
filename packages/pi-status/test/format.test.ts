@@ -1,12 +1,19 @@
+import { join } from "node:path";
+import { homedir } from "node:os";
 import { describe, expect, it } from "vitest";
 import {
 	bar,
+	buildPanelLines,
 	displayWidth,
 	formatCompact,
 	formatPercent,
 	formatTokens,
 	padDisplay,
 	renderBarRow,
+	renderMcpsLine,
+	renderOverviewLine,
+	renderPluginsLine,
+	renderSkillsLine,
 	renderTotalLine,
 } from "../src/format.js";
 
@@ -110,5 +117,110 @@ describe("renderTotalLine", () => {
 	it("renders a total line with optional note", () => {
 		expect(renderTotalLine("分类合计", 50000, "(≈估算)")).toBe("分类合计   50,000 (≈估算)");
 		expect(renderTotalLine("分类合计", 0)).toBe("分类合计        0");
+	});
+});
+
+describe("renderOverviewLine", () => {
+	it("renders model, window, tokens and percent", () => {
+		expect(
+			renderOverviewLine({ model: "deepseek-v4-flash", contextWindow: 128000, tokens: 62500, percent: 0.488 }),
+		).toBe("deepseek-v4-flash | 窗口: 128k | 已用: 62,500 tokens (48.8%)");
+	});
+
+	it("shows 待更新 when tokens are unknown", () => {
+		expect(renderOverviewLine({ model: "m", contextWindow: 128000, tokens: null, percent: null })).toBe(
+			"m | 窗口: 128k | 已用: 待更新",
+		);
+	});
+
+	it("shows -- when context window is unknown or zero", () => {
+		expect(renderOverviewLine({ model: "m", contextWindow: null, tokens: 100, percent: null })).toBe("m | 窗口: -- | 已用: 100 tokens");
+		expect(renderOverviewLine({ model: "m", contextWindow: 0, tokens: 100, percent: null })).toBe("m | 窗口: -- | 已用: 100 tokens");
+	});
+});
+
+describe("renderSkillsLine", () => {
+	it("lists skill names", () => {
+		expect(renderSkillsLine([{ name: "docx" }, { name: "pdf" }, { name: "chinese-novelist" }])).toBe(
+			"skills (3): docx, pdf, chinese-novelist",
+		);
+	});
+
+	it("handles empty list", () => {
+		expect(renderSkillsLine([])).toBe("skills (0)");
+	});
+});
+
+describe("renderPluginsLine", () => {
+	it("lists plugins with tool/command counts (singular/plural, zero omitted)", () => {
+		const plugins = [
+			{ display: "npm:pi-subagents", tools: 2, commands: 1 },
+			{ display: "status.ts", tools: 0, commands: 1 },
+			{ display: "npm:pi-simplify", tools: 1, commands: 0 },
+		];
+		expect(renderPluginsLine(plugins)).toBe(
+			"plugins (3): npm:pi-subagents (2 tools, 1 cmd), status.ts (1 cmd), npm:pi-simplify (1 tool)",
+		);
+	});
+
+	it("handles empty list", () => {
+		expect(renderPluginsLine([])).toBe("plugins (0)");
+	});
+});
+
+describe("renderMcpsLine", () => {
+	it("lists servers with disabled flag and ~-abbreviated source", () => {
+		const home = homedir();
+		const mcps = [
+			{ name: "github", source: join(home, ".agents", "mcp.json"), disabled: false },
+			{ name: "filesystem", source: "/proj/.pi/mcp.json", disabled: true },
+		];
+		expect(renderMcpsLine(mcps)).toBe(
+			`mcps (2): github [~/.agents/mcp.json], filesystem (disabled) [/proj/.pi/mcp.json]`,
+		);
+	});
+
+	it("handles empty list", () => {
+		expect(renderMcpsLine([])).toBe("mcps (0)");
+	});
+});
+
+describe("buildPanelLines", () => {
+	it("assembles the full panel with aligned columns", () => {
+		const lines = buildPanelLines({
+			overview: { model: "deepseek-v4-flash", contextWindow: 128000, tokens: 62500, percent: 0.488 },
+			categories: [
+				{ key: "system", label: "系统提示词", tokens: 5200 },
+				{ key: "contextFiles", label: "上下文文件", tokens: 3100 },
+				{ key: "skills", label: "技能", tokens: 1400 },
+				{ key: "tools", label: "工具定义", tokens: 9800 },
+				{ key: "conversation", label: "对话消息", tokens: 30500 },
+			],
+			ratios: { system: 0.104, contextFiles: 0.062, skills: 0.028, tools: 0.196, conversation: 0.61 },
+			conversation: { user: 12000, assistant: 10200, toolResult: 8300 },
+			total: 50000,
+			skills: [{ name: "docx" }, { name: "pdf" }],
+			plugins: [{ display: "npm:pi-mcp-adapter", tools: 1, commands: 0 }],
+			mcps: [{ name: "github", source: join(homedir(), ".agents", "mcp.json"), disabled: false }],
+		});
+
+		expect(lines).toEqual([
+			"deepseek-v4-flash | 窗口: 128k | 已用: 62,500 tokens (48.8%)",
+			"────────── 上下文占用 ──────────",
+			"系统提示词    5,200 █░░░░░░░░░  10.4%",
+			"上下文文件    3,100 █░░░░░░░░░   6.2%",
+			"技能          1,400 ░░░░░░░░░░   2.8%",
+			"工具定义      9,800 ██░░░░░░░░  19.6%",
+			"对话消息     30,500 ██████░░░░  61.0%",
+			"  用户       12,000 ██░░░░░░░░  24.0%",
+			"  助手       10,200 ██░░░░░░░░  20.4%",
+			"  工具结果    8,300 ██░░░░░░░░  16.6%",
+			"──────────────",
+			"分类合计     50,000 (≈估算)",
+			"────────── 已加载资源 ──────────",
+			"skills (2): docx, pdf",
+			"plugins (1): npm:pi-mcp-adapter (1 tool)",
+			"mcps (1): github [~/.agents/mcp.json]",
+		]);
 	});
 });
