@@ -6,10 +6,11 @@
 
 ```
 packages/pi-status/   # /status 命令：上下文占用分类 + 已加载资源
-├── src/              # index.ts(接线) + context/format/resources/mcp-config(纯函数) + overlay(组件)
+├── src/              # index.ts(接线) + widget(组件) + context/format/resources/mcp-config(纯函数)
 └── test/             # vitest 单测（TDD）
-SPEC.md               # 规格
-TICKETS.md            # 任务清单
+docs/                 # 规格与任务清单
+├── SPEC.md           # 规格
+└── TICKETS.md        # 任务清单
 ```
 
 ## 开发流程
