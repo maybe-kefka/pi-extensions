@@ -5,7 +5,7 @@ import { initialState, streamReducer, type StreamAction } from "@/lib/stream";
 import type { CommandInfo, ModelInfo, PiEvent, SessionInfo, WebState } from "@/lib/types";
 import { Header } from "@/components/Header";
 import { Chat } from "@/components/Chat";
-import { Sidebar } from "@/components/Sidebar";
+import { Sidebar, SidebarSheet, type SidebarContentProps } from "@/components/Sidebar";
 import { InputBar } from "@/components/InputBar";
 import { DisconnectBanner } from "@/components/DisconnectBanner";
 
@@ -61,6 +61,8 @@ export default function App() {
   const [commands, setCommands] = useState<CommandInfo[]>([]);
   const rpcRef = useRef<RpcClient | null>(null);
   const [booted, setBooted] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
   useEffect(() => {
     const token = new URLSearchParams(location.search).get("token") ?? "";
@@ -124,24 +126,33 @@ export default function App() {
     rpcRef.current?.request("pi:setThinkingLevel", { level }).catch((e) => toast.error(`setThinkingLevel: ${e.message}`));
   };
 
+  const sidebarProps: SidebarContentProps = {
+    sessions,
+    currentSessionFile: state.sessionFile,
+    models,
+    currentModel: state.model ? `${state.model.provider}/${state.model.id}` : null,
+    thinkingLevel: state.thinkingLevel,
+    commands,
+    bridge: state.bridge,
+    onSetModel: setModel,
+    onSetThinking: setThinking,
+  };
+
   return (
     <div className="flex h-dvh flex-col bg-background text-foreground">
-      <Header conn={conn} state={state} />
+      <Header
+        conn={conn}
+        state={state}
+        sidebarCollapsed={sidebarCollapsed}
+        onToggleSidebar={() => setSidebarCollapsed((c) => !c)}
+        onOpenDrawer={() => setDrawerOpen(true)}
+      />
       <DisconnectBanner conn={conn} />
       <div className="flex min-h-0 flex-1">
         <Chat state={state} dispatch={dispatch} />
-        <Sidebar
-          sessions={sessions}
-          currentSessionFile={state.sessionFile}
-          models={models}
-          currentModel={state.model ? `${state.model.provider}/${state.model.id}` : null}
-          thinkingLevel={state.thinkingLevel}
-          commands={commands}
-          bridge={state.bridge}
-          onSetModel={setModel}
-          onSetThinking={setThinking}
-        />
+        <Sidebar collapsed={sidebarCollapsed} {...sidebarProps} />
       </div>
+      <SidebarSheet open={drawerOpen} onOpenChange={setDrawerOpen} {...sidebarProps} />
       <InputBar busy={state.streaming} queue={state.queue} conn={conn} onSend={send} onAbort={abort} />
     </div>
   );

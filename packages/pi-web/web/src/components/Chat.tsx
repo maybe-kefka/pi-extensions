@@ -103,25 +103,27 @@ export function Chat({
     <main className="relative min-w-0 flex-1">
       <ScrollArea className="h-full">
         <div ref={scrollRef} onScroll={onScroll} className="h-full overflow-y-auto px-4 py-3">
-          {state.messages.length === 0 && state.tools.length === 0 ? (
-            <div className="text-muted-foreground mt-16 text-center text-sm">
-              暂无消息{state.conn === "open" ? "，发送第一条消息开始" : "，等待连接…"}
+          <div className="mx-auto max-w-3xl">
+            {state.messages.length === 0 && state.tools.length === 0 ? (
+              <div className="text-muted-foreground mt-16 text-center text-sm">
+                暂无消息{state.conn === "open" ? "，发送第一条消息开始" : "，等待连接…"}
+              </div>
+            ) : null}
+            <div className="space-y-3">
+              {state.messages.map((m) => (
+                <MessageBubble key={m.id} msg={m} dispatch={dispatch} />
+              ))}
+              {state.tools.map((t) => (
+                <ToolRowView key={t.toolCallId} row={t} dispatch={dispatch} />
+              ))}
             </div>
-          ) : null}
-          <div className="space-y-3">
-            {state.messages.map((m) => (
-              <MessageBubble key={m.id} msg={m} dispatch={dispatch} />
-            ))}
-            {state.tools.map((t) => (
-              <ToolRowView key={t.toolCallId} row={t} dispatch={dispatch} />
-            ))}
+            {queueText && (
+              <div className="mt-2">
+                <Separator className="my-2" />
+                <div className="text-muted-foreground text-center text-xs">{queueText}</div>
+              </div>
+            )}
           </div>
-          {queueText && (
-            <div className="mt-2">
-              <Separator className="my-2" />
-              <div className="text-muted-foreground text-center text-xs">{queueText}</div>
-            </div>
-          )}
         </div>
       </ScrollArea>
       {!stick && (
