@@ -359,7 +359,7 @@ async function handleRequest(id: string | number, method: string, params: Record
         .filter((e) => e.type === "message")
         .map((e) => {
           const msg = (e as { message?: { role?: string; content?: unknown } }).message;
-          return { role: msg?.role ?? "unknown", text: messageText(msg?.content) };
+          return { role: msg?.role ?? "unknown", text: messageText(msg?.content), thinking: messageThinking(msg?.content) };
         });
       return { messages };
     }
@@ -385,6 +385,18 @@ function messageText(content: unknown): string {
   if (!Array.isArray(content)) return "";
   return content
     .map((b) => (b && typeof b === "object" && "text" in (b as object) ? String((b as { text: unknown }).text) : ""))
+    .join("\n");
+}
+
+/** 提取 assistant 消息的 thinking 块（content 里 type==="thinking"） */
+function messageThinking(content: unknown): string {
+  if (!Array.isArray(content)) return "";
+  return content
+    .map((b) =>
+      b && typeof b === "object" && (b as { type?: unknown }).type === "thinking" && "thinking" in (b as object)
+        ? String((b as { thinking: unknown }).thinking)
+        : "",
+    )
     .join("\n");
 }
 
