@@ -47,7 +47,7 @@ test/               # vitest 单测（TDD，以 npm test 全绿为准）
 
 ### 设计要点
 - 回复经文件桥（helper.sh 写 `replies/`，扩展 500ms 轮询消费即删）；`ask-<id>` → resolve tool，`notify-<ts>` → `sendUserMessage` 注入下一轮。
-- 终结反馈：按钮/超时 → `termux-notification-remove` + toast；**Direct Reply 回复 → 先同 id 替换为"已收到"状态通知，2s 后自动 remove**（实测：Direct Reply 污染原通知实例，remove 被系统忽略；替换后是新实例，remove 恢复有效；`setTimeoutAfter` 系统机制 termux-api 未暴露，故用扩展侧定时 remove）。helper 不碰 remove（避免竞争）。
+- 终结反馈（统一直接消失）：按钮/超时 → `termux-notification-remove` + toast；**Direct Reply 回复 → 先同 id 替换为"已收到"状态通知，再立即 remove**（实测：Direct Reply 污染原通知实例，remove 被系统忽略；替换后是新实例，remove **立即**恢复有效，无需延时——曾用 2s 展示后被用户要求砍掉统一效果；`setTimeoutAfter` 系统机制 termux-api 未暴露）。helper 不碰 remove（避免竞争）。
 - 仅 TUI 模式加载（print/json/rpc 不注册行为）；无 focus 检测（砍了需求 3，dumpsys 全被权限墙挡）。
 - 超时默认 5 分钟（config.timeoutSec / tool timeout 参数覆盖，0=不限）；`notify_ask_options` 无 timeout 参数（只有 input 有）。
 

@@ -25,7 +25,8 @@
 | D6 | 超时/取消 | 默认超时 5 分钟（tool 参数 `timeout` 可覆盖，0=不超时）；**滑掉通知 = 取消**（`--on-delete` 钩子）；结构化返回 `{status: "answered" \| "timeout" \| "cancelled", ...}` |
 | D7 | 总开关 | 命令 `/notify on` / `/notify off` / `/notify`（无参=显示状态）；默认 on；**持久化** |
 | D11 | 确认引导（2025-08 新增） | **软引导**：`before_agent_start` 每 turn 追加 `buildConfirmPrompt()` 到 system prompt（不拦截工具，无硬约束）。config `confirmPrompt` 默认 true，`/notify confirm on|off` 持久化；独立开关（ask 工具不受 `enabled` 控制） |
-| D12 | 结果通知已读清理（2025-08 新增） | 结果通知是**一次性提醒**：`input`（用户提交消息）、`agent_start`（含 [回复] 注入的新 run，替代 2s 替换展示）、`session_shutdown`（new/resume/fork/reload/quit）、`session_start`（清上次残留）→ `removeNotification(RESULT_NOTIFICATION_ID)` |
+| D12 | 结果通知已读清理（2025-08 新增） | 结果通知是**一次性提醒**：`input`（用户提交消息）、`agent_start`（含 [回复] 注入的新 run）、`session_shutdown`（new/resume/fork/reload/quit）、`session_start`（清上次残留）→ `removeNotification(RESULT_NOTIFICATION_ID)` |
+| D13 | 终结反馈统一直接消失（2025-08 新增） | 原「替换 + 2s 自动移除」（`AUTO_DISMISS_MS`）改为**替换 + 立即移除**（实测：替换后新实例 remove 立即有效，等待无必要）——所有路径（按钮/超时/Direct Reply）统一为直接消失，toast 保留 |
 | D8 | 模式守卫 | **仅 TUI 模式**（`ctx.mode === "tui"`）加载全部功能；print/json/rpc 模式静默不加载（无会话可注入"下一轮"，回复通道半残） |
 | D9 | 命名 | 包 `@kefka/pi-notify-termux`；tool `notify_ask_options` / `notify_ask_input`；标题 `✅ pi` / `❓ pi 提问` |
 | D10 | 配置 | `{enabled: boolean, timeoutSec: number}`，存 **`~/.pi/pi-notify-termux/config.json`**（用户级，用 `CONFIG_DIR_NAME` 构建，不硬编码 `.pi`） |
@@ -93,9 +94,9 @@ pi (TUI, 扩展进程)
 - options tool 同时提供 Direct Reply？**不**（D5 拆分：options tool 纯按钮；input tool 纯输入）。options 超 3 个 → tool 报错让 LLM 收敛。
 - `$REPLY` 转义：action 串内 `$REPLY` 保持字面（termux-api 替换），helper 参数用双引号包裹；helper 内 `printf '%s' "$2" > file` 防注入。
 - 空输入（Direct Reply 直接发送空串）→ 视为**取消**（写 cancelled 语义）。
-- **终结反馈（最终方案，2025-08 实测修订）**：`termux-notification-remove` 在 **Termux:API 通知权限全开**后有效（ColorOS 类别权限是根因）。分场景：
+- **终结反馈（最终方案，2025-08 两次实测修订）**：`termux-notification-remove` 在 **Termux:API 通知权限全开**后有效（ColorOS 类别权限是根因）。分场景，**全部统一为直接消失**：
   - **按钮（options）**：扩展侧 `termux-notification-remove` 移除通知 + `termux-toast`（实测有效）
-  - **Direct Reply（ask_input / 结果通知回复）**：`remove` 被系统忽略（回复过的通知实例被污染）→ 扩展侧**同 id 替换**为状态通知（`✅ 已收到你的回复 ✓`），**2 秒后自动移除**（替换后是新实例，remove 恢复有效；`AUTO_DISMISS_MS=2000`）+ `termux-toast`
+  - **Direct Reply（ask_input / 结果通知回复）**：`remove` 被系统忽略（回复过的通知实例被污染）→ 扩展侧**同 id 替换**为状态通知（`✅ 已收到你的回复 ✓`）后**立即移除**（实测：替换为新实例后 remove 恢复有效，无需等待；替换与移除同步顺序执行）+ `termux-toast`
   - **超时**（未经过回复）：`termux-notification-remove` + toast
   - helper.sh 不碰 remove（避免竞争）。`buildStatusNotificationArgs`/`buildStatusContent` 为替换用纯函数（TDD）。
 
@@ -122,7 +123,7 @@ esac
 - 回复注入：轮询发现 `notify-*.reply` → `pi.sendUserMessage(text)`（settled 后空闲，立即触发新一轮，source=extension）。
 - 固定 id 原地更新；新一轮 agent 结束再次覆盖。
 - **已读清理（D12）**：用户开始下一轮（input / agent_start）、切换 session / reload / quit（session_shutdown）、或启动时清理残留（session_start）→ 立即移除结果通知。
-- 结果通知 [回复] 注入后：agent_start 直接移除（原「替换 + 2s 自动消失」在此路径不再需要——用户已在交互中）；ask 通知的回复路径不受影响（同一 run 内 resolve tool，不触发 agent_start，保留「已收到 ✓」2s 机制）。
+- 结果通知 [回复] 注入后：替换 → 立即移除（用户已在交互中，无需展示「已收到」）；ask 通知回复路径同样替换 → 立即移除（D13 统一效果）。
 - 通知被滑掉：无副作用（不取消任何 pending）。
 
 ### 5.2 需求 2（tool）

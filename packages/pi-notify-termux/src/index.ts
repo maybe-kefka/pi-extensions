@@ -29,7 +29,6 @@ const PERM_DIAG_ID = "pi-perm-diag";
 /** spawnSync 超时：权限不足时 termux-notification-list 等命令会挂起等 app 响应（实测），必须限时 */
 const SPAWN_TIMEOUT_MS = 3000;
 /** 替换为状态通知后自动移除的延迟：Direct Reply 污染的是原实例，替换后是新实例，remove 有效 */
-const AUTO_DISMISS_MS = 2000;
 
 interface PendingAsk {
   ask: Ask;
@@ -87,8 +86,9 @@ export default function (pi: ExtensionAPI): void {
     spawnSync(`${prefix}/bin/termux-notification-remove`, [id], { encoding: "utf8", timeout: SPAWN_TIMEOUT_MS });
   }
 
-  /** 终结反馈：替换为状态通知，2s 后自动移除（新实例 remove 有效，闪一下“已收到”即消失） */
-  function replaceWithStatus(id: string, status: "answered" | "timeout"): void {
+  /** 终结反馈：Direct Reply 回复过的通知实例被系统污染（remove 被忽略）→ 先替换为新实例（未污染），再立即移除。
+   *  替换与移除同步顺序执行（实测替换后新实例 remove 有效；立即移除无需等待，与所有反馈路径统一为“直接消失”） */
+  function replaceAndDismiss(id: string, status: "answered" | "timeout"): void {
     sendNotification(
       buildStatusNotificationArgs({
         id,
@@ -96,17 +96,15 @@ export default function (pi: ExtensionAPI): void {
         content: buildStatusContent(status),
       }),
     );
-    setTimeout(() => {
-      removeNotification(id);
-    }, AUTO_DISMISS_MS);
+    removeNotification(id);
   }
 
-  /** 终结反馈：按钮/超时 remove（有效）；Direct Reply 回复过的通知 remove 被系统忽略 → 替换 + 2s 自动移除 */
+  /** 终结反馈：按钮/超时 remove（有效）；Direct Reply 回复过的通知 remove 被系统忽略 → 替换 + 立即移除 */
   function terminationFeedback(id: string, kind: "remove" | "replace", status: "answered" | "timeout"): void {
     if (kind === "remove") {
       removeNotification(id);
     } else {
-      replaceWithStatus(id, status);
+      replaceAndDismiss(id, status);
     }
     spawnSync("termux-toast", [status === "answered" ? "已收到回复 ✓" : "提问已超时"], { encoding: "utf8", timeout: SPAWN_TIMEOUT_MS });
   }
