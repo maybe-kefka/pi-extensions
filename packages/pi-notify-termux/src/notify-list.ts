@@ -2,6 +2,8 @@
  *  用于 /notify status：显示通知栏里 pi 通知的实时状态（发送确认/残留排查）。
  *  需要 Termux:API 通知权限全开（Android 13+），否则 list 返回空。 */
 
+import { ASK_PREFIX } from "./replies.js";
+
 export interface ShadeNotification {
   tag: string;
   packageName: string;
@@ -51,8 +53,8 @@ export function findPiNotifications(
     if (n.packageName !== "com.termux.api") continue;
     if (n.tag === resultId) {
       result = true;
-    } else if (n.tag.startsWith("ask-")) {
-      asks.push(n.tag.slice("ask-".length));
+    } else if (n.tag.startsWith(ASK_PREFIX)) {
+      asks.push(n.tag.slice(ASK_PREFIX.length));
     }
   }
   return { result, asks };

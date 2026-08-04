@@ -51,11 +51,6 @@ export function parseConfig(raw: string): NotifyConfig {
   return { enabled, timeoutSec };
 }
 
-/** 读文件内容 → 配置（文件不存在/读失败 → 默认） */
-export function loadConfig(raw: string | null | undefined): NotifyConfig {
-  return parseConfig(raw ?? "");
-}
-
 export type NotifyCommandAction = "on" | "off" | "status";
 
 export type NotifyCommandResult =
@@ -74,17 +69,13 @@ export function parseNotifyCommand(arg: string | undefined): NotifyCommandResult
 export interface StatusInput {
   enabled: boolean;
   envOk: boolean;
-  permOk: boolean;
 }
 
-/** 状态文案（含 Android 13+ 权限 / termux-api 前置提示） */
+/** 状态文案（含 termux-api 前置提示；通知权限无法程序化探测，README 权限矩阵说明） */
 export function renderStatus(input: StatusInput): string {
   const lines = [`pi 通知：${input.enabled ? "已开启" : "已关闭"}`];
   if (!input.envOk) {
     lines.push("⚠️ 未找到 termux-notification：请安装 Termux:API app 并 `pkg install termux-api`");
-  }
-  if (!input.permOk) {
-    lines.push("⚠️ Android 13+ 需在 设置 → 应用 → Termux → 通知 中授予通知权限，否则通知静默失败");
   }
   return lines.join("\n");
 }

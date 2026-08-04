@@ -37,8 +37,7 @@
 ## T3 replies.ts（文件桥编解码）✅
 文件：`src/replies.ts` + `test/replies.test.ts`（8 tests）
 验收（SPEC §4 / §4.2）：
-- `encodeReplyFile(kind, id)` → `notify-<ts>.reply` / `ask-<id>.reply`；`parseReplyFile(name)` → `{kind, id}` 或 null（非法名）
-- `encodeCancelFile(id)` → `ask-<id>.cancel`；识别
+- `parseFileName(name)` → `{kind, id, type}` 或 null（非法名/穿越防御）；`parseOptionSelection(text, options)` → 选项序号映射或 null（自由输入）；`decodeReply(text)`：原文透传、空输入 → cancelled 语义
 - `decodeReply(text)`：原文透传（含引号/换行/`$` 不丢失）；空串 → `{status:"cancelled"}` 语义（空输入=取消，SPEC §4.1）
 - id 安全：id 中路径分隔符/`..` 被拒绝（防目录穿越，helper 文件名由扩展生成，但解析侧防御）
 
@@ -47,9 +46,9 @@
 验收（SPEC §5.3 / D10）：
 - `defaultConfig`：`{enabled: true, timeoutSec: 300}`
 - `buildConfigPaths(home, configDirName)`：`~/.pi/pi-notify-termux/{config.json,helper.sh,replies/}`（用传入的 `configDirName`，不硬编码 `.pi`）
-- `loadConfig(json)` / `parseConfig(raw)`：非法 JSON/缺字段 → 回退默认（逐字段校验，enabled 布尔、timeoutSec 正整数）
+- `parseConfig(raw)`：非法 JSON/缺字段 → 回退默认（逐字段校验，enabled 布尔、timeoutSec 正整数）
 - `parseNotifyCommand(arg)`：`on`/`off`/空 → `{action}`；未知 → `{error}` 含用法
-- `renderStatus({enabled, envOk, permOk})`：状态文案
+- `renderStatus({enabled, envOk})`：状态文案（权限无法程序化探测，permOk 分支已删）
 
 ## T5 ask.ts（pending 状态机）✅
 文件：`src/ask.ts` + `test/ask.test.ts`（9 tests）
