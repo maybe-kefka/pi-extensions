@@ -365,6 +365,8 @@ export default function (pi: ExtensionAPI): void {
       // helper 生成失败：tool 调用时会再次失败并报错，这里不阻塞会话
     }
     timer = setInterval(poll, POLL_INTERVAL_MS);
+    // 启动时清理上次 session 残留的结果通知（提醒已过期）
+    removeNotification(RESULT_NOTIFICATION_ID);
     if (!envOk) {
       ctx.ui.notify(
         renderStatus({ enabled: config.enabled, envOk: false, confirmPrompt: config.confirmPrompt }),
@@ -378,6 +380,24 @@ export default function (pi: ExtensionAPI): void {
         }
       }, 1000);
     }
+  });
+
+  // 结果通知"已读"清理：用户回到 pi 交互后，提醒不再有意义
+  // - input：用户提交消息（开启下一轮对话）
+  // - agent_start：兜底（通知 [回复] 注入消息等一切新 run 开始，含不触发 input 的路径）
+  // - session_shutdown：切换 session / reload / quit 时清理残留
+  pi.on("input", (_event, ctx) => {
+    if (ctx.mode !== "tui") return;
+    removeNotification(RESULT_NOTIFICATION_ID);
+  });
+
+  pi.on("agent_start", (_event, ctx) => {
+    if (ctx.mode !== "tui") return;
+    removeNotification(RESULT_NOTIFICATION_ID);
+  });
+
+  pi.on("session_shutdown", () => {
+    removeNotification(RESULT_NOTIFICATION_ID);
   });
 
   // 确认引导（需求：LLM 不确定时优先用 notify 工具问用户，而非自作主张）
