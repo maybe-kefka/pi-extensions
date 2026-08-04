@@ -1,0 +1,31 @@
+{
+  "name": "@kefka/pi-notify-termux",
+  "version": "0.1.0",
+  "description": "Pi extension: Android notification delivery via Termux — agent result notifications with direct-reply input, and LLM ask tools (notify_ask_options / notify_ask_input)",
+  "type": "module",
+  "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/maybe-kefka/pi-extensions.git"
+  },
+  "files": [
+    "src"
+  ],
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "prepublishOnly": "npm run typecheck && npm test"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "^0.83.0",
+    "typebox": "^1.3.7"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "pi": {
+    "extensions": [
+      "./src/index.ts"
+    ]
+  }
+}

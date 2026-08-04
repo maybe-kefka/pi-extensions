@@ -13,6 +13,7 @@ export default defineConfig({
     environment: "node",
     include: [
       "packages/pi-status/test/*.test.ts",
+      "packages/pi-notify-termux/test/*.test.ts",
       "packages/pi-web/test/*.test.ts",
       "packages/pi-web/web/src/**/*.test.{ts,tsx}",
     ],
