@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildAskContent,
+  buildConfirmPrompt,
   buildResultContent,
   buildStatusContent,
   buildTitle,
@@ -89,5 +90,33 @@ describe("extractAssistantText", () => {
   it("returns null for non-array input", () => {
     expect(extractAssistantText(undefined)).toBeNull();
     expect(extractAssistantText("nope")).toBeNull();
+  });
+});
+
+describe("buildConfirmPrompt", () => {
+  it("names both notify tools with options preferred", () => {
+    const p = buildConfirmPrompt();
+    expect(p).toContain("notify_ask_options");
+    expect(p).toContain("notify_ask_input");
+    expect(p.indexOf("notify_ask_options")).toBeLessThan(p.indexOf("notify_ask_input"));
+  });
+
+  it("covers the three ask triggers (ambiguity / irreversibility / missing info)", () => {
+    const p = buildConfirmPrompt();
+    expect(/ambiguous|plausible readings/.test(p)).toBe(true);
+    expect(/hard to reverse|destructive/.test(p)).toBe(true);
+    expect(/information is missing|missing/.test(p)).toBe(true);
+  });
+
+  it("covers the don't-ask counterexamples to prevent over-asking", () => {
+    const p = buildConfirmPrompt();
+    expect(/Do NOT ask/.test(p)).toBe(true);
+    expect(/already in context|in context/.test(p)).toBe(true);
+  });
+
+  it("is a pure instruction without few-shot examples", () => {
+    const p = buildConfirmPrompt();
+    expect(/for example|Example|e\.g\./.test(p)).toBe(false);
+    expect(p.length).toBeLessThan(400);
   });
 });

@@ -5,6 +5,7 @@ Pi 扩展：把 pi 的 agent 结果与交互带到 **Android 通知栏**（Termu
 - **结果通知**：agent 结束后弹通知展示最终回复全文，可在通知里**直接输入回复**作为下一轮输入（Direct Reply）
 - **通知提问**：给 LLM 提供 `notify_ask_options`（选项按钮，≤3）/ `notify_ask_input`（自由输入）两个 tool，阻塞等待用户回复（超时/滑掉取消）
 - **总开关**：`/notify on|off|status`
+- **确认引导**（新）：向 pi 进程注入系统提示词，引导 LLM 在不确定时（意图歧义/不可逆操作/信息缺失）优先用 `notify_ask_options`/`notify_ask_input` 通知你确认，而不是自作主张；`/notify confirm on|off` 切换，默认开启
 
 ## 安装
 
@@ -59,6 +60,8 @@ Android 13+ 首次使用后可用 `/notify` 查看状态提示。
 
 - `/notify`：状态（含权限自检结果 + 通知栏里 pi 通知的实时状态）
 - `/notify on` / `/notify off`：总开关，持久化到 `~/.pi/pi-notify-termux/config.json`
+- `/notify confirm on|off`：确认引导开关（持久化，默认 on）
+- `/notify confirm`：查看确认引导状态
 
 ## 配置
 

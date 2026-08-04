@@ -71,3 +71,13 @@
 - **自动消失机制（最终）**：Direct Reply 污染仅作用于原通知实例；替换（同 id re-notify）后为新实例，remove 有效 → 状态通知闪 2s 自动消失（`AUTO_DISMISS_MS=2000`，实测通过）
 - **权限自检（2025-08 新增）**：appops/dumpsys 无权限探测，改为行为探测：发 `--alert-once` 诊断通知 → list 确认在栏 → remove。启动 + `/notify` 时执行；权限不足弹警告（`renderPermissionHint`）。实测：权限 OK 时链路通（在栏=True）
 - **⚠️ 卡死修复（用户实测报告）**：权限未开时 `termux-notification-list` 会**挂起**（termux-api 客户端等 app 响应；早期测试被 `timeout 10` 包裹掩盖了该行为）→ `spawnSync` 同步阻塞会卡死 session_start → pi 无法启动。修复：全部 spawnSync 加 `SPAWN_TIMEOUT_MS=3000`（挂起超时返回 status null → 自检返回 null 优雅降级）；启动自检延迟 1s 异步执行（不阻塞启动）。
+
+## T7：确认引导（2025-08 新增，已完成）
+
+- **背景**：用户要求"引导 LLM 在不确定时优先用 notify 工具与用户确认，而非自作主张"。grilling 对齐：软引导（不拦截工具）、每 turn 注入 system prompt（compaction 不丢）、英文纯指令无 few-shot、默认开、独立开关
+- **TDD**：
+  - `buildConfirmPrompt()`（format.ts）：断言含两工具名且 options 在前、含 3 触发词（ambiguous/reverse/missing）、含 Do NOT 反例、不含示例且 <400 字符
+  - `parseConfig` 加 `confirmPrompt`（默认 true、显式 false 生效、非布尔回退默认）
+  - `parseNotifyCommand` 支持 `confirm on|off` / `confirm`（无参=状态）、非法子参报错
+- **接线**：`/notify confirm on|off` 持久化写入 config.json；`/notify confirm` 显示状态；`before_agent_start` 链式追加 systemPrompt
+- **验证**：249 tests 全绿 + typecheck；真机待用户 reload 验收

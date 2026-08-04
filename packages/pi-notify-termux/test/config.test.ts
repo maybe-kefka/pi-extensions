@@ -37,14 +37,27 @@ describe("parseConfig", () => {
     expect(parseConfig('{"enabled": false, "timeoutSec": 600}')).toEqual({
       enabled: false,
       timeoutSec: 600,
+      confirmPrompt: true,
     });
-    expect(parseConfig('{"enabled": true}')).toEqual({ enabled: true, timeoutSec: 300 });
+    expect(parseConfig('{"enabled": true}')).toEqual({
+      enabled: true,
+      timeoutSec: 300,
+      confirmPrompt: true,
+    });
   });
 
   it("falls back per-field on invalid values", () => {
     expect(parseConfig('{"enabled": "yes"}')).toEqual(defaultConfig);
-    expect(parseConfig('{"enabled": true, "timeoutSec": -5}')).toEqual({ enabled: true, timeoutSec: 300 });
-    expect(parseConfig('{"enabled": false, "timeoutSec": 1.5}')).toEqual({ enabled: false, timeoutSec: 300 });
+    expect(parseConfig('{"enabled": true, "timeoutSec": -5}')).toEqual({
+      enabled: true,
+      timeoutSec: 300,
+      confirmPrompt: true,
+    });
+    expect(parseConfig('{"enabled": false, "timeoutSec": 1.5}')).toEqual({
+      enabled: false,
+      timeoutSec: 300,
+      confirmPrompt: true,
+    });
     expect(parseConfig('{"enabled": true, "timeoutSec": "fast"}')).toEqual(defaultConfig);
   });
 });
@@ -66,8 +79,35 @@ describe("parseNotifyCommand", () => {
 
 describe("renderStatus", () => {
   it("renders enabled state with environment hints", () => {
-    expect(renderStatus({ enabled: true, envOk: true })).toContain("已开启");
-    expect(renderStatus({ enabled: false, envOk: true })).toContain("已关闭");
-    expect(renderStatus({ enabled: true, envOk: false })).toContain("termux-api");
+    expect(renderStatus({ enabled: true, envOk: true, confirmPrompt: true })).toContain("已开启");
+    expect(renderStatus({ enabled: false, envOk: true, confirmPrompt: true })).toContain("已关闭");
+    expect(renderStatus({ enabled: true, envOk: false, confirmPrompt: true })).toContain("termux-api");
+  });
+});
+
+describe("parseConfig confirmPrompt", () => {
+  it("defaults to true when absent", () => {
+    expect(parseConfig('{"enabled": true}').confirmPrompt).toBe(true);
+    expect(parseConfig("").confirmPrompt).toBe(true);
+  });
+
+  it("honors an explicit false", () => {
+    expect(parseConfig('{"confirmPrompt": false}').confirmPrompt).toBe(false);
+  });
+
+  it("falls back to default on non-boolean", () => {
+    expect(parseConfig('{"confirmPrompt": "yes"}').confirmPrompt).toBe(true);
+  });
+});
+
+describe("parseNotifyCommand confirm", () => {
+  it("parses confirm on/off and bare confirm", () => {
+    expect(parseNotifyCommand("confirm on")).toEqual({ action: "confirm-on" });
+    expect(parseNotifyCommand("confirm off")).toEqual({ action: "confirm-off" });
+    expect(parseNotifyCommand("confirm")).toEqual({ action: "confirm-status" });
+  });
+
+  it("rejects unknown confirm sub-args", () => {
+    expect(parseNotifyCommand("confirm xyz")).toMatchObject({ error: expect.stringContaining("confirm") });
   });
 });
