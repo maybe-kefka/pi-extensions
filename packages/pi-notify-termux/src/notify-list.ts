@@ -73,3 +73,14 @@ export function renderNotificationStatus(
   for (const id of state.asks) lines.push(`通知栏：提问在栏（ask-${id}）`);
   return lines;
 }
+
+/** 权限自检：诊断通知是否在通知栏（在栏 = 通知权限可用） */
+export function checkPosted(list: ShadeNotification[], diagnosticId: string): boolean {
+  return list.some((n) => n.packageName === "com.termux.api" && n.tag === diagnosticId);
+}
+
+/** 权限不足提示（自检失败时返回提示行，成功返回空） */
+export function renderPermissionHint(posted: boolean): string {
+  if (posted) return "";
+  return "⚠️ Termux:API 通知权限未开启或未开全：设置 → 应用 → Termux:API → 通知 → 全部开启（ColorOS 需开细分类别），否则通知/移除/列表均失效";
+}

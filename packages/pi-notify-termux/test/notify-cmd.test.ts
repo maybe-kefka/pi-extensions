@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildAskInputArgs,
   buildAskOptionsArgs,
+  buildDiagnosticArgs,
   buildOnDeleteArg,
   buildResultNotificationArgs,
   buildStatusNotificationArgs,
@@ -112,6 +113,15 @@ describe("buildStatusNotificationArgs", () => {
     expect(args[args.indexOf("--id") + 1]).toBe("ask-abc123");
     expect(args[args.indexOf("--title") + 1]).toBe("✅ pi");
     expect(args[args.indexOf("--content") + 1]).toBe("已收到你的回复 ✓");
+    expect(args.some((a) => a.startsWith("--button"))).toBe(false);
+  });
+});
+
+describe("buildDiagnosticArgs", () => {
+  it("posts a silent self-check notification (alert-once, no buttons)", () => {
+    const args = buildDiagnosticArgs({ id: "pi-perm-diag", title: "🔍 pi", content: "权限自检" });
+    expect(args[args.indexOf("--id") + 1]).toBe("pi-perm-diag");
+    expect(args).toContain("--alert-once");
     expect(args.some((a) => a.startsWith("--button"))).toBe(false);
   });
 });

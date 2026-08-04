@@ -20,11 +20,12 @@ import { cancelAsk, checkTimeout, createAsk, resolveAsk, serializeResult, type A
 import { buildConfigPaths, defaultConfig, parseConfig, parseNotifyCommand, renderStatus, type NotifyConfig } from "./config.js";
 import { buildAskContent, buildResultContent, buildStatusContent, buildTitle, extractAssistantText, hasContent } from "./format.js";
 import { buildHelperScript } from "./helper.js";
-import { buildAskInputArgs, buildAskOptionsArgs, buildOnDeleteArg, buildResultNotificationArgs, buildStatusNotificationArgs, RESULT_NOTIFICATION_ID } from "./notify-cmd.js";
+import { buildAskInputArgs, buildAskOptionsArgs, buildDiagnosticArgs, buildOnDeleteArg, buildResultNotificationArgs, buildStatusNotificationArgs, RESULT_NOTIFICATION_ID } from "./notify-cmd.js";
 import { ASK_PREFIX, decodeReply, parseFileName, parseOptionSelection } from "./replies.js";
-import { findPiNotifications, parseNotificationList, renderNotificationStatus } from "./notify-list.js";
+import { checkPosted, findPiNotifications, parseNotificationList, renderNotificationStatus, renderPermissionHint } from "./notify-list.js";
 
 const POLL_INTERVAL_MS = 500;
+const PERM_DIAG_ID = "pi-perm-diag";
 /** 替换为状态通知后自动移除的延迟：Direct Reply 污染的是原实例，替换后是新实例，remove 有效 */
 const AUTO_DISMISS_MS = 2000;
 
@@ -183,6 +184,18 @@ export default function (pi: ExtensionAPI): void {
     }
   }
 
+  /** 权限自检：发静默诊断通知 → list 确认在栏 → 移除。true=权限可用，false=未开/未开全，null=无法判断 */
+  function runPermissionSelfCheck(): boolean | null {
+    if (!envOk) return null;
+    const diag = buildDiagnosticArgs({ id: PERM_DIAG_ID, title: "🔍 pi", content: "权限自检" });
+    if (sendNotification(diag) !== null) return null;
+    const list = spawnSync("termux-notification-list", [], { encoding: "utf8" });
+    const posted =
+      list.status === 0 && checkPosted(parseNotificationList(list.stdout), PERM_DIAG_ID);
+    removeNotification(PERM_DIAG_ID);
+    return posted;
+  }
+
   /** 通知栏里 pi 通知的实时状态（/notify status 用；list 需 Termux:API 权限全开） */
   function notificationShadeLines(): string[] {
     if (!envOk) return [];
@@ -216,9 +229,11 @@ export default function (pi: ExtensionAPI): void {
         }
         return;
       }
+      const permOk = runPermissionSelfCheck();
       ctx.ui.notify(
         [
           renderStatus({ enabled: config.enabled, envOk }),
+          ...(permOk === null ? [] : [renderPermissionHint(permOk)]),
           ...notificationShadeLines(),
         ].join("\n"),
         "info",
@@ -328,6 +343,8 @@ export default function (pi: ExtensionAPI): void {
         renderStatus({ enabled: config.enabled, envOk: false }),
         "error",
       );
+    } else if (runPermissionSelfCheck() === false) {
+      ctx.ui.notify(renderPermissionHint(false), "error");
     }
   });
 
