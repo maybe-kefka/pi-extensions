@@ -97,8 +97,7 @@ export type StreamAction =
   | { type: "notify"; message: string; notifyType: string }
   | { type: "setStatus"; statusKey: string; statusText: string | null }
   | { type: "setWidget"; widgetKey: string; widgetLines: string[] | null }
-  | { type: "toggle_thinking"; id: string }
-  | { type: "toggle_tool"; id: string };
+  | { type: "toggle_thinking"; id: string };
 
 export const initialState: StreamState = {
   messages: [],
@@ -341,14 +340,6 @@ export function streamReducer(state: StreamState, action: StreamAction): StreamS
         ...state,
         messages: state.messages.map((m) =>
           m.id === action.id ? { ...m, thinkingExpanded: !m.thinkingExpanded } : m,
-        ),
-      };
-
-    case "toggle_tool":
-      return {
-        ...state,
-        tools: state.tools.map((t) =>
-          t.toolCallId === action.id ? { ...t, expanded: !t.expanded } : t,
         ),
       };
 

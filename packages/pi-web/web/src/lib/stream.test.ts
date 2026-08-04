@@ -82,14 +82,6 @@ describe("工具行", () => {
     ]);
     expect(s.tools[0].isError).toBe(true);
   });
-
-  it("toggle_tool 展开/收起", () => {
-    let s = run([{ type: "tool_start", toolCallId: "t1", toolName: "x", args: {} }]);
-    s = streamReducer(s, { type: "toggle_tool", id: "t1" });
-    expect(s.tools[0].expanded).toBe(true);
-    s = streamReducer(s, { type: "toggle_tool", id: "t1" });
-    expect(s.tools[0].expanded).toBe(false);
-  });
 });
 
 describe("busy / 队列", () => {
