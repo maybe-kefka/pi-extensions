@@ -3,10 +3,10 @@ name: publish
 # 推送 main 时自动发布「版本有更新」的包（对比 npm registry 已发布版本，bump 过的才发）。
 # 也支持 git tag v* 触发，同样走版本对比，已发布的包自动跳过。
 #
-# 认证：npm Trusted Publishing (OIDC)，无需 NPM_TOKEN，自动满足 2FA 与 provenance。
-# 前置条件（npmjs.com 一次性配置）：
-#   npmjs.com → Account → Trusted Publishing → Add
-#   OIDC 主体：owner=maybe-kefka, repo=pi-extensions, workflow=publish.yml
+# 认证：npm Trusted Publishing (OIDC)，无需 NPM_TOKEN，自动满足 2FA。
+# 前置条件（npmjs.com 一次性配置，2026-08 已验证生效）：
+#   包 Settings → Trusted Publisher → GitHub：owner=maybe-kefka, repo=pi-extensions, workflow=publish.yml
+#   workflow 字段只填文件名（publish.yml），权限勾选 npm publish
 
 on:
   push:
