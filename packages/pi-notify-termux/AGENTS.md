@@ -38,7 +38,7 @@ test/               # vitest 单测（TDD，以 npm test 全绿为准）
 ### 命令/机制
 - **`/system/bin/am` 不可用**：shell 特权工具，普通 uid 调用报 `Permission Denial: package=com.android.shell does not belong to uid`。必须用 Termux 自带 `<PREFIX>/bin/am`（termux-am，app_process 以 app 身份执行）。
 - **`termux-notification-remove` 只接受位置参数**（`remove <id>`），没有 `--id` 选项（传了报 illegal option）。
-- **`termux-notification-list`** 权限全开后可用，能列出通知栏全部通知（含其他 app）。**权限自检**：发 `--alert-once` 诊断通知（`pi-perm-diag`）→ list 确认在栏 → 移除——在栏=权限可用，不在栏=未开/未开全（实测可行）；启动时与 `/notify` 时自动执行，失败弹警告。
+- **`termux-notification-list`** 权限全开后可用；**权限未开时它会挂起**（客户端等 app 响应）→ 所有 spawnSync 必须带 `timeout: 3000` 保护，自检失败返回 null 优雅降级（曾因此卡死 pi 启动，已修）。**权限自检**：发 `--alert-once` 诊断通知（`pi-perm-diag`）→ list 确认在栏 → 移除——在栏=权限可用，不在栏=未开/未开全（实测可行）；启动时与 `/notify` 时自动执行，失败弹警告。
 - **通知 action 在干净环境执行**（dash -c，PATH 丢失）→ helper/am/toast 一律绝对路径。
 - **Direct Reply**：action 里字面 `$REPLY` 由 termux-api 替换为带引号的用户输入；helper 内 `printf '%s'` 防注入；**空输入 = 取消**。
 - **滑掉通知 = 取消**：`--on-delete` 写 `.cancel` 标记，阻塞 tool 立即返回 cancelled（不等超时）。

@@ -26,6 +26,8 @@ import { checkPosted, findPiNotifications, parseNotificationList, renderNotifica
 
 const POLL_INTERVAL_MS = 500;
 const PERM_DIAG_ID = "pi-perm-diag";
+/** spawnSync 超时：权限不足时 termux-notification-list 等命令会挂起等 app 响应（实测），必须限时 */
+const SPAWN_TIMEOUT_MS = 3000;
 /** 替换为状态通知后自动移除的延迟：Direct Reply 污染的是原实例，替换后是新实例，remove 有效 */
 const AUTO_DISMISS_MS = 2000;
 
@@ -49,7 +51,7 @@ export default function (pi: ExtensionAPI): void {
 
   /** 探测 termux-notification（一次性缓存） */
   function probeEnv(): boolean {
-    const r = spawnSync("which", ["termux-notification"], { encoding: "utf8" });
+    const r = spawnSync("which", ["termux-notification"], { encoding: "utf8", timeout: SPAWN_TIMEOUT_MS });
     return r.status === 0;
   }
 
@@ -74,7 +76,7 @@ export default function (pi: ExtensionAPI): void {
 
   /** 发通知（同步，快；失败返回 stderr） */
   function sendNotification(args: string[]): string | null {
-    const r = spawnSync("termux-notification", args, { encoding: "utf8" });
+    const r = spawnSync("termux-notification", args, { encoding: "utf8", timeout: SPAWN_TIMEOUT_MS });
     if (r.error) return r.error.message;
     if (r.status !== 0) return (r.stderr || `exit ${r.status}`).trim();
     return null;
@@ -82,7 +84,7 @@ export default function (pi: ExtensionAPI): void {
 
   /** 终结反馈：按钮场景 remove 有效；Direct Reply 回复过的通知 remove 被系统忽略 → 替换 */
   function removeNotification(id: string): void {
-    spawnSync(`${prefix}/bin/termux-notification-remove`, [id], { encoding: "utf8" });
+    spawnSync(`${prefix}/bin/termux-notification-remove`, [id], { encoding: "utf8", timeout: SPAWN_TIMEOUT_MS });
   }
 
   /** 终结反馈：替换为状态通知，2s 后自动移除（新实例 remove 有效，闪一下“已收到”即消失） */
@@ -106,7 +108,7 @@ export default function (pi: ExtensionAPI): void {
     } else {
       replaceWithStatus(id, status);
     }
-    spawnSync("termux-toast", [status === "answered" ? "已收到回复 ✓" : "提问已超时"], { encoding: "utf8" });
+    spawnSync("termux-toast", [status === "answered" ? "已收到回复 ✓" : "提问已超时"], { encoding: "utf8", timeout: SPAWN_TIMEOUT_MS });
   }
 
   function settle(p: PendingAsk, result: AskResult): void {
@@ -189,9 +191,13 @@ export default function (pi: ExtensionAPI): void {
     if (!envOk) return null;
     const diag = buildDiagnosticArgs({ id: PERM_DIAG_ID, title: "🔍 pi", content: "权限自检" });
     if (sendNotification(diag) !== null) return null;
-    const list = spawnSync("termux-notification-list", [], { encoding: "utf8" });
-    const posted =
-      list.status === 0 && checkPosted(parseNotificationList(list.stdout), PERM_DIAG_ID);
+    const list = spawnSync("termux-notification-list", [], { encoding: "utf8", timeout: SPAWN_TIMEOUT_MS });
+    // list 挂起/失败（权限不足时客户端等 app 响应）→ 无法判断，返回 null（不弹警告不卡死）
+    if (list.error || list.status !== 0) {
+      removeNotification(PERM_DIAG_ID);
+      return null;
+    }
+    const posted = checkPosted(parseNotificationList(list.stdout), PERM_DIAG_ID);
     removeNotification(PERM_DIAG_ID);
     return posted;
   }
@@ -199,7 +205,7 @@ export default function (pi: ExtensionAPI): void {
   /** 通知栏里 pi 通知的实时状态（/notify status 用；list 需 Termux:API 权限全开） */
   function notificationShadeLines(): string[] {
     if (!envOk) return [];
-    const r = spawnSync("termux-notification-list", [], { encoding: "utf8" });
+    const r = spawnSync("termux-notification-list", [], { encoding: "utf8", timeout: SPAWN_TIMEOUT_MS });
     if (r.status !== 0) return [];
     const state = findPiNotifications(
       parseNotificationList(r.stdout),
@@ -343,8 +349,13 @@ export default function (pi: ExtensionAPI): void {
         renderStatus({ enabled: config.enabled, envOk: false }),
         "error",
       );
-    } else if (runPermissionSelfCheck() === false) {
-      ctx.ui.notify(renderPermissionHint(false), "error");
+    } else {
+      // 启动自检延迟执行：权限不足时 list 可能挂起（已有超时保护），且不应阻塞启动
+      setTimeout(() => {
+        if (runPermissionSelfCheck() === false) {
+          ctx.ui.notify(renderPermissionHint(false), "error");
+        }
+      }, 1000);
     }
   });
 
