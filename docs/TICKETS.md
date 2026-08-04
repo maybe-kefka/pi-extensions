@@ -86,3 +86,11 @@
 ## T8 收尾 ✅
 - SPEC §1.3/§1.4/§4.4/§9 已同步实现中发现的会话控制限制；README 已写
 - `npm test`（127 tests 全绿）+ `npm run typecheck`（全部 workspace）通过；E2E 22 项断言通过；commit
+
+## T9 前端重构轮 ✅
+- T9.1 React+Vite+Tailwind+shadcn 重构（commit 7d66be7）；`npm run build:web` → `web/dist` 提交
+- T9.2 Cookie 授权（HttpOnly SameSite=Strict + `/assets` 子资源自动带 cookie；`/ws` 仍显式 token）
+- T9.3 响应式：<1024px 侧栏收进 Sheet 抽屉、≥1024px 可折叠侧栏、chat `max-w-3xl` 居中、safe-area/虚拟键盘适配（commit 19b28e5）
+- T9.4 思考等级随模型过滤：`availableThinkingLevels` 入 `pi:getState`/`state`（commit 071feb9）
+- T9.5 QQ 风格气泡 + 工具弹窗（commit e6df297）
+- T9.6 双 skill（shadcn + Vercel React）审查修复：迁移官方 chat 原语（message-scroller/message/bubble/marker + avatar/empty，`@shadcn/react` 依赖）、`wrap-break-word`/`scroll-fade-b`/`scrollbar-*` 工具类、`--success`/`--warning` 语义色、SelectGroup、图标 data-icon、`space-y`→`gap`、memo+useCallback 重渲染优化

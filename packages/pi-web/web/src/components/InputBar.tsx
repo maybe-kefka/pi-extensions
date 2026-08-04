@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Square, SendHorizonal } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import type { StreamState } from "@/lib/stream";
 
@@ -26,9 +26,9 @@ export function InputBar(props: {
   return (
     <footer className="border-t p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
       {busy && (
-        <div className="mb-2 flex items-center gap-3 text-xs text-amber-500">
+        <div className="mb-2 flex items-center gap-3 text-xs text-warning">
           <span className="flex items-center gap-1.5">
-            <span className="bg-amber-500 size-2 animate-pulse rounded-full" />
+            <span className="bg-warning size-2 animate-pulse rounded-full" />
             agent 忙碌
           </span>
           {queue.steering.length + queue.followUp.length > 0 && (
@@ -41,12 +41,14 @@ export function InputBar(props: {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="followUp">排队 (followUp)</SelectItem>
-              <SelectItem value="steer">打断 (steer)</SelectItem>
+              <SelectGroup>
+                <SelectItem value="followUp">排队 (followUp)</SelectItem>
+                <SelectItem value="steer">打断 (steer)</SelectItem>
+              </SelectGroup>
             </SelectContent>
           </Select>
           <Button size="sm" variant="destructive" className="ml-auto h-7" onClick={onAbort}>
-            <Square className="size-3" /> abort
+            <Square data-icon="inline-start" /> abort
           </Button>
         </div>
       )}
@@ -65,7 +67,7 @@ export function InputBar(props: {
           rows={1}
         />
         <Button onClick={submit} disabled={conn !== "open" || text.trim() === ""}>
-          <SendHorizonal className="size-4" /> 发送
+          <SendHorizonal data-icon="inline-start" /> 发送
         </Button>
       </div>
     </footer>

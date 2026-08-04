@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import type { CommandInfo, ModelInfo, SessionInfo } from "@/lib/types";
@@ -65,13 +65,13 @@ export function SidebarContent(props: SidebarContentProps) {
             title="刷新"
             onClick={() => setRefreshKey((k) => k + 1)}
           >
-            <RefreshCw className="size-3.5" />
+            <RefreshCw />
           </Button>
         }
       >
         <div className="text-muted-foreground text-xs">切换仅支持 TUI（/resume、/new）</div>
         <ScrollArea className="mt-2 h-40">
-          <ul className="space-y-1">
+          <ul className="flex flex-col gap-1">
             {sessions.map((s) => {
               const active = currentSessionFile === s.path;
               return (
@@ -101,11 +101,13 @@ export function SidebarContent(props: SidebarContentProps) {
             <SelectValue placeholder="加载中…" />
           </SelectTrigger>
           <SelectContent>
-            {models.map((m) => (
-              <SelectItem key={`${m.provider}/${m.id}`} value={`${m.provider}/${m.id}`}>
-                {m.name} ({m.provider})
-              </SelectItem>
-            ))}
+            <SelectGroup>
+              {models.map((m) => (
+                <SelectItem key={`${m.provider}/${m.id}`} value={`${m.provider}/${m.id}`}>
+                  {m.name} ({m.provider})
+                </SelectItem>
+              ))}
+            </SelectGroup>
           </SelectContent>
         </Select>
       </Panel>
@@ -116,19 +118,21 @@ export function SidebarContent(props: SidebarContentProps) {
             <SelectValue placeholder="—" />
           </SelectTrigger>
           <SelectContent>
-            {thinkingLevels.length === 0 && <SelectItem value="off">off</SelectItem>}
-            {thinkingLevels.map((lvl) => (
-              <SelectItem key={lvl} value={lvl}>
-                {lvl}
-              </SelectItem>
-            ))}
+            <SelectGroup>
+              {thinkingLevels.length === 0 && <SelectItem value="off">off</SelectItem>}
+              {thinkingLevels.map((lvl) => (
+                <SelectItem key={lvl} value={lvl}>
+                  {lvl}
+                </SelectItem>
+              ))}
+            </SelectGroup>
           </SelectContent>
         </Select>
       </Panel>
 
       <Panel title="命令（只读）">
         <ScrollArea className="h-36">
-          <ul className="space-y-1.5">
+          <ul className="flex flex-col gap-1.5">
             {commands.map((c) => (
               <li key={c.name} className="text-xs">
                 <div className="font-medium">/{c.name}</div>
@@ -141,14 +145,14 @@ export function SidebarContent(props: SidebarContentProps) {
       </Panel>
 
       <Panel title="状态桥接">
-        <div className="space-y-2 text-xs">
+        <div className="flex flex-col gap-2 text-xs">
           {bridge.widget && (
             <pre className="border-border bg-muted/50 rounded border p-2 whitespace-pre-wrap font-mono text-[11px]">
               {bridge.widget.lines.join("\n")}
             </pre>
           )}
           {Object.entries(bridge.status).length > 0 && (
-            <ul className="space-y-1">
+            <ul className="flex flex-col gap-1">
               {Object.entries(bridge.status).map(([k, v]) => (
                 <li key={k} className="flex gap-1">
                   <span className="shrink-0 font-medium">{k}:</span>
@@ -160,7 +164,7 @@ export function SidebarContent(props: SidebarContentProps) {
           {bridge.notifies.length > 0 && (
             <>
               <Separator />
-              <ul className="space-y-1">
+              <ul className="flex flex-col gap-1">
                 {bridge.notifies.map((n) => (
                   <li key={n.id} className="flex items-start gap-1.5">
                     <Info className="text-muted-foreground mt-0.5 size-3 shrink-0" />
@@ -186,7 +190,7 @@ export function Sidebar({ collapsed, ...props }: SidebarContentProps & { collaps
   if (collapsed) return null;
   return (
     <aside className="hidden w-72 shrink-0 flex-col overflow-y-auto border-l p-3 lg:flex">
-      <div className="space-y-3">
+      <div className="flex flex-col gap-3">
         <SidebarContent {...props} />
       </div>
     </aside>

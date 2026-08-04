@@ -1,4 +1,4 @@
-import { useEffect, useReducer, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { toast } from "sonner";
 import { createRpcClient, type RpcClient } from "@/lib/rpc";
 import { initialState, streamReducer, type StreamAction } from "@/lib/stream";
@@ -53,6 +53,11 @@ function toAction(evt: PiEvent): StreamAction | null {
   }
 }
 
+const SidebarMemo = memo(Sidebar);
+const SidebarSheetMemo = memo(SidebarSheet);
+const InputBarMemo = memo(InputBar);
+const DisconnectBannerMemo = memo(DisconnectBanner);
+
 export default function App() {
   const [state, dispatch] = useReducer(streamReducer, initialState);
   const [conn, setConn] = useState(initialState.conn);
@@ -104,40 +109,43 @@ export default function App() {
     c.request<CommandInfo[]>("pi:listCommands").then(setCommands).catch(() => undefined);
   }, [conn]);
 
-  const send = (text: string, deliverAs?: "steer" | "followUp") => {
+  const send = useCallback((text: string, deliverAs?: "steer" | "followUp") => {
     const c = rpcRef.current;
     if (!c) return;
     c.request("pi:sendMessage", { text, ...(deliverAs ? { deliverAs } : {}) }).catch((e) => {
       toast.error(`发送失败: ${e.message}`);
     });
-  };
+  }, []);
 
-  const abort = () => {
+  const abort = useCallback(() => {
     rpcRef.current?.request("pi:abort").catch((e) => toast.error(`abort: ${e.message}`));
-  };
+  }, []);
 
-  const setModel = (provider: string, modelId: string) => {
+  const setModel = useCallback((provider: string, modelId: string) => {
     rpcRef.current?.request("pi:setModel", { provider, modelId }).then(() => {
       toast.success(`已切换 ${provider}/${modelId}`);
     }).catch((e) => toast.error(`setModel: ${e.message}`));
-  };
+  }, []);
 
-  const setThinking = (level: string) => {
+  const setThinking = useCallback((level: string) => {
     rpcRef.current?.request("pi:setThinkingLevel", { level }).catch((e) => toast.error(`setThinkingLevel: ${e.message}`));
-  };
+  }, []);
 
-  const sidebarProps: SidebarContentProps = {
-    sessions,
-    currentSessionFile: state.sessionFile,
-    models,
-    currentModel: state.model ? `${state.model.provider}/${state.model.id}` : null,
-    thinkingLevel: state.thinkingLevel,
-    thinkingLevels: state.availableThinkingLevels,
-    commands,
-    bridge: state.bridge,
-    onSetModel: setModel,
-    onSetThinking: setThinking,
-  };
+  const sidebarProps = useMemo<SidebarContentProps>(
+    () => ({
+      sessions,
+      currentSessionFile: state.sessionFile,
+      models,
+      currentModel: state.model ? `${state.model.provider}/${state.model.id}` : null,
+      thinkingLevel: state.thinkingLevel,
+      thinkingLevels: state.availableThinkingLevels,
+      commands,
+      bridge: state.bridge,
+      onSetModel: setModel,
+      onSetThinking: setThinking,
+    }),
+    [sessions, state.sessionFile, state.model, state.thinkingLevel, state.availableThinkingLevels, state.bridge, models, commands, setModel, setThinking],
+  );
 
   return (
     <div className="flex h-dvh flex-col bg-background text-foreground">
@@ -148,13 +156,13 @@ export default function App() {
         onToggleSidebar={() => setSidebarCollapsed((c) => !c)}
         onOpenDrawer={() => setDrawerOpen(true)}
       />
-      <DisconnectBanner conn={conn} />
+      <DisconnectBannerMemo conn={conn} />
       <div className="flex min-h-0 flex-1">
         <Chat state={state} dispatch={dispatch} />
-        <Sidebar collapsed={sidebarCollapsed} {...sidebarProps} />
+        <SidebarMemo collapsed={sidebarCollapsed} {...sidebarProps} />
       </div>
-      <SidebarSheet open={drawerOpen} onOpenChange={setDrawerOpen} {...sidebarProps} />
-      <InputBar busy={state.streaming} queue={state.queue} conn={conn} onSend={send} onAbort={abort} />
+      <SidebarSheetMemo open={drawerOpen} onOpenChange={setDrawerOpen} {...sidebarProps} />
+      <InputBarMemo busy={state.streaming} queue={state.queue} conn={conn} onSend={send} onAbort={abort} />
     </div>
   );
 }
