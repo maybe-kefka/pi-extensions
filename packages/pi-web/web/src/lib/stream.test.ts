@@ -68,6 +68,47 @@ describe("消息文本累积", () => {
     expect(s.messages[0].thinking).toBe("");
   });
 
+  it("message_end 空消息（无 text 无 thinking 无工具）→ 数据层筛除", () => {
+    let s = run([{ type: "message_start", message: { role: "assistant", content: [] } }]);
+    s = streamReducer(s, { type: "message_end", message: { role: "assistant", content: [] } });
+    expect(s.messages).toHaveLength(0);
+    expect(s.currentAssistantId).toBeNull();
+  });
+
+  it("history 构建工具行 + 消息 toolCallIds（含结果配对）", () => {
+    const s = run([
+      {
+        type: "history",
+        messages: [
+          { role: "user", text: "列出文件" },
+          {
+            role: "assistant",
+            text: "",
+            thinking: "",
+            toolCalls: [{ id: "t1", name: "bash", arguments: { command: "ls" }, result: "file1", isError: false }],
+          },
+          { role: "assistant", text: "完成", thinking: "" },
+        ],
+      },
+    ]);
+    expect(s.messages).toHaveLength(3); // user + 纯工具(有卡片保留) + 完成
+    expect(s.messages[1].text).toBe("");
+    expect(s.messages[1].toolCallIds).toEqual(["t1"]);
+    expect(s.messages[2].text).toBe("完成");
+    expect(s.tools).toHaveLength(1);
+    expect(s.tools[0]).toMatchObject({ toolCallId: "t1", toolName: "bash", output: "file1", final: true });
+  });
+
+  it("history 空消息（无 text 无 thinking 无工具）被过滤", () => {
+    const s = run([
+      {
+        type: "history",
+        messages: [{ role: "assistant", text: "", thinking: "" }],
+      },
+    ]);
+    expect(s.messages).toHaveLength(0);
+  });
+
   it("message_start 也提取 toolCallIds（start 时 content 已有 toolCall）", () => {
     const s = run([
       { type: "message_start", message: { role: "assistant", content: [{ type: "toolCall", id: "t9", name: "x", arguments: {} }] } },

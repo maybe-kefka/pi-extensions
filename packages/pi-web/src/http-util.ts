@@ -53,6 +53,44 @@ export function tokenEquals(expected: string, actual: string): boolean {
   return timingSafeEqual(e, a);
 }
 
+/** 从消息 content 提取 toolCall 块（id/name/arguments，顺序保持） */
+export function messageToolCalls(content: unknown): { id: string; name: string; arguments: unknown }[] {
+  if (!Array.isArray(content)) return [];
+  const out: { id: string; name: string; arguments: unknown }[] = [];
+  for (const b of content) {
+    if (b && typeof b === "object" && (b as { type?: unknown }).type === "toolCall") {
+      const id = (b as { id?: unknown }).id;
+      if (id != null) {
+        out.push({ id: String(id), name: String((b as { name?: unknown }).name ?? ""), arguments: (b as { arguments?: unknown }).arguments ?? null });
+      }
+    }
+  }
+  return out;
+}
+
+/** 从消息 content 提取文本（只取 text 块，过滤空块） */
+export function messageTextOf(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  return content
+    .map((b) => (b && typeof b === "object" && "text" in (b as object) ? String((b as { text: unknown }).text) : ""))
+    .filter((s) => s.length > 0)
+    .join("\n");
+}
+
+/** 从消息 content 提取 thinking 块 */
+export function messageThinkingOf(content: unknown): string {
+  if (!Array.isArray(content)) return "";
+  return content
+    .map((b) =>
+      b && typeof b === "object" && (b as { type?: unknown }).type === "thinking" && "thinking" in (b as object)
+        ? String((b as { thinking: unknown }).thinking)
+        : "",
+    )
+    .filter((s) => s.length > 0)
+    .join("\n");
+}
+
 /** 从请求 URL 中提取 ?token= 查询参数 */
 export function extractToken(rawUrl: string): string | null {
   const idx = rawUrl.indexOf("?");

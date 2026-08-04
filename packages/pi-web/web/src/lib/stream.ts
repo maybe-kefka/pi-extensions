@@ -58,7 +58,15 @@ export interface StreamState {
 
 export type StreamAction =
   | { type: "conn"; state: StreamState["conn"] }
-  | { type: "history"; messages: { role: string; text: string; thinking?: string }[] }
+  | {
+      type: "history";
+      messages: {
+        role: string;
+        text: string;
+        thinking?: string;
+        toolCalls?: { id: string; name: string; arguments: unknown; result?: string; isError?: boolean }[];
+      }[];
+    }
   | { type: "message_start"; message: { role?: string; content?: unknown; toolName?: string } }
   | {
       type: "message_update";
@@ -157,19 +165,37 @@ export function streamReducer(state: StreamState, action: StreamAction): StreamS
       return { ...state, conn: action.state };
 
     case "history": {
-      const msgs: ChatMessage[] = action.messages
-        .filter((m) => m.role === "user" || m.role === "assistant")
-        .map((m, i) => ({
-          id: `h${i}`,
+      const msgs: ChatMessage[] = [];
+      const tools: ToolRow[] = [];
+      let i = 0;
+      for (const m of action.messages) {
+        if (m.role !== "user" && m.role !== "assistant") continue;
+        const toolCalls = m.toolCalls ?? [];
+        // 空消息（无 text 无 thinking 无工具）数据层筛掉（服务端已筛，这里防御）
+        if (m.role === "assistant" && !m.text && !(m.thinking ?? "") && toolCalls.length === 0) continue;
+        msgs.push({
+          id: `h${i++}`,
           role: m.role as ChatRole,
           text: m.text,
           thinking: m.thinking ?? "",
           thinkingExpanded: false,
-          toolCallIds: [],
+          toolCallIds: toolCalls.map((t) => t.id),
           toolOutputExpanded: false,
           final: true,
-        }));
-      return { ...state, messages: msgs, currentAssistantId: null };
+        });
+        for (const tc of toolCalls) {
+          tools.push({
+            toolCallId: tc.id,
+            toolName: tc.name,
+            args: tc.arguments,
+            output: tc.result ?? "",
+            isError: tc.isError ?? false,
+            final: true,
+            expanded: false,
+          });
+        }
+      }
+      return { ...state, messages: msgs, tools, currentAssistantId: null };
     }
 
     case "message_start": {
@@ -221,6 +247,15 @@ export function streamReducer(state: StreamState, action: StreamAction): StreamS
       if (!state.currentAssistantId) return state;
       const finalText = textOfContent(action.message.content);
       const ids = toolCallIdsOf(action.message.content);
+      const target = state.messages.find((m) => m.id === state.currentAssistantId);
+      // 空消息（无 text、无 thinking、无工具）→ 数据层直接筛掉，不留在消息流
+      if (!finalText && !target?.thinking && ids.length === 0) {
+        return {
+          ...state,
+          messages: state.messages.filter((m) => m.id !== state.currentAssistantId),
+          currentAssistantId: null,
+        };
+      }
       const withIds =
         ids.length > 0 ? updateMessage(state, state.currentAssistantId, { toolCallIds: ids }) : state;
       const withText = finalText ? updateMessage(withIds, state.currentAssistantId, { text: finalText }) : withIds;

@@ -69,6 +69,8 @@ function MessageBubble({
     .filter((t): t is StreamState["tools"][number] => t !== undefined);
   // 空气泡隐藏：无 text 无 thinking 且非 streaming（纯工具调用消息只显示工具卡片）
   const showBubble = msg.streaming === true || msg.text.trim().length > 0 || msg.thinking.length > 0;
+  // 数据层已筛空消息；此处兜底：无气泡且无工具卡片 → 整行（含头像）不渲染
+  if (!showBubble && toolRows.length === 0) return null;
   return (
     <Message align="start">
       <MessageAvatar>
