@@ -11,7 +11,6 @@ import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import type { CommandInfo, ModelInfo, SessionInfo } from "@/lib/types";
 import type { StreamState } from "@/lib/stream";
 
-const THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
 
 export interface SidebarContentProps {
   sessions: SessionInfo[];
@@ -19,6 +18,7 @@ export interface SidebarContentProps {
   models: ModelInfo[];
   currentModel: string | null;
   thinkingLevel: string | null;
+  thinkingLevels: string[];
   commands: CommandInfo[];
   bridge: StreamState["bridge"];
   onSetModel: (provider: string, modelId: string) => void;
@@ -39,8 +39,18 @@ function Panel({ title, action, children }: { title: string; action?: React.Reac
 
 /** 面板内容（宽屏侧栏与窄屏抽屉共用） */
 export function SidebarContent(props: SidebarContentProps) {
-  const { sessions, currentSessionFile, models, currentModel, thinkingLevel, commands, bridge, onSetModel, onSetThinking } =
-    props;
+  const {
+    sessions,
+    currentSessionFile,
+    models,
+    currentModel,
+    thinkingLevel,
+    thinkingLevels,
+    commands,
+    bridge,
+    onSetModel,
+    onSetThinking,
+  } = props;
   const [refreshKey, setRefreshKey] = useState(0);
 
   return (
@@ -101,15 +111,13 @@ export function SidebarContent(props: SidebarContentProps) {
       </Panel>
 
       <Panel title="思考等级">
-        <Select
-          value={thinkingLevel ?? undefined}
-          onValueChange={onSetThinking}
-        >
+        <Select value={thinkingLevel ?? undefined} onValueChange={onSetThinking}>
           <SelectTrigger className="w-full">
             <SelectValue placeholder="—" />
           </SelectTrigger>
           <SelectContent>
-            {THINKING_LEVELS.map((lvl) => (
+            {thinkingLevels.length === 0 && <SelectItem value="off">off</SelectItem>}
+            {thinkingLevels.map((lvl) => (
               <SelectItem key={lvl} value={lvl}>
                 {lvl}
               </SelectItem>

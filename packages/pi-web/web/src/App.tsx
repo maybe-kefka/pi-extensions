@@ -132,6 +132,7 @@ export default function App() {
     models,
     currentModel: state.model ? `${state.model.provider}/${state.model.id}` : null,
     thinkingLevel: state.thinkingLevel,
+    thinkingLevels: state.availableThinkingLevels,
     commands,
     bridge: state.bridge,
     onSetModel: setModel,

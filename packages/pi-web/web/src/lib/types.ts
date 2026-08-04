@@ -6,6 +6,7 @@ export interface WebState {
   sessionName: string | null;
   model: { provider: string; id: string; name: string | null } | null;
   thinkingLevel: string | null;
+  availableThinkingLevels: string[];
   isStreaming: boolean;
   context: { tokens: number | null; contextWindow: number | null; percent: number | null };
   messageCount: number;

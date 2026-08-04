@@ -43,6 +43,7 @@ export interface StreamState {
   sessionReason: string | null;
   model: { provider: string; id: string; name: string | null } | null;
   thinkingLevel: string | null;
+  availableThinkingLevels: string[];
   context: { tokens: number | null; contextWindow: number | null; percent: number | null };
   messageCount: number;
   bridge: {
@@ -110,6 +111,7 @@ export const initialState: StreamState = {
   sessionReason: null,
   model: null,
   thinkingLevel: null,
+  availableThinkingLevels: ["off", "minimal", "low", "medium", "high", "xhigh", "max"],
   context: { tokens: null, contextWindow: null, percent: null },
   messageCount: 0,
   bridge: { status: {}, widget: null, notifies: [] },
@@ -275,6 +277,10 @@ export function streamReducer(state: StreamState, action: StreamAction): StreamS
         sessionName: (s.sessionName as string) ?? state.sessionName,
         model: (s.model as StreamState["model"]) ?? state.model,
         thinkingLevel: (s.thinkingLevel as string) ?? state.thinkingLevel,
+        availableThinkingLevels:
+          Array.isArray(s.availableThinkingLevels) && s.availableThinkingLevels.length > 0
+            ? (s.availableThinkingLevels as string[])
+            : state.availableThinkingLevels,
         context: ctx ?? state.context,
         messageCount: typeof s.messageCount === "number" ? s.messageCount : state.messageCount,
       };
