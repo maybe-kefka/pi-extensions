@@ -300,6 +300,7 @@ export default function (pi: ExtensionAPI): void {
       content: buildResultContent(text),
       helperPath: paths.helperFile,
       amPath: `${prefix}/bin/am`,
+      toastPath: `${prefix}/bin/termux-toast`,
       ts: Date.now(),
     });
     const err = sendNotification(args);

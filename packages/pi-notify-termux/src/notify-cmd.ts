@@ -15,6 +15,7 @@ export interface NotificationBase {
 export interface ResultNotificationArgs extends NotificationBase {
   ts: number;
   amPath: string;
+  toastPath: string;
 }
 
 export interface AskOptionsArgs extends NotificationBase {
@@ -26,7 +27,9 @@ export interface AskInputArgs extends NotificationBase {
   id: string;
 }
 
-/** 需求 1：最终回复通知 —— 固定 id 原地更新 + 回复/打开终端按钮 */
+/** 需求 1：最终回复通知 —— 固定 id 原地更新 + 回复/打开终端按钮
+ *  打开终端：用 Termux 的 am（termux-am，app 身份）；失败（如后台启动被系统
+ *  限制）时降级 toast 提示原因。 */
 export function buildResultNotificationArgs(opts: ResultNotificationArgs): string[] {
   return [
     "--id", RESULT_NOTIFICATION_ID,
@@ -35,7 +38,8 @@ export function buildResultNotificationArgs(opts: ResultNotificationArgs): strin
     "--button1", "回复",
     "--button1-action", `${opts.helperPath} notify ${opts.ts} "$REPLY"`,
     "--button2", "打开终端",
-    "--button2-action", `${opts.amPath} start -n com.termux/.app.TermuxActivity`,
+    "--button2-action",
+    `${opts.amPath} start -n com.termux/.app.TermuxActivity || ${opts.toastPath} 后台启动被拒：请在系统设置中允许 Termux 后台弹出界面`,
   ];
 }
 
