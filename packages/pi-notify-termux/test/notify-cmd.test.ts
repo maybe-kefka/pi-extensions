@@ -11,6 +11,7 @@ const HELPER = "/data/data/com.termux/files/home/.pi/pi-notify-termux/helper.sh"
 // Termux's own am wrapper (termux-am, app_process-based): the system
 // /system/bin/am is a shell-uid tool and is rejected on Android 10+.
 const AM = "/data/data/com.termux/files/usr/bin/am";
+const TOAST = "/data/data/com.termux/files/usr/bin/termux-toast";
 
 describe("buildResultNotificationArgs", () => {
   const args = buildResultNotificationArgs({
@@ -18,6 +19,7 @@ describe("buildResultNotificationArgs", () => {
     content: "第一行\n第二行",
     helperPath: HELPER,
     amPath: AM,
+    toastPath: TOAST,
     ts: 1725000000,
   });
 
@@ -38,10 +40,10 @@ describe("buildResultNotificationArgs", () => {
     expect(action).toContain("$REPLY");
   });
 
-  it("has open-terminal button via am absolute path", () => {
+  it("has open-terminal button via termux am with failure fallback toast", () => {
     expect(args[args.indexOf("--button2") + 1]).toBe("打开终端");
     expect(args[args.indexOf("--button2-action") + 1]).toBe(
-      `${AM} start -n com.termux/.app.TermuxActivity`,
+      `${AM} start -n com.termux/.app.TermuxActivity || ${TOAST} 后台启动被拒：请在系统设置中允许 Termux 后台弹出界面`,
     );
   });
 
