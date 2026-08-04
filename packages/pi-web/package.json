@@ -10,7 +10,8 @@
   },
   "files": [
     "src",
-    "web/dist"
+    "web/dist",
+    "index.ts"
   ],
   "scripts": {
     "typecheck": "tsc --noEmit",
@@ -29,7 +30,7 @@
   },
   "pi": {
     "extensions": [
-      "./src/index.ts"
+      "./index.ts"
     ]
   }
 }

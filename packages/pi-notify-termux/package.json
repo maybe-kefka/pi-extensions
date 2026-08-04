@@ -9,7 +9,8 @@
     "url": "https://github.com/maybe-kefka/pi-extensions.git"
   },
   "files": [
-    "src"
+    "src",
+    "index.ts"
   ],
   "scripts": {
     "typecheck": "tsc --noEmit",
@@ -25,7 +26,7 @@
   },
   "pi": {
     "extensions": [
-      "./src/index.ts"
+      "./index.ts"
     ]
   }
 }

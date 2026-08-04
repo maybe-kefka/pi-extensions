@@ -9,7 +9,8 @@
     "url": "https://github.com/maybe-kefka/pi-extensions.git"
   },
   "files": [
-    "src"
+    "src",
+    "index.ts"
   ],
   "scripts": {
     "typecheck": "tsc --noEmit",
@@ -23,6 +24,8 @@
     "@earendil-works/pi-coding-agent": "^0.83.0"
   },
   "pi": {
-    "extensions": ["./src/index.ts"]
+    "extensions": [
+      "./index.ts"
+    ]
   }
 }
