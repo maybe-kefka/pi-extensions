@@ -1,10 +1,13 @@
 # pi-extensions 项目说明
 
-个人 pi 扩展 monorepo（npm workspaces，包名模式 `@kefka/pi-*`）。包含：`packages/pi-status`（`/status` 命令——上下文占用分类面板）与 `packages/pi-web`（`/web` 命令——本地 Web 控制台，含 `web/` 前端子工作区，构建产物 `web/dist` 提交进 git）。
+个人 pi 扩展 monorepo（npm workspaces，包名模式 `@kefka/pi-*`）。包含：`packages/pi-status`（`/status` 命令——上下文占用分类面板）、`packages/pi-web`（`/web` 命令——本地 Web 控制台，含 `web/` 前端子工作区，构建产物 `web/dist` 提交进 git）与 `packages/pi-notify-termux`（Termux 通知投递 + LLM ask 工具）。
 
 ## 目录结构
 
 ```
+.github/
+├── workflows/publish.yml        # push main / tag v* 触发自动发布
+└── scripts/publish-changed.sh   # 版本对比：只发布有更新的包
 packages/pi-status/
 ├── src/
 │   ├── index.ts        # 薄接线层：registerCommand、取 API 数据、调聚合、setWidget/setStatus/notify
@@ -23,6 +26,7 @@ docs/
 
 - **流程**：改动遵循 `docs/SPEC.md` → `docs/TICKETS.md` 新增 ticket → TDD（先写失败测试，再实现）→ `npm run typecheck` + `npm test` 全绿 → 提交
 - **发布（publish）必须用户明确指示后才能执行**：用户没说"发布/推送 npm"，一律不自行 `npm publish`、不 bump 版本号；实施完成后只汇报结果，把发布作为待办等用户开口
+- **不擅自 bump 版本或 push `main`**：`main` 推送会触发 CI 自动发布（见下），bump 过的包会被直接发到 npm——发版动作只有用户明确要求（如"bump 并发布"）时才做
 - **`src/index.ts` 必须是薄接线层**：不写业务逻辑、不做单测；其余 src 模块全部纯函数 + 单测
 - **类型导入用 `import type`**（`verbatimModuleSyntax` 强制）
 - **运行时依赖仅 `@earendil-works/pi-tui`**；`@earendil-works/pi-coding-agent` 仅作类型导入（devDependency）
@@ -33,7 +37,15 @@ docs/
 ```bash
 npm test              # vitest 全量
 npm run typecheck     # 各包 tsc --noEmit
+npm version patch -w @kefka/<pkg>   # bump 版本（发版流程第一步）
 ```
+
+## 发布机制（自动）
+
+- push `main`（或 tag `v*`）→ GitHub Actions `.github/workflows/publish.yml`：质量门（test + typecheck）→ `.github/scripts/publish-changed.sh`
+- 脚本对比本地 package.json 版本与 npm registry 已发布版本，**只发布有更新的包**（pi-status / pi-web / pi-notify-termux），已发布的自动 skip
+- 认证：npm Trusted Publishing (OIDC)，无需 NPM_TOKEN；前置条件为 npmjs.com Account → Trusted Publishing 配置 OIDC 主体 `owner=maybe-kefka, repo=pi-extensions, workflow=publish.yml`（**是否已配置未验证**——CI 全绿运行过但从未真正调 publish）
+- 用户发版流程：`npm version patch -w <pkg>` → 本地 typecheck + test → `git push` → CI 自动发布
 
 ## /status 行为要点（改这里前先读 docs/SPEC.md §2.1）
 
