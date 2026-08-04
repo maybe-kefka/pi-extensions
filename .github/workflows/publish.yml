@@ -42,8 +42,8 @@ jobs:
           bash .github/scripts/publish-changed.sh 2>&1 | tee /tmp/publish.log
           status=${PIPESTATUS[0]}
           if [ $status -ne 0 ]; then
-            echo "::error::npm publish FAILED (exit $status). Log tail:"
-            tail -60 /tmp/publish.log | while IFS= read -r line; do
+            echo "::error::npm publish FAILED (exit $status). Key error lines:"
+            grep -iE "npm error|npm notice publish|ERR[! ]|E4[0-9]{2}|ENEED|EOTP|trusted|oidc|forbidden|unauthorized|401|403" /tmp/publish.log | tail -25 | while IFS= read -r line; do
               [ -n "$line" ] && echo "::error::$line"
             done
             echo "::error::End of failed publish log"
