@@ -69,6 +69,7 @@ const state: ServerState = {
 };
 
 const THINKING_LEVELS = new Set(["off", "minimal", "low", "medium", "high", "xhigh", "max"]);
+const ALL_THINKING_LEVELS = [...THINKING_LEVELS];
 
 export default function (pi: ExtensionAPI): void {
   // 每次 factory 运行（startup / 会话切换）都重绑当前 api
@@ -186,15 +187,25 @@ function buildStateSnapshot(): Record<string, unknown> | null {
   const { ctx, api } = state;
   if (!ctx || !api) return null;
   const usage = ctx.getContextUsage();
+  const model = ctx.model
+    ? {
+        provider: ctx.model.provider,
+        id: ctx.model.id,
+        name: ctx.model.name,
+        reasoning: ctx.model.reasoning,
+        thinkingLevelMap: (ctx.model as { thinkingLevelMap?: Record<string, string | null> | null }).thinkingLevelMap ?? null,
+      }
+    : null;
   return buildState({
     sessionFile: ctx.sessionManager.getSessionFile() ?? null,
     sessionId: ctx.sessionManager.getSessionId() ?? null,
     sessionName: api.getSessionName(),
-    model: ctx.model ? { provider: ctx.model.provider, id: ctx.model.id, name: ctx.model.name } : null,
+    model,
     thinkingLevel: api.getThinkingLevel(),
     isStreaming: !ctx.isIdle(),
     contextUsage: usage ? { tokens: usage.tokens, contextWindow: usage.contextWindow, percent: usage.percent } : null,
     messageCount: ctx.sessionManager.getEntries().length,
+    allThinkingLevels: ALL_THINKING_LEVELS,
   }) as unknown as Record<string, unknown>;
 }
 
