@@ -24,7 +24,7 @@ export function InputBar(props: {
   };
 
   return (
-    <footer className="border-t p-3">
+    <footer className="border-t p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
       {busy && (
         <div className="mb-2 flex items-center gap-3 text-xs text-amber-500">
           <span className="flex items-center gap-1.5">

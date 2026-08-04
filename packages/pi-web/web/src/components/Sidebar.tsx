@@ -7,10 +7,23 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
+import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import type { CommandInfo, ModelInfo, SessionInfo } from "@/lib/types";
 import type { StreamState } from "@/lib/stream";
 
 const THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
+
+export interface SidebarContentProps {
+  sessions: SessionInfo[];
+  currentSessionFile: string | null;
+  models: ModelInfo[];
+  currentModel: string | null;
+  thinkingLevel: string | null;
+  commands: CommandInfo[];
+  bridge: StreamState["bridge"];
+  onSetModel: (provider: string, modelId: string) => void;
+  onSetThinking: (level: string) => void;
+}
 
 function Panel({ title, action, children }: { title: string; action?: React.ReactNode; children: React.ReactNode }) {
   return (
@@ -24,22 +37,14 @@ function Panel({ title, action, children }: { title: string; action?: React.Reac
   );
 }
 
-export function Sidebar(props: {
-  sessions: SessionInfo[];
-  currentSessionFile: string | null;
-  models: ModelInfo[];
-  currentModel: string | null;
-  thinkingLevel: string | null;
-  commands: CommandInfo[];
-  bridge: StreamState["bridge"];
-  onSetModel: (provider: string, modelId: string) => void;
-  onSetThinking: (level: string) => void;
-}) {
-  const { sessions, currentSessionFile, models, currentModel, thinkingLevel, commands, bridge, onSetModel, onSetThinking } = props;
+/** 面板内容（宽屏侧栏与窄屏抽屉共用） */
+export function SidebarContent(props: SidebarContentProps) {
+  const { sessions, currentSessionFile, models, currentModel, thinkingLevel, commands, bridge, onSetModel, onSetThinking } =
+    props;
   const [refreshKey, setRefreshKey] = useState(0);
 
   return (
-    <aside className="w-72 shrink-0 space-y-3 overflow-y-auto border-l p-3">
+    <>
       <Panel
         title="会话"
         action={
@@ -164,6 +169,39 @@ export function Sidebar(props: {
           )}
         </div>
       </Panel>
+    </>
+  );
+}
+
+/** 宽屏侧栏（≥lg 显示，可折叠） */
+export function Sidebar({ collapsed, ...props }: SidebarContentProps & { collapsed: boolean }) {
+  if (collapsed) return null;
+  return (
+    <aside className="hidden w-72 shrink-0 flex-col overflow-y-auto border-l p-3 lg:flex">
+      <div className="space-y-3">
+        <SidebarContent {...props} />
+      </div>
     </aside>
+  );
+}
+
+/** 窄屏抽屉（<lg 显示） */
+export function SidebarSheet({
+  open,
+  onOpenChange,
+  ...props
+}: SidebarContentProps & {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent side="right" className="w-[85%] max-w-sm p-0 sm:w-80">
+        <SheetTitle className="sr-only">面板</SheetTitle>
+        <div className="h-full overflow-y-auto p-3 pb-[env(safe-area-inset-bottom)]">
+          <SidebarContent {...props} />
+        </div>
+      </SheetContent>
+    </Sheet>
   );
 }
