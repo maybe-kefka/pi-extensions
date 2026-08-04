@@ -22,9 +22,8 @@ import { buildHelperScript } from "./helper.js";
 import { buildAskInputArgs, buildAskOptionsArgs, buildOnDeleteArg, buildResultNotificationArgs, RESULT_NOTIFICATION_ID } from "./notify-cmd.js";
 import { decodeReply, parseFileName } from "./replies.js";
 
-const AM_PATH = "/system/bin/am";
-const POLL_INTERVAL_MS = 500;
 const TERMUX_TERMINAL_ACTIVITY = "com.termux/.app.TermuxActivity";
+const POLL_INTERVAL_MS = 500;
 
 interface PendingAsk {
   ask: Ask;
@@ -35,6 +34,7 @@ interface PendingAsk {
 /** 薄接线层：纯逻辑都在 src/*.ts（TDD），本文件只做事件/tool/命令注册与进程交互。 */
 export default function (pi: ExtensionAPI): void {
   const paths = buildConfigPaths(homedir(), CONFIG_DIR_NAME);
+  const prefix = process.env.PREFIX ?? "/data/data/com.termux/files/usr";
   let config: NotifyConfig = { ...defaultConfig };
   let envOk = false;
   let timer: ReturnType<typeof setInterval> | null = null;
@@ -53,7 +53,6 @@ export default function (pi: ExtensionAPI): void {
   function ensureHelper(): void {
     mkdirSync(paths.dir, { recursive: true });
     mkdirSync(paths.repliesDir, { recursive: true });
-    const prefix = process.env.PREFIX ?? "/data/data/com.termux/files/usr";
     const script = buildHelperScript({
       repliesDir: paths.repliesDir,
       shBin: `${prefix}/bin/sh`,
@@ -285,7 +284,7 @@ export default function (pi: ExtensionAPI): void {
       title: buildTitle("result", new Date()),
       content: buildResultContent(text),
       helperPath: paths.helperFile,
-      amPath: AM_PATH,
+      amPath: `${prefix}/bin/am`,
       ts: Date.now(),
     });
     const err = sendNotification(args);
