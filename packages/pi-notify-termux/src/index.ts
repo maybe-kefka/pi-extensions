@@ -17,9 +17,9 @@ import { Type } from "typebox";
 
 import { cancelAsk, checkTimeout, createAsk, resolveAsk, serializeResult, type Ask, type AskResult } from "./ask.js";
 import { buildConfigPaths, defaultConfig, loadConfig, parseNotifyCommand, renderStatus, type NotifyConfig } from "./config.js";
-import { buildAskContent, buildResultContent, buildTitle, hasContent } from "./format.js";
+import { buildAskContent, buildResultContent, buildStatusContent, buildTitle, hasContent } from "./format.js";
 import { buildHelperScript } from "./helper.js";
-import { buildAskInputArgs, buildAskOptionsArgs, buildOnDeleteArg, buildResultNotificationArgs, RESULT_NOTIFICATION_ID } from "./notify-cmd.js";
+import { buildAskInputArgs, buildAskOptionsArgs, buildOnDeleteArg, buildResultNotificationArgs, buildStatusNotificationArgs, RESULT_NOTIFICATION_ID } from "./notify-cmd.js";
 import { decodeReply, parseFileName } from "./replies.js";
 import { findPiNotifications, parseNotificationList, renderNotificationStatus } from "./notify-list.js";
 
@@ -72,18 +72,35 @@ export default function (pi: ExtensionAPI): void {
     return null;
   }
 
-  /** 终结反馈：移除通知 + toast（remove 已实测有效，需 Termux:API 通知权限全开） */
+  /** 终结反馈：按钮场景 remove 有效；Direct Reply 回复过的通知 remove 被系统忽略 → 替换 */
   function removeNotification(id: string): void {
     spawnSync(`${prefix}/bin/termux-notification-remove`, [id], { encoding: "utf8" });
+  }
+
+  function replaceWithStatus(id: string, status: "answered" | "timeout"): void {
+    sendNotification(
+      buildStatusNotificationArgs({
+        id,
+        title: status === "answered" ? "✅ pi" : "⏰ pi",
+        content: buildStatusContent(status),
+      }),
+    );
   }
 
   function settle(p: PendingAsk, result: AskResult): void {
     pending.delete(p.ask.id);
     if (result.status === "answered") {
-      removeNotification(`ask-${p.ask.id}`);
+      if (p.options.length > 0) {
+        // 按钮场景：remove 有效
+        removeNotification(`ask-${p.ask.id}`);
+      } else {
+        // Direct Reply 场景：替换为已收到
+        replaceWithStatus(`ask-${p.ask.id}`, "answered");
+      }
       spawnSync("termux-toast", ["已收到回复 ✓"], { encoding: "utf8" });
     }
     if (result.status === "timeout") {
+      // 超时未经过 Direct Reply，remove 有效
       removeNotification(`ask-${p.ask.id}`);
       spawnSync("termux-toast", ["提问已超时"], { encoding: "utf8" });
     }
@@ -119,10 +136,11 @@ export default function (pi: ExtensionAPI): void {
         continue;
       }
       if (info.kind === "notify") {
-        // 需求 1：通知输入 → 下一轮用户消息（空输入忽略）；移除通知 + toast
+        // 需求 1：通知输入 → 下一轮用户消息（空输入忽略）；
+        // Direct Reply 回复过的通知 remove 被系统忽略 → 替换为已收到 + toast
         const reply = decodeReply(raw);
         if (reply) {
-          removeNotification(RESULT_NOTIFICATION_ID);
+          replaceWithStatus(RESULT_NOTIFICATION_ID, "answered");
           spawnSync("termux-toast", ["已收到回复 ✓"], { encoding: "utf8" });
           pi.sendUserMessage(reply.text);
         }
