@@ -44,7 +44,11 @@
 ## 2. 环境与前置
 
 - Android + Termux；需安装 **Termux:API** app 与 `termux-api` 包（`termux-notification` / `termux-notification-list` 可用）。
-- **Android 13+ 需用户在系统设置授予 Termux 通知权限**（`POST_NOTIFICATIONS`），否则通知命令静默失败——`/notify status` 与启动时提示该前置。
+- **权限清单（实测，缺一项即静默失败）**：
+  1. **Termux:API 通知权限**（Android 13+，设置 → 应用 → Termux:API → 通知 → **全部开启**）：影响发送/移除/列表。**ColorOS/OPPO 必须开全**——通知权限有细分类别，只开总开关时 `NotificationManager.cancel()` 被系统静默忽略（实测：通知发得出但永远不消失；全开后 remove 恢复有效）
+  2. **Termux 通知权限**：按钮 action 经 Termux 服务执行
+  3. **Termux “后台弹出界面”（仅 ColorOS/OPPO）**：影响“打开终端”按钮——Android 10+ 禁止后台 app 启动 Activity（实测：termux-am 即普通 `startActivityAsUser`，无法绕过；bash 前台调用成功、后台调用被拒）
+  4. 电池优化白名单（建议）：锁屏后通知链路不被杀
 - 通知 action 在**干净环境**（`dash -c`）执行：PATH 丢失、`.profile` 不加载 → helper 脚本与所有命令一律**绝对路径**。
 - Direct Reply 输入经 termux-api 替换 `$REPLY` 后作为参数传给 action（官方语义：`--button1-action "termux-toast \$REPLY"`）。
 
@@ -74,7 +78,8 @@ pi (TUI, 扩展进程)
 | `src/notify-cmd.ts` | 构造 `termux-notification` 参数数组（`buildNotificationArgs(opts)`：title/content/id/buttons/action/on-delete/ongoing…）与 `buildHelperCall(...)`（helper 调用串，处理 `$REPLY` 转义） | 纯函数 |
 | `src/replies.ts` | 回复文件名生成/解析（`encodeReplyFile`/`parseReplyFile`）、`decodeReply`（$REPLY 原文 → 结构化） | 纯函数 |
 | `src/config.ts` | 默认配置、路径构建（`configDir()` 用 `CONFIG_DIR_NAME`）、`loadConfig`/`saveConfig`、`parseNotifyCommand`（`/notify` 参数解析） | 纯函数（fs 注入或薄封装） |
-| `src/ask.ts` | pending ask 状态机：`createAsk`/`resolveAsk`/`cancelAsk`/`timeoutAsk`、超时计算、结果序列化 | 纯函数（时间注入） |
+| `src/ask.ts` | pending ask 状态机：`createAsk`/`resolveAsk`/`cancelAsk`/`checkTimeout`、超时计算、结果序列化 | 纯函数（时间注入） |
+| `src/notify-list.ts` | `termux-notification-list` 输出解析：`parseNotificationList` / `findPiNotifications` / `renderNotificationStatus`（/notify status 显示通知栏实时状态） | 纯函数 |
 | `src/index.ts` | 接线：TUI 守卫、事件注册（agent_settled / session_shutdown）、tool 注册、命令注册、轮询循环、spawn 通知、helper 生成 | 不单测 |
 
 ### 4.1 `termux-notification` 参数约定
@@ -84,7 +89,7 @@ pi (TUI, 扩展进程)
 - options tool 同时提供 Direct Reply？**不**（D5 拆分：options tool 纯按钮；input tool 纯输入）。options 超 3 个 → tool 报错让 LLM 收敛。
 - `$REPLY` 转义：action 串内 `$REPLY` 保持字面（termux-api 替换），helper 参数用双引号包裹；helper 内 `printf '%s' "$2" > file` 防注入。
 - 空输入（Direct Reply 直接发送空串）→ 视为**取消**（写 cancelled 语义）。
-- **终结反馈（方案 B）**：不再依赖 `termux-notification-remove`（OPPO ColorOS/Android 16 实测无效——app 端 `NotificationManager.cancel()` 被系统静默忽略）。answered/timeout 时扩展用**同 id 重新 notify** 替换为状态通知（`✅ 已收到你的回复 ✓` / `⏰ 提问已超时`）+ `termux-toast`；cancelled（滑掉）无需替换。helper.sh 不调 remove。
+- **终结反馈（最终方案，2025-08 实测修订）**：`termux-notification-remove` 在 **Termux:API 通知权限全开**后有效（ColorOS 类别权限是根因，此前“系统限制”为误判）。answered/timeout/需求 1 回复时扩展侧调用 `termux-notification-remove` 移除通知 + `termux-toast` 反馈；helper.sh 不碰 remove（避免与扩展侧竞争）。替换方案（buildStatusNotificationArgs/buildStatusContent）已删除。
 
 ### 4.2 helper.sh（启动时生成，绝对路径）
 ```sh
@@ -118,7 +123,7 @@ esac
 - 不可用降级：`termux-notification` 缺失/通知权限未授予 → tool 返回错误（LLM 转用 `ctx.ui` 提问或告知用户）。
 
 ### 5.3 /notify 命令
-- `/notify on` → enabled=true 持久化 + notify 确认；`/notify off` → enabled=false + notify；`/notify`（无参）→ 显示当前状态（含 Termux 环境/权限提示）。
+- `/notify on` → enabled=true 持久化 + notify 确认；`/notify off` → enabled=false + notify；`/notify`（无参）→ 显示当前状态（含 Termux 环境/权限提示 + **通知栏实时状态**：调 `termux-notification-list` 解析出结果通知/提问通知是否在栏，`src/notify-list.ts`）。
 - 未知参数 → 报错 + 用法（`parseNotifyCommand` 纯函数）。
 
 ### 5.4 竞态与并发
