@@ -86,3 +86,12 @@ export function buildStatusNotificationArgs(opts: {
 }): string[] {
   return ["--id", opts.id, "--title", opts.title, "--content", opts.content];
 }
+
+/** 权限自检通知：静默（--alert-once 不响铃不震动），无按钮，发完立即 remove */
+export function buildDiagnosticArgs(opts: {
+  id: string;
+  title: string;
+  content: string;
+}): string[] {
+  return ["--id", opts.id, "--alert-once", "--title", opts.title, "--content", opts.content];
+}

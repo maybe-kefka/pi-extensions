@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  checkPosted,
   findPiNotifications,
   parseNotificationList,
   renderNotificationStatus,
+  renderPermissionHint,
 } from "../src/notify-list.js";
 
 const RESULT_ID = "pi-notify-result";
@@ -67,5 +69,22 @@ describe("renderNotificationStatus", () => {
   it("renders a clear line when nothing is in the shade", () => {
     const lines = renderNotificationStatus({ result: false, asks: [] }, RESULT_ID);
     expect(lines.join("\n")).toContain("无 pi 通知");
+  });
+});
+
+describe("checkPosted / renderPermissionHint", () => {
+  it("detects the diagnostic notification in the shade", () => {
+    const list = parseNotificationList(
+      JSON.stringify([{ tag: "pi-perm-diag", packageName: "com.termux.api", title: "🔍", content: "" }]),
+    );
+    expect(checkPosted(list, "pi-perm-diag")).toBe(true);
+    expect(checkPosted([], "pi-perm-diag")).toBe(false);
+  });
+
+  it("renders a permission hint when the check fails", () => {
+    const hint = renderPermissionHint(false);
+    expect(hint).toContain("Termux:API");
+    expect(hint).toContain("通知");
+    expect(renderPermissionHint(true)).toBe("");
   });
 });

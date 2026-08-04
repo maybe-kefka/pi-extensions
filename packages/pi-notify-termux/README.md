@@ -27,6 +27,8 @@ pi install npm:@kefka/pi-notify-termux
 
 Android 13+ 首次使用后可用 `/notify` 查看状态提示。
 
+**权限自动检测**：扩展启动时与 `/notify` 时自动执行静默自检（发 `--alert-once` 诊断通知 → `termux-notification-list` 确认在栏 → 立即移除）；检测失败会弹出警告提示打开 Termux:API 通知权限。
+
 ## 功能
 
 ### agent 结束后（需求 1）
@@ -55,7 +57,7 @@ Android 13+ 首次使用后可用 `/notify` 查看状态提示。
 
 ### /notify 命令
 
-- `/notify`：状态（含通知栏里 pi 通知的实时状态）
+- `/notify`：状态（含权限自检结果 + 通知栏里 pi 通知的实时状态）
 - `/notify on` / `/notify off`：总开关，持久化到 `~/.pi/pi-notify-termux/config.json`
 
 ## 配置

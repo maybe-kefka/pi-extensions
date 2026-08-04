@@ -69,3 +69,4 @@
 - 验收：`npm run typecheck` + `npm test` 全绿（233 tests）✅；**手动验收全部通过（2025-08，OPPO/Android 16 实测）**：按钮回传+消失、Direct Reply 回传+替换为“已收到”、超时消失、滑掉 cancelled、settled 通知+注入下一轮、/notify 通知栏状态、打开终端（termux-am + 后台弹出界面权限）✅
 - 备注：“这个是从”注入之谜 = 结果通知与提问通知时间戳相同易点混，注入仅结果通知路径，非 bug
 - **自动消失机制（最终）**：Direct Reply 污染仅作用于原通知实例；替换（同 id re-notify）后为新实例，remove 有效 → 状态通知闪 2s 自动消失（`AUTO_DISMISS_MS=2000`，实测通过）
+- **权限自检（2025-08 新增）**：appops/dumpsys 无权限探测，改为行为探测：发 `--alert-once` 诊断通知 → list 确认在栏 → remove。启动 + `/notify` 时执行；权限不足弹警告（`renderPermissionHint`）。实测：权限 OK 时链路通（在栏=True）

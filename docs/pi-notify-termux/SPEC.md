@@ -79,7 +79,7 @@ pi (TUI, 扩展进程)
 | `src/replies.ts` | 文件桥编解码：`parseFileName` / `decodeReply` / `parseOptionSelection`（选项序号映射） | 纯函数 |
 | `src/config.ts` | 默认配置、路径构建（`configDir()` 用 `CONFIG_DIR_NAME`）、`parseConfig`、`parseNotifyCommand`（`/notify` 参数解析）、`renderStatus` | 纯函数 |
 | `src/ask.ts` | pending ask 状态机：`createAsk`/`resolveAsk`/`cancelAsk`/`checkTimeout`、超时计算、结果序列化 | 纯函数（时间注入） |
-| `src/notify-list.ts` | `termux-notification-list` 输出解析：`parseNotificationList` / `findPiNotifications` / `renderNotificationStatus`（/notify status 显示通知栏实时状态） | 纯函数 |
+| `src/notify-list.ts` | `termux-notification-list` 输出解析：`parseNotificationList` / `findPiNotifications` / `renderNotificationStatus` / `checkPosted` / `renderPermissionHint`（权限自检 + 通知栏实时状态） | 纯函数 |
 | `src/index.ts` | 接线：TUI 守卫、事件注册（agent_settled / session_shutdown）、tool 注册、命令注册、轮询循环、spawn 通知、helper 生成 | 不单测 |
 
 ### 4.1 `termux-notification` 参数约定
@@ -127,7 +127,8 @@ esac
 - 不可用降级：`termux-notification` 缺失/通知权限未授予 → tool 返回错误（LLM 转用 `ctx.ui` 提问或告知用户）。
 
 ### 5.3 /notify 命令
-- `/notify on` → enabled=true 持久化 + notify 确认；`/notify off` → enabled=false + notify；`/notify`（无参）→ 显示当前状态（termux-api 环境探测 + **通知栏实时状态**：调 `termux-notification-list` 解析出结果通知/提问通知是否在栏，`src/notify-list.ts`；Android 13+ 通知权限无法程序化探测，见 README 权限矩阵）。
+- `/notify on` → enabled=true 持久化 + notify 确认；`/notify off` → enabled=false + notify；`/notify`（无参）→ 显示当前状态（termux-api 环境探测 + **权限自检** + **通知栏实时状态**：调 `termux-notification-list` 解析出结果通知/提问通知是否在栏，`src/notify-list.ts`）。
+- **权限自检（2025-08 新增）**：发 `--alert-once` 静默诊断通知（`pi-perm-diag`）→ list 确认在栏 → 立即 remove。在栏 = 通知权限可用；不在栏 = 权限未开/未开全（ColorOS 类别权限）→ `renderPermissionHint` 警告。启动时（session_start）与 `/notify` 时各执行一次；envOk 不可用时跳过。
 - 未知参数 → 报错 + 用法（`parseNotifyCommand` 纯函数）。
 
 ### 5.4 竞态与并发
