@@ -100,3 +100,8 @@
   - `pi:getMessages` 提取 toolCalls（assistant content 的 toolCall 块 + 按 toolCallId 配对 toolResult 结果），服务端直接筛掉空消息（无 text/thinking/toolCalls）
   - 前端 `history` 构建 tools 列表 + 消息 toolCallIds；`message_end` 空消息（无 text/thinking/工具）从 state 移除；渲染层兜底整行不渲染
   - http-util 抽 messageToolCalls/messageTextOf/messageThinkingOf 纯函数（+5 测试）
+- T9.10 markdown 渲染：
+  - 新 `ui/markdown.tsx`：react-markdown@10 + remark-gfm + rehype-highlight（官方同款底层），Suspense 边界、链接新标签打开、代码块（语言标签+复制按钮+hljs 透传 class）
+  - index.css：`.markdown-body` 排版（标题/列表/表格/引用/任务列表）+ github-dark 主题（highlight.js@11 升级）
+  - Chat.tsx：assistant 定稿后渲染 markdown，流式中保持纯文本（防未闭合语法闪烁）；user/thinking/工具输出不渲染
+  - 测试：markdown.test.tsx 8 例（jsdom + jest-dom + cleanup）；踩坑：react-markdown v10 默认导出为同步 Markdown、CodeBlock children 为高亮元素需 nodeText 递归提取、CLI 单跑路径不匹配 environmentMatchGlobs

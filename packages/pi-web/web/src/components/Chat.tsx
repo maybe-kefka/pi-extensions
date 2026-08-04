@@ -5,6 +5,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Bubble, BubbleContent } from "@/components/ui/bubble";
+import { Markdown } from "@/components/ui/markdown";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { Marker, MarkerContent } from "@/components/ui/marker";
@@ -100,8 +101,14 @@ function MessageBubble({
                 </div>
               )}
               <BubbleContent>
-                {msg.text}
-                {msg.streaming && !msg.text && <span className="animate-pulse">▍</span>}
+                {msg.streaming ? (
+                  <>
+                    <span className="wrap-break-word whitespace-pre-wrap">{msg.text}</span>
+                    {!msg.text && <span className="animate-pulse">▍</span>}
+                  </>
+                ) : msg.text.trim() ? (
+                  <Markdown text={msg.text} />
+                ) : null}
               </BubbleContent>
             </Bubble>
           </>
