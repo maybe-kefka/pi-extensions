@@ -41,6 +41,9 @@ export default function (pi: ExtensionAPI): void {
   const paths = buildConfigPaths(homedir(), CONFIG_DIR_NAME);
   const prefix = process.env.PREFIX ?? "/data/data/com.termux/files/usr";
   let config: NotifyConfig = { ...defaultConfig };
+  // 注入诊断（/notify 状态显示）：区分 handler 未调用 / confirmPrompt 关闭 / pi 未采用
+  let diagBeforeCalls = 0;
+  let diagInjected = 0;
   let envOk = false;
   let timer: ReturnType<typeof setInterval> | null = null;
   let lastAssistantText: string | null = null;
@@ -258,6 +261,7 @@ export default function (pi: ExtensionAPI): void {
       ctx.ui.notify(
         [
           renderStatus({ enabled: config.enabled, envOk, confirmPrompt: config.confirmPrompt }),
+          `注入诊断：before_agent_start 已调用 ${diagBeforeCalls} 次 / 已注入 ${diagInjected} 次`,
           ...(permOk === null ? [] : [renderPermissionHint(permOk)]),
           ...notificationShadeLines(),
         ].join("\n"),
@@ -401,7 +405,9 @@ export default function (pi: ExtensionAPI): void {
   // 确认引导（需求：LLM 不确定时优先用 notify 工具问用户，而非自作主张）
   // 软引导：每 turn 追加到 system prompt（链式，权重最高、compaction 不丢）；可 /notify confirm off 关闭
   pi.on("before_agent_start", (event) => {
+    diagBeforeCalls++;
     if (!config.confirmPrompt) return undefined;
+    diagInjected++;
     return {
       systemPrompt: `${event.systemPrompt}\n\n${buildConfirmPrompt()}`,
     };
