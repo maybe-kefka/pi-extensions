@@ -24,7 +24,7 @@ describe("buildConfigPaths", () => {
   });
 });
 
-describe("parseConfig / loadConfig", () => {
+describe("parseConfig", () => {
   it("defaults on empty object and garbage", () => {
     expect(parseConfig("{}")).toEqual(defaultConfig);
     expect(parseConfig("not json")).toEqual(defaultConfig);

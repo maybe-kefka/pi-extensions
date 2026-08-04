@@ -31,7 +31,7 @@
 - `buildResultNotificationArgs({title, content, helperPath, amPath, ts})`：`--id pi-notify-result`、`--title`、`--content`、`--button1 回复` + action `<helper> notify <ts> "$REPLY"`、`--button2 打开终端` + action `<amPath> start -n com.termux/.app.TermuxActivity`；`$REPLY` 保持字面不被转义破坏
 - `buildAskOptionsArgs({id, title, content, options, helperPath})`：按钮数与选项数一致（1–3），action `<helper> ask <id> N`（N 从 1）；options 0 或 >3 → 抛错
 - `buildAskInputArgs({id, title, content, helperPath})`：单个 `--button1 回复` + action `<helper> ask <id> "$REPLY"`
-- `buildCancelArg(id)` / on-delete：`<helper> cancel <id>`
+- `buildOnDeleteArg({id, helperPath})` / on-delete：`<helper> cancel <id>`
 - 参数数组可被 `spawn` 直接消费（无 shell 拼接）
 
 ## T3 replies.ts（文件桥编解码）✅
