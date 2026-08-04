@@ -50,7 +50,7 @@ Android 13+ 首次使用后可用 `/notify` 查看状态提示。
 | `notify_ask_input` | `question`, `timeout?`(秒, 0=不限) | 通知内输入框 | `{status:"answered", text}` |
 
 - 超时（默认 5 分钟，可配）→ `{status:"timeout"}`；用户滑掉通知 → `{status:"cancelled"}`（立即返回，不等超时）
-- 回复/超时后通知自动移除 + Toast 反馈
+- 终结反馈：按钮/超时 → 通知立即移除 + Toast；Direct Reply 回复 → 通知闪一下"✅ 已收到你的回复 ✓"后 2 秒自动消失 + Toast（Direct Reply 污染原通知实例，需先同 id 替换为新实例再移除）
 - 仅 TUI 模式注册；非 TUI（print/json/rpc）不加载
 
 ### /notify 命令
