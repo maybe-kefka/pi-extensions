@@ -1,6 +1,6 @@
 # SPEC — @kefka/pi-notify-termux
 
-> 状态：已确认（2025-08 与用户 grilling 逐题对齐）
+> 状态：已确认 + 全部验收通过（2025-08，OPPO ColorOS/Android 16 实测）
 > 仓库：`~/projects/pi-extensions`（npm workspaces monorepo，包名模式 `@kefka/pi-*`）
 
 ## 1. 概述
