@@ -3,14 +3,16 @@
   "private": true,
   "type": "module",
   "workspaces": [
-    "packages/*"
+    "packages/*",
+    "packages/pi-web/web"
   ],
   "scripts": {
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "vitest run",
     "test:watch": "vitest",
     "publish:pi-status": "npm publish -w @kefka/pi-status --access public --registry=https://registry.npmjs.org/",
-    "publish:pi-web": "npm publish -w @kefka/pi-web --access public --registry=https://registry.npmjs.org/"
+    "publish:pi-web": "npm publish -w @kefka/pi-web --access public --registry=https://registry.npmjs.org/",
+    "build:web": "npm run build -w pi-web-frontend"
   },
   "devDependencies": {
     "@earendil-works/pi-coding-agent": "^0.83.0",

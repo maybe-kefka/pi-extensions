@@ -12,6 +12,7 @@
  */
 
 import { randomBytes } from "node:crypto";
+import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { SessionManager, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
@@ -22,7 +23,7 @@ import { makeEvent, serialize } from "./protocol.js";
 import { startWebServer, WebServerError, type WebServerHandle } from "./server.js";
 import { buildState } from "./state.js";
 
-const WEB_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "web");
+const WEB_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "web", "dist");
 const FLUSH_INTERVAL_MS = 60;
 const MAX_CLIENTS = 16;
 const UI_BRIDGE_WRAP = Symbol("pi-web.ui-bridge-wrapped");
@@ -130,6 +131,10 @@ export default function (pi: ExtensionAPI): void {
       }
 
       const token = randomBytes(24).toString("hex");
+      if (!existsSync(join(WEB_DIR, "index.html"))) {
+        ctx.ui.notify("前端未构建：请先运行 npm run build:web（构建到 web/dist）", "error");
+        return;
+      }
       const server = await startWebServer({
         port: opts.port,
         token,
@@ -336,6 +341,18 @@ async function handleRequest(id: string | number, method: string, params: Record
         .map((c) => ({ name: c.name, description: c.description ?? null, source: c.source }));
     }
 
+    case "pi:getMessages": {
+      const ctx = requireCtx();
+      const entries = ctx.sessionManager.getEntries();
+      const messages = entries
+        .filter((e) => e.type === "message")
+        .map((e) => {
+          const msg = (e as { message?: { role?: string; content?: unknown } }).message;
+          return { role: msg?.role ?? "unknown", text: messageText(msg?.content) };
+        });
+      return { messages };
+    }
+
     case "pi:getState": {
       const snapshot = buildStateSnapshot();
       if (!snapshot) throw new WebServerError(3, "会话未就绪（切换中？），请重试");
@@ -350,6 +367,14 @@ async function handleRequest(id: string | number, method: string, params: Record
 function requireCtx(): ExtensionContext {
   if (!state.ctx) throw new WebServerError(3, "会话未就绪（切换中？），请重试");
   return state.ctx;
+}
+
+function messageText(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  return content
+    .map((b) => (b && typeof b === "object" && "text" in (b as object) ? String((b as { text: unknown }).text) : ""))
+    .join("\n");
 }
 
 // ---------------------------------------------------------------------------

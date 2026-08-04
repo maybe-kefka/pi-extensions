@@ -1,80 +1,12 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>pi web console</title>
-  <link rel="stylesheet" href="/styles.css" />
-</head>
-<body>
-  <header id="header">
-    <div class="brand">pi <span class="dim">web console</span></div>
-    <div id="conn" class="conn offline">未连接</div>
-    <div id="state-summary" class="state-summary">
-      <span id="st-session" class="dim">会话 —</span>
-      <span id="st-model" class="dim">模型 —</span>
-      <span id="st-thinking" class="dim">思考 —</span>
-      <span class="usage" title="上下文占用">
-        <span class="usage-bar"><span id="st-usage-fill" class="usage-fill"></span></span>
-        <span id="st-usage-text" class="dim">—</span>
-      </span>
-    </div>
-  </header>
-
-  <main id="layout">
-    <section id="chat" class="chat" aria-label="聊天流"></section>
-
-    <aside id="sidebar">
-      <div class="panel">
-        <h3>会话 <button id="btn-refresh-sessions" class="mini">刷新</button></h3>
-        <div id="sessions" class="panel-body">
-          <div class="hint">会话切换仅支持在 TUI 执行（/resume、/new）</div>
-        </div>
-      </div>
-
-      <div class="panel">
-        <h3>模型</h3>
-        <select id="model-select" disabled><option>加载中…</option></select>
-      </div>
-
-      <div class="panel">
-        <h3>思考等级</h3>
-        <select id="thinking-select" disabled><option>加载中…</option></select>
-      </div>
-
-      <div class="panel">
-        <h3>命令（只读）</h3>
-        <ul id="commands" class="panel-body cmd-list"></ul>
-      </div>
-
-      <div class="panel">
-        <h3>状态桥接</h3>
-        <div id="bridge" class="panel-body bridge">
-          <div id="bridge-status"></div>
-          <div id="bridge-widget"></div>
-          <div id="bridge-notify"></div>
-        </div>
-      </div>
-    </aside>
-  </main>
-
-  <footer id="inputbar">
-    <div id="busy-hint" class="busy-hint hidden">
-      <span class="dot"></span> agent 忙碌
-      <select id="deliver-select" title="投递方式">
-        <option value="followUp">排队 (followUp)</option>
-        <option value="steer">打断 (steer)</option>
-      </select>
-      <button id="btn-abort" class="mini danger">abort</button>
-    </div>
-    <div class="input-row">
-      <input id="input" type="text" placeholder="消息… (Enter 发送)" autocomplete="off" autofocus />
-      <button id="btn-send">发送</button>
-    </div>
-  </footer>
-
-  <div id="toast" class="toast hidden"></div>
-
-  <script src="/app.js"></script>
-</body>
+<html lang="zh-CN" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>pi web console</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
 </html>

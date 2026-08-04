@@ -32,14 +32,14 @@
 - 不重定向/转发 pi 内置命令的 picker（如内置 `/session` 的选项列表）：内置命令在 interactive mode 内联处理，绕过扩展系统（不触发 `input` 事件、不产生消息），扩展无事件携带其选项列表或选择结果。web 端的会话/模型选择器是**用公开 API 重新实现**的等价功能（会话列表可看，切换受限）。
 - 不做树导航 / fork / clone（v2；同受命令上下文限制）。
 - 不做 `--host` 局域网绑定（v1 固定 127.0.0.1，见 §5）。
-- 不引前端框架、无构建步骤（vanilla 静态页，见 §7）。
+- 不引前端框架、无构建步骤 —— **v2（2025-08 重构）改为 React + Vite + Tailwind + shadcn，有构建步骤**（见 §7）。
 
 ### 1.5 依赖原则
-- **运行时依赖仅 `ws`**（WebSocket 服务端实现，纯 JS；放 `dependencies`，分布式包运行时依赖必须在 dependencies）。
-- `@earendil-works/pi-coding-agent` 仅作**类型导入**（devDependency）。
+- **扩展运行时依赖仅 `ws`**（WebSocket 服务端实现，纯 JS；放 `dependencies`，分布式包运行时依赖必须在 dependencies）。
+- `@earendil-works/pi-coding-agent` 作**类型导入**（devDependency）+ `SessionManager` **值导入**（列表会话，peerDependencies 声明，由 pi 宿主经 jiti 别名提供）。
 - `@types/ws` 仅开发用（devDependency）。
 - HTTP 服务器用 Node 内置 `node:http`；静态文件用几十行 MIME 映射手工输出，不引 express。
-- 前端零依赖（vanilla HTML/CSS/JS）。
+- **前端（`packages/pi-web/web` 子工作区 `pi-web-frontend`）：React 19 + Vite 8 + Tailwind v4 + shadcn（new-york/zinc）**，全部为**构建期依赖**（不影响扩展运行时）；构建产物 `web/dist` 提交进 git、随 npm 包发布（`files: ["src", "web/dist"]`）。
 
 ## 2. 命令定义
 
@@ -114,6 +114,7 @@
 | `pi:getThinkingLevel` | — | `pi.getThinkingLevel()` |
 | `pi:setThinkingLevel` | `{level}` | `pi.setThinkingLevel(level)`（clamp 交给 pi） |
 | `pi:listCommands` | — | `pi.getCommands()`（**仅展示**，不提供执行） |
+| `pi:getMessages` | — | `ctx.sessionManager.getEntries()` 过滤 message 条目 → `{messages: [{role, text}]}`（页面加载回填历史用） |
 | `pi:getState` | — | 快照：会话文件/id/名、模型、思考等级、上下文占用、isStreaming、messageCount |
 
 - 错误：JSON-RPC error；`code` 语义自定（如 `-32602` 参数错、`1` 业务错、`2` 忙碌需 deliverAs），消息为人类可读中文。
@@ -121,9 +122,10 @@
 ## 5. 安全（已确认）
 
 - **只绑定 `127.0.0.1`**（不做 `--host`）。
-- **随机 token 入 URL**：`http://127.0.0.1:<port>/?token=<random>`；HTTP 请求与 WS 握手都必须带正确 token 才放行（403 拒绝）。
+- **随机 token 入 URL**：`http://127.0.0.1:<port>/?token=<random>`。
+- **授权链（2025-08 重构扩展）**：query token OR `x-web-token` header OR **`piweb` HttpOnly cookie**。首次带 token 访问后服务器 `Set-Cookie: piweb=<token>; HttpOnly; SameSite=Strict; Path=/`；浏览器子资源（`/assets/*.js`）**不携带页面 URL 的 query**，靠 cookie 自动通过校验（修复 vanilla 版子资源 403 白屏隐患）。`/ws` 仍用显式 query token。
 - token 在服务启动时生成（`crypto.randomBytes`），URL 稳定不变（重复 `/web` 打印同一 URL）。
-- 动机：绑定 localhost 挡住外部网络；token 挡住本机浏览器侧攻击（恶意网页可向 `http://127.0.0.1:<port>/` 发 POST 表单，CORS 不挡写操作）。
+- 动机：绑定 localhost 挡住外部网络；token + SameSite=Strict cookie 挡住本机浏览器侧攻击（恶意网页可向 `http://127.0.0.1:<port>/` 发 POST 表单，CORS 不挡写操作）。
 - 已知代价：token 会留在浏览器历史——本地开发工具可接受。
 
 ## 6. `--open` 平台行为（已确认）
@@ -133,14 +135,18 @@
 - **fire-and-forget**：spawn 后不阻塞 `/web` 命令（不 await 浏览器退出）。
 - 实现用 `pi.exec` 或 node `spawn`（扩展 API 有 `pi.exec`；若需 detach 用 node child_process spawn，v1 用 `pi.exec` 带超时兜底即可）。
 
-## 7. 前端（已确认）
+## 7. 前端（已确认，2025-08 重构为 React 栈）
 
-- **vanilla 单页静态**：`web/index.html` + `web/app.js` + `web/styles.css`（可合并为单 HTML，v1 拆 2–3 个文件便于维护），由 `node:http` 服务器按路径输出（路径→MIME 映射，防目录穿越）。
-- 目录位置：扩展包内 `web/`，相对扩展入口解析（`import.meta.url` 定位）；改文件即改即生效（刷新浏览器，无需构建）。
-- 布局：中间聊天流（消息 / thinking / 工具执行 / 状态分隔）+ 右侧或左侧侧栏（会话列表、模型选择、思考等级、命令列表、状态面板）。
-- 发送区：agent 忙碌时显示投递选择（默认 `followUp`，可切 `steer`）；idle 隐藏。
-- 连接：`new WebSocket("ws://" + location.host + "/ws?token=" + tokenFromURL)`；断线重连（指数退避，上限 ~10s）；token 从当前 URL query 取。
-- 渲染策略：收到 `message_*` 增量更新聊天流；`state` 更新侧栏；大文本/长流不做虚拟滚动 v1 限制（文档注明）。
+- **技术栈**：React 19 + Vite 8 + TypeScript strict + Tailwind v4（CSS-first，`@import "tailwindcss"`）+ shadcn（new-york 风格 / zinc 基色 / CSS variables 暗色主题，`<html class="dark">`）；图标 lucide-react；无路由（单页）。
+- **工程位置**：`packages/pi-web/web/` 子工作区（`pi-web-frontend`，private），独立 `package.json`/`vite.config.ts`；构建产物 `web/dist/`。
+  - 构建：`npm run build:web`（根）/ `npm run build -w pi-web-frontend`；`npm publish` 时 `prepublishOnly` 先构建（`cd web && npm run build`）。
+  - **`web/dist` 提交进 git**（个人仓库开箱即用）；`/web` 启动前检查 `dist/index.html` 存在，缺失则报错提示先构建。
+- **布局**：header（连接状态 / 会话名 / 模型 / 思考等级 / 上下文占用条）+ chat 流 + 侧栏（会话列表只读、模型选择、思考等级、命令列表只读、状态桥接面板）+ 输入区。
+- **交互升级（v2 重构）**：thinking 与工具输出**可展开/收起**（工具输出折叠态截断 ~1200 字符）；**跟随滚动开关**（上翻暂停自动滚动，出现"回到底部"按钮）；输入框为多行 `Textarea`（Enter 发送 / Shift+Enter 换行）；**断线横幅** + 指数退避重连（≤10s）。
+- **状态管理**：单 `useReducer` 根 store；WS 事件流 → reducer action（`web/src/lib/stream.ts` 纯 reducer，单测覆盖）。
+- **模块**：`web/src/lib/rpc.ts`（WS 客户端）/ `stream.ts`（reducer）/ `types.ts`（协议类型镜像）/ `components/`（Header/Chat/Sidebar/InputBar/DisconnectBanner）+ `components/ui/`（shadcn）。
+- **加载历史**：连接建立后调 `pi:getMessages` 回填 user/assistant 消息（新方法，见 §4.4）。
+- **渲染策略**：`message_*` 增量更新聊天流；`state` 事件更新侧栏/头部；无虚拟滚动（v1 限制，文档注明）。
 
 ## 8. 状态快照口径
 
