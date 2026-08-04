@@ -2,9 +2,11 @@
 
 流程：SPEC → tickets → TDD。每个功能 ticket 先写失败测试（红），再实现（绿），最后 typecheck + 全量测试通过后 commit。`src/index.ts` 为薄接线层，不做单测。
 
-## 实现中发现的偏差（已同步 SPEC §1.5）
+## 实现中发现的偏差（已同步 SPEC）
 
-- **`termux-notification-remove` 在 OPPO ColorOS/Android 16 上无效**（app 端 cancel 被系统静默忽略，已实测：Direct Reply 后 app 内部 cancel 同样无效；termux-api 无已知 issue）。**方案 B**：终结反馈改用**同 id 重新 notify 替换**为状态通知（`✅ 已收到你的回复 ✓` / `⏰ 提问已超时`）+ termux-toast；helper.sh 不再调 remove（避免“先消失再出现”抖动）。SPEC §4.1/§5.1 已同步。
+- **`termux-notification-remove` 最终可用（2025-08 修订）**：此前 OPPO/Android 16 上“无效”的根因是 **Termux:API 通知权限未全开**（ColorOS 细分类别，总开关≠全开）。权限全开后 remove 实测有效（分步验证：发→确认看到→remove→确认消失）。终结反馈最终方案：扩展侧 `termux-notification-remove` + toast；替换方案（B）已删除。
+- **“打开终端”需要 ColorOS “后台弹出界面”权限**：Android 10+ 后台启动 Activity 限制（termux-am 源码确认无绕过；bash 前台成功/后台被拒）。action 带 `|| termux-toast 提示` 降级。
+- **`termux-notification-list` 权限全开后解锁**（能列出全部通知）→ `/notify status` 增强：显示 pi 通知实时状态（`src/notify-list.ts`，TDD 6 tests）。
 - **“打开终端”不能用 `/system/bin/am`**（shell 特权工具，Android 10+ 普通 uid 调用被拒：`Permission Denial: package=com.android.shell does not belong to uid`，已实测）。改用 **Termux 自带 am 封装** `<PREFIX>/bin/am`（termux-am，app_process 以 Termux 身份执行，实测成功）。
 - **CONFIG_DIR_NAME 值导入**：D10 要求不硬编码 `.pi` → 需值导入 `CONFIG_DIR_NAME` → package.json 增加 `peerDependencies: @earendil-works/pi-coding-agent`（照 pi-web 先例，宿主 jiti 别名提供）。
 - **typebox 依赖**：tool 参数 schema 需 TypeBox → devDependency `typebox@^1.3.7`（对齐宿主版本；运行时由 pi 加载器别名到打包版）。

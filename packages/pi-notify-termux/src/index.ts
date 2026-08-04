@@ -21,6 +21,7 @@ import { buildAskContent, buildResultContent, buildTitle, hasContent } from "./f
 import { buildHelperScript } from "./helper.js";
 import { buildAskInputArgs, buildAskOptionsArgs, buildOnDeleteArg, buildResultNotificationArgs, RESULT_NOTIFICATION_ID } from "./notify-cmd.js";
 import { decodeReply, parseFileName } from "./replies.js";
+import { findPiNotifications, parseNotificationList, renderNotificationStatus } from "./notify-list.js";
 
 const TERMUX_TERMINAL_ACTIVITY = "com.termux/.app.TermuxActivity";
 const POLL_INTERVAL_MS = 500;
@@ -156,6 +157,18 @@ export default function (pi: ExtensionAPI): void {
     }
   }
 
+  /** 通知栏里 pi 通知的实时状态（/notify status 用；list 需 Termux:API 权限全开） */
+  function notificationShadeLines(): string[] {
+    if (!envOk) return [];
+    const r = spawnSync("termux-notification-list", [], { encoding: "utf8" });
+    if (r.status !== 0) return [];
+    const state = findPiNotifications(
+      parseNotificationList(r.stdout),
+      RESULT_NOTIFICATION_ID,
+    );
+    return renderNotificationStatus(state, RESULT_NOTIFICATION_ID);
+  }
+
   // ---------- /notify 命令 ----------
 
   pi.registerCommand("notify", {
@@ -177,7 +190,13 @@ export default function (pi: ExtensionAPI): void {
         }
         return;
       }
-      ctx.ui.notify(renderStatus({ enabled: config.enabled, envOk, permOk: true }), "info");
+      ctx.ui.notify(
+        [
+          renderStatus({ enabled: config.enabled, envOk, permOk: true }),
+          ...notificationShadeLines(),
+        ].join("\n"),
+        "info",
+      );
     },
   });
 
