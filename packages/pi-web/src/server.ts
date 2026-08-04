@@ -134,7 +134,9 @@ export async function startWebServer(options: WebServerOptions): Promise<WebServ
     }
     try {
       const content = await readFile(filePath);
-      res.writeHead(200, { "Content-Type": mimeTypeFor(pathname) });
+      // MIME 必须按解析出的实际文件路径算，而不是 URL pathname：
+      // 根路径 "/" 解析为 index.html，但 pathname 无扩展名，会错回 octet-stream
+      res.writeHead(200, { "Content-Type": mimeTypeFor(filePath) });
       res.end(content);
     } catch {
       res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
