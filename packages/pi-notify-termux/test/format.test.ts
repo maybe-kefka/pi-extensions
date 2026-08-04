@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildAskContent,
   buildResultContent,
+  buildStatusContent,
   buildTitle,
   hasContent,
 } from "../src/format.js";
@@ -37,6 +38,13 @@ describe("buildAskContent", () => {
     expect(buildAskContent("继续构建？", ["继续", "跳过"])).toBe(
       "继续构建？\n1) 继续\n2) 跳过",
     );
+  });
+});
+
+describe("buildStatusContent", () => {
+  it("renders answered / timeout status texts", () => {
+    expect(buildStatusContent("answered")).toContain("已收到");
+    expect(buildStatusContent("timeout")).toContain("超时");
   });
 });
 

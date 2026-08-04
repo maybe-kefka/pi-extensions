@@ -17,9 +17,9 @@ import { Type } from "typebox";
 
 import { cancelAsk, checkTimeout, createAsk, resolveAsk, serializeResult, type Ask, type AskResult } from "./ask.js";
 import { buildConfigPaths, defaultConfig, loadConfig, parseNotifyCommand, renderStatus, type NotifyConfig } from "./config.js";
-import { buildAskContent, buildResultContent, buildTitle, hasContent } from "./format.js";
+import { buildAskContent, buildResultContent, buildStatusContent, buildTitle, hasContent } from "./format.js";
 import { buildHelperScript } from "./helper.js";
-import { buildAskInputArgs, buildAskOptionsArgs, buildOnDeleteArg, buildResultNotificationArgs, RESULT_NOTIFICATION_ID } from "./notify-cmd.js";
+import { buildAskInputArgs, buildAskOptionsArgs, buildOnDeleteArg, buildResultNotificationArgs, buildStatusNotificationArgs, RESULT_NOTIFICATION_ID } from "./notify-cmd.js";
 import { decodeReply, parseFileName } from "./replies.js";
 
 const TERMUX_TERMINAL_ACTIVITY = "com.termux/.app.TermuxActivity";
@@ -56,8 +56,6 @@ export default function (pi: ExtensionAPI): void {
     const script = buildHelperScript({
       repliesDir: paths.repliesDir,
       shBin: `${prefix}/bin/sh`,
-      removeBin: `${prefix}/bin/termux-notification-remove`,
-      resultId: RESULT_NOTIFICATION_ID,
     });
     writeFileSync(paths.helperFile, script, { mode: 0o755 });
     for (const f of readdirSync(paths.repliesDir)) {
@@ -73,8 +71,22 @@ export default function (pi: ExtensionAPI): void {
     return null;
   }
 
+  /** 终结反馈：同 id 替换为状态通知 + toast（remove 在部分设备无效，替换是可靠通道） */
+  function replaceWithStatus(id: string, status: "answered" | "timeout"): void {
+    sendNotification(
+      buildStatusNotificationArgs({
+        id,
+        title: status === "answered" ? "✅ pi" : "⏰ pi",
+        content: buildStatusContent(status),
+      }),
+    );
+    spawnSync("termux-toast", [status === "answered" ? "已收到回复 ✓" : "提问已超时"], { encoding: "utf8" });
+  }
+
   function settle(p: PendingAsk, result: AskResult): void {
     pending.delete(p.ask.id);
+    if (result.status === "answered") replaceWithStatus(`ask-${p.ask.id}`, "answered");
+    if (result.status === "timeout") replaceWithStatus(`ask-${p.ask.id}`, "timeout");
     p.resolve(serializeResult(result, p.ask.question));
   }
 
@@ -107,9 +119,12 @@ export default function (pi: ExtensionAPI): void {
         continue;
       }
       if (info.kind === "notify") {
-        // 需求 1：通知输入 → 下一轮用户消息（空输入忽略）
+        // 需求 1：通知输入 → 下一轮用户消息（空输入忽略）；替换为已收到状态
         const reply = decodeReply(raw);
-        if (reply) pi.sendUserMessage(reply.text);
+        if (reply) {
+          replaceWithStatus(RESULT_NOTIFICATION_ID, "answered");
+          pi.sendUserMessage(reply.text);
+        }
         continue;
       }
       const p = pending.get(info.id);

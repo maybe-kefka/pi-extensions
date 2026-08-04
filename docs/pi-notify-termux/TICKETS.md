@@ -4,6 +4,8 @@
 
 ## 实现中发现的偏差（已同步 SPEC §1.5）
 
+- **`termux-notification-remove` 在 OPPO ColorOS/Android 16 上无效**（app 端 cancel 被系统静默忽略，已实测：Direct Reply 后 app 内部 cancel 同样无效；termux-api 无已知 issue）。**方案 B**：终结反馈改用**同 id 重新 notify 替换**为状态通知（`✅ 已收到你的回复 ✓` / `⏰ 提问已超时`）+ termux-toast；helper.sh 不再调 remove（避免“先消失再出现”抖动）。SPEC §4.1/§5.1 已同步。
+- **“打开终端”不能用 `/system/bin/am`**（shell 特权工具，Android 10+ 普通 uid 调用被拒：`Permission Denial: package=com.android.shell does not belong to uid`，已实测）。改用 **Termux 自带 am 封装** `<PREFIX>/bin/am`（termux-am，app_process 以 Termux 身份执行，实测成功）。
 - **CONFIG_DIR_NAME 值导入**：D10 要求不硬编码 `.pi` → 需值导入 `CONFIG_DIR_NAME` → package.json 增加 `peerDependencies: @earendil-works/pi-coding-agent`（照 pi-web 先例，宿主 jiti 别名提供）。
 - **typebox 依赖**：tool 参数 schema 需 TypeBox → devDependency `typebox@^1.3.7`（对齐宿主版本；运行时由 pi 加载器别名到打包版）。
 - **checkTimeout 幂等语义**：超时后轮询重复检查稳定返回同一 timeout 结果（而非首次后返回 null），已终结（answered/cancelled）才返回 null。
