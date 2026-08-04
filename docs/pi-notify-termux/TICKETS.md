@@ -68,7 +68,7 @@
 - `session_shutdown`：取消 pending、停轮询
 - 验收：`npm run typecheck` + `npm test` 全绿（233 tests）✅；**手动验收全部通过（2025-08，OPPO/Android 16 实测）**：按钮回传+消失、Direct Reply 回传+替换为“已收到”、超时消失、滑掉 cancelled、settled 通知+注入下一轮、/notify 通知栏状态、打开终端（termux-am + 后台弹出界面权限）✅
 - 备注：“这个是从”注入之谜 = 结果通知与提问通知时间戳相同易点混，注入仅结果通知路径，非 bug
-- **自动消失机制（最终）**：Direct Reply 污染仅作用于原通知实例；替换（同 id re-notify）后为新实例，remove 有效 → 状态通知闪 2s 自动消失（`AUTO_DISMISS_MS=2000`，实测通过）
+- **自动消失机制（最终修订 D13）**：Direct Reply 污染仅作用于原通知实例；替换（同 id re-notify）后为新实例，remove 有效 → **替换 + 立即移除**（原 2s 展示已砍，实测替换后立即 remove 有效、时序无竞争；所有终结反馈统一直接消失）
 - **权限自检（2025-08 新增）**：appops/dumpsys 无权限探测，改为行为探测：发 `--alert-once` 诊断通知 → list 确认在栏 → remove。启动 + `/notify` 时执行；权限不足弹警告（`renderPermissionHint`）。实测：权限 OK 时链路通（在栏=True）
 - **⚠️ 卡死修复（用户实测报告）**：权限未开时 `termux-notification-list` 会**挂起**（termux-api 客户端等 app 响应；早期测试被 `timeout 10` 包裹掩盖了该行为）→ `spawnSync` 同步阻塞会卡死 session_start → pi 无法启动。修复：全部 spawnSync 加 `SPAWN_TIMEOUT_MS=3000`（挂起超时返回 status null → 自检返回 null 优雅降级）；启动自检延迟 1s 异步执行（不阻塞启动）。
 
@@ -87,7 +87,14 @@
 - **背景**：用户反馈 settled 后的结果通知在开启下一轮对话 / 切换 session / reload 后一直残留。结果通知语义 = 一次性提醒，用户回到交互后即过期
 - **实现**（薄接线，index.ts）：
   - `input`：用户提交消息 → remove 结果通知
-  - `agent_start`：兜底一切新 run（含 [回复] 注入消息的路径——此路径原「替换 + 2s 自动消失」被更快的立即移除替代，ask 通知回复路径不受影响）
+  - `agent_start`：兜底一切新 run（含 [回复] 注入消息的路径）
   - `session_shutdown`：切 session（new/resume/fork）/ reload / quit → remove
   - `session_start`：清理上次 session 残留（兜底 quit 时 remove 未发出的情况）
 - **验证**：74 tests 全绿 + typecheck；真机待用户 reload 验收
+
+## T9：终结反馈统一直接消失（2025-08，已完成）
+
+- **背景**：用户要求 ask 通知也立刻 remove，与结果通知统一效果（都是直接消失）
+- **实现**：`replaceWithStatus`（替换 + `AUTO_DISMISS_MS=2000` 延时 remove）→ `replaceAndDismiss`（替换 + **同步立即 remove**）；删除 `AUTO_DISMISS_MS` 常量与计时器
+- **实弹验证**：替换 → 立即 remove → `termux-notification-list` 确认不在栏（无时序竞争）；污染实例路径（Direct Reply）真机待用户验收
+- **验证**：74 tests 全绿 + typecheck
