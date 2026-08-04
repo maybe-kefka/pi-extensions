@@ -1,6 +1,6 @@
 {
   "name": "@kefka/pi-notify-termux",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Pi extension: Android notification delivery via Termux — agent result notifications with direct-reply input, and LLM ask tools (notify_ask_options / notify_ask_input)",
   "type": "module",
   "license": "UNLICENSED",
