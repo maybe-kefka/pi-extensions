@@ -12,6 +12,7 @@
     "test:watch": "vitest",
     "publish:pi-status": "npm publish -w @kefka/pi-status --access public --registry=https://registry.npmjs.org/",
     "publish:pi-web": "npm publish -w @kefka/pi-web --access public --registry=https://registry.npmjs.org/",
+    "publish:pi-notify-termux": "npm publish -w @kefka/pi-notify-termux --access public --registry=https://registry.npmjs.org/",
     "build:web": "npm run build -w pi-web-frontend"
   },
   "devDependencies": {
