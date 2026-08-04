@@ -8,7 +8,7 @@ import { Bubble, BubbleContent } from "@/components/ui/bubble";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { Marker, MarkerContent } from "@/components/ui/marker";
-import { Message, MessageAvatar, MessageContent, MessageHeader } from "@/components/ui/message";
+import { Message, MessageAvatar, MessageContent, MessageGroup, MessageHeader } from "@/components/ui/message";
 import {
   MessageScroller,
   MessageScrollerButton,
@@ -44,14 +44,14 @@ function MessageBubble({ msg, dispatch }: { msg: ChatMessage; dispatch: React.Di
   if (msg.role === "user") {
     return (
       <Message align="end">
+        <MessageAvatar>
+          <UserAvatar />
+        </MessageAvatar>
         <MessageContent>
           <Bubble variant="default" align="end">
             <BubbleContent>{msg.text}</BubbleContent>
           </Bubble>
         </MessageContent>
-        <MessageAvatar>
-          <UserAvatar />
-        </MessageAvatar>
       </Message>
     );
   }
@@ -172,6 +172,15 @@ export function Chat({
       ? `队列: ${state.queue.steering.length ? `steer×${state.queue.steering.length}` : ""}${state.queue.steering.length && state.queue.followUp.length ? " " : ""}${state.queue.followUp.length ? `followUp×${state.queue.followUp.length}` : ""}`
       : null;
 
+  // 连续同角色消息合并为一组（工具循环产生的多段 assistant 输出视觉连贯）
+  const groups: { role: "user" | "assistant"; items: ChatMessage[] }[] = [];
+  for (const m of state.messages) {
+    const role = m.role === "assistant" ? "assistant" : "user";
+    const last = groups[groups.length - 1];
+    if (last && last.role === role) last.items.push(m);
+    else groups.push({ role, items: [m] });
+  }
+
   return (
     <main className="relative min-w-0 flex-1">
       <MessageScrollerProvider autoScroll>
@@ -189,9 +198,17 @@ export function Chat({
                 </Empty>
               ) : (
                 <>
-                  {state.messages.map((m) => (
-                    <MessageScrollerItem key={m.id} messageId={m.id} scrollAnchor={m.role === "user"}>
-                      <MessageBubble msg={m} dispatch={dispatch} />
+                  {groups.map((g) => (
+                    <MessageScrollerItem
+                      key={g.items[0].id}
+                      messageId={g.items[0].id}
+                      scrollAnchor={g.role === "user"}
+                    >
+                      <MessageGroup>
+                        {g.items.map((m) => (
+                          <MessageBubble key={m.id} msg={m} dispatch={dispatch} />
+                        ))}
+                      </MessageGroup>
                     </MessageScrollerItem>
                   ))}
                   {state.tools.map((t) => (

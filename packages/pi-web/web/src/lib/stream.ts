@@ -56,7 +56,7 @@ export interface StreamState {
 
 export type StreamAction =
   | { type: "conn"; state: StreamState["conn"] }
-  | { type: "history"; messages: { role: string; text: string }[] }
+  | { type: "history"; messages: { role: string; text: string; thinking?: string }[] }
   | { type: "message_start"; message: { role?: string; content?: unknown; toolName?: string } }
   | {
       type: "message_update";
@@ -147,7 +147,7 @@ export function streamReducer(state: StreamState, action: StreamAction): StreamS
           id: `h${i}`,
           role: m.role as ChatRole,
           text: m.text,
-          thinking: "",
+          thinking: m.thinking ?? "",
           thinkingExpanded: false,
           toolOutputExpanded: false,
           final: true,

@@ -94,3 +94,4 @@
 - T9.4 思考等级随模型过滤：`availableThinkingLevels` 入 `pi:getState`/`state`（commit 071feb9）
 - T9.5 QQ 风格气泡 + 工具弹窗（commit e6df297）
 - T9.6 双 skill（shadcn + Vercel React）审查修复：迁移官方 chat 原语（message-scroller/message/bubble/marker + avatar/empty，`@shadcn/react` 依赖）、`wrap-break-word`/`scroll-fade-b`/`scrollbar-*` 工具类、`--success`/`--warning` 语义色、SelectGroup、图标 data-icon、`space-y`→`gap`、memo+useCallback 重渲染优化
+- T9.7 实机复现修 bug：avatar 对齐（Message children 顺序 [Avatar,Content]）、MessageGroup 合并连续同角色（工具循环多段输出视觉连贯）、`pi:getMessages` 返回 thinking（刷新后思考块不丢）；新增 jsdom 渲染测试（Chat.test.tsx 5 例）+ 根 vitest.config.ts（别名/jsdom 环境）
