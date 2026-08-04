@@ -10,12 +10,12 @@
   },
   "files": [
     "src",
-    "web"
+    "web/dist"
   ],
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "prepublishOnly": "npm run typecheck && npm test"
+    "prepublishOnly": "cd web && npm run build && cd .. && npm run typecheck && npm test"
   },
   "dependencies": {
     "ws": "^8.18.0"

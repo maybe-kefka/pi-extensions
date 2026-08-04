@@ -39,6 +39,22 @@ export interface WebServerOptions {
 }
 
 const DEFAULT_MAX_CLIENTS = 16;
+const COOKIE_NAME = "piweb";
+
+function parseCookies(header: string | undefined): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (!header) return out;
+  for (const part of header.split(";")) {
+    const idx = part.indexOf("=");
+    if (idx === -1) continue;
+    try {
+      out[part.slice(0, idx).trim()] = decodeURIComponent(part.slice(idx + 1).trim());
+    } catch {
+      /* 坏 cookie 忽略 */
+    }
+  }
+  return out;
+}
 
 export async function startWebServer(options: WebServerOptions): Promise<WebServerHandle> {
   const maxClients = options.maxClients ?? DEFAULT_MAX_CLIENTS;
@@ -52,6 +68,11 @@ export async function startWebServer(options: WebServerOptions): Promise<WebServ
         res.writeHead(403, { "Content-Type": "text/plain; charset=utf-8" });
         res.end("forbidden: missing/invalid token");
         return;
+      }
+      // 首次授权后种下 HttpOnly cookie：子资源（/assets/*.js）自动带 cookie 通过校验
+      const cookies = parseCookies(req.headers.cookie);
+      if (!cookies[COOKIE_NAME] || !tokenEquals(token, cookies[COOKIE_NAME])) {
+        res.setHeader("Set-Cookie", `${COOKIE_NAME}=${token}; HttpOnly; SameSite=Strict; Path=/`);
       }
       await serveStatic(req, res);
     } catch {
@@ -75,7 +96,11 @@ export async function startWebServer(options: WebServerOptions): Promise<WebServ
   function isAuthorized(req: IncomingMessage): boolean {
     const queryToken = extractToken(req.url ?? "/");
     const headerToken = req.headers["x-web-token"];
-    const presented = (typeof headerToken === "string" && headerToken.length > 0 ? headerToken : null) ?? queryToken;
+    const cookieToken = parseCookies(req.headers.cookie)[COOKIE_NAME] ?? null;
+    const presented =
+      (typeof headerToken === "string" && headerToken.length > 0 ? headerToken : null) ??
+      queryToken ??
+      cookieToken;
     return presented !== null && tokenEquals(token, presented);
   }
 

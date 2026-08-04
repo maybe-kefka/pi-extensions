@@ -31,8 +31,9 @@ Pi 扩展：`/web` 命令——在当前 pi 进程内启动一个本地 Web 控�
 
 ```bash
 npm install
+npm run build:web        # 构建前端到 web/dist（改前端后需重新构建）
 npm run typecheck -w @kefka/pi-web
 npm test
 ```
 
-架构：`src/` 纯函数层（args/protocol/coalescer/events/state/http-util）全 TDD；`src/index.ts` 薄接线层；`src/server.ts` 薄层；`web/` 前端零依赖静态文件。
+前端：`packages/pi-web/web/`（React 19 + Vite + Tailwind v4 + shadcn，`web/dist` 提交进 git）。扩展侧运行时依赖仅 `ws`；`src/` 纯函数层（args/protocol/coalescer/events/state/http-util）全 TDD；`src/index.ts` 薄接线层；`src/server.ts` 薄层。

@@ -1,5 +1,7 @@
 node_modules/
 dist/
+!packages/pi-web/web/dist/
+!packages/pi-web/web/dist/**
 *.log
 .pi/npm/
 .pi/extensions/

@@ -6,6 +6,17 @@
 
 - **`pi:switchSession` / `pi:newSession` 不可实现**：源码核实 `newSession/fork/navigateTree/switchSession/waitForIdle/reload` 只存在于 `ExtensionCommandContext`（`runner.createCommandContext()`），事件 ctx（`createContext()`）与 `ExtensionAPI` 均不含；扩展无命令派发入口。实现为返回明确错误 + 提示 TUI `/resume`/`/new`；前端会话列表只读展示。E2E 已验证该错误路径。
 
+## R9 前端重构（React + Vite + Tailwind + shadcn）✅ 2025-08-03
+
+用户要求页面重构（不再 vanilla）。逐题对齐后执行：
+- `packages/pi-web/web/` 子工作区 `pi-web-frontend`（private）：React 19 + Vite 8 + TS strict + Tailwind v4（CSS-first）+ shadcn 手写经典组件（new-york/zinc/radix，CLI 新版交互式预设无法非 TTY 落地 → 手写等价源码）；lucide-react；无路由；暗色主题
+- 组件：Button/Input/Textarea/Select/Card/Badge/Progress/ScrollArea/Separator/Tooltip/Sonner（`components/ui/`）；App 层 Header/Chat/Sidebar/InputBar/DisconnectBanner
+- 状态：`useReducer` 根 store + `web/src/lib/stream.ts` 纯 reducer（+20 单测，含 history 回填 action）；`rpc.ts` WS 客户端（重连退避、请求映射、事件订阅）；`types.ts` 协议镜像
+- 交互升级：thinking/工具输出可展开、跟随滚动开关（上翻暂停+回到底部按钮）、Textarea（Enter/Shift+Enter）、断线横幅
+- 扩展侧：`WEB_DIR → web/dist`（启动前检查 dist 存在）；**cookie 授权**（`piweb` HttpOnly SameSite=Strict，修复子资源 403 白屏隐患——浏览器子资源不携带页面 query token）；新增 `pi:getMessages`（页面加载回填历史）；`files: ["src","web/dist"]`；prepublishOnly 先构建
+- 构建：`npm run build:web`（root）/ `build -w pi-web-frontend`；`web/dist` 提交进 git
+- 验证：`npm test` 147 全绿；`npm run typecheck` 全 workspace 通过；E2E 主套件 19 项 + 生命周期 9 项全过（含 React #root、assets 带 cookie 200 / 无 cookie 403、getMessages）
+
 ## T0 包骨架 ✅
 - npm workspaces 下新增 `@kefka/pi-web`：`packages/pi-web/`（package.json / tsconfig.json / src/ / test/ / web/）
 - package.json：运行时依赖 `ws`（dependencies）；`@earendil-works/pi-coding-agent` + `@types/ws` 仅 devDependencies；peerDependencies 声明 `@earendil-works/pi-coding-agent`（SessionManager 值导入，由 pi 宿主经 jiti 别名提供）；`pi.extensions` 入口 `./src/index.ts`；scripts 对齐 pi-status（typecheck / test / prepublishOnly）
