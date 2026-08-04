@@ -15,19 +15,18 @@ describe("buildHelperScript", () => {
     expect(s).toContain(`replies_dir="${OPTS.repliesDir}"`);
   });
 
-  it("notify branch writes reply file then removes the result notification", () => {
+  it("notify branch only writes the reply file (no remove; replacement is done by the extension)", () => {
     const s = buildHelperScript(OPTS);
     const branch = s.slice(s.indexOf("notify)"), s.indexOf("ask)"));
     expect(branch).toContain('printf \'%s\' "$text" > "$replies_dir/notify-${ts}.reply"');
-    // termux-notification-remove takes a positional id (NOT --id)
-    expect(branch).toContain(`"${OPTS.removeBin}" "${OPTS.resultId}"`);
+    expect(branch).not.toContain(OPTS.removeBin);
   });
 
-  it("ask branch writes reply file then removes its own notification", () => {
+  it("ask branch only writes the reply file", () => {
     const s = buildHelperScript(OPTS);
     const branch = s.slice(s.indexOf("ask)"), s.indexOf("cancel)"));
     expect(branch).toContain('printf \'%s\' "$text" > "$replies_dir/ask-${id}.reply"');
-    expect(branch).toContain(`"${OPTS.removeBin}" "ask-${"${id}"}"`);
+    expect(branch).not.toContain(OPTS.removeBin);
   });
 
   it("cancel branch only writes the cancel marker", () => {

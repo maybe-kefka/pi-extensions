@@ -68,3 +68,12 @@ export function buildAskInputArgs(opts: AskInputArgs): string[] {
 export function buildOnDeleteArg(opts: { id: string; helperPath: string }): string[] {
   return ["--on-delete", `${opts.helperPath} cancel ${opts.id}`];
 }
+
+/** 终结状态通知：同 id 替换原通知（无按钮；remove 在部分设备无效，替换是可靠反馈） */
+export function buildStatusNotificationArgs(opts: {
+  id: string;
+  title: string;
+  content: string;
+}): string[] {
+  return ["--id", opts.id, "--title", opts.title, "--content", opts.content];
+}

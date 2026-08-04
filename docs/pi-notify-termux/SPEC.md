@@ -78,11 +78,13 @@ pi (TUI, 扩展进程)
 | `src/index.ts` | 接线：TUI 守卫、事件注册（agent_settled / session_shutdown）、tool 注册、命令注册、轮询循环、spawn 通知、helper 生成 | 不单测 |
 
 ### 4.1 `termux-notification` 参数约定
-- 需求 1：`--id pi-notify-result --title "✅ pi · HH:MM" --content <全文> --button1 回复 --button1-action '<helper> notify <ts> "$REPLY"' --button2 打开终端 --button2-action '<am 绝对路径> start -n com.termux/.app.TermuxActivity'`（`--on-delete` 不设，滑掉无副作用）
+- 需求 1：`--id pi-notify-result --title "✅ pi · HH:MM" --content <全文> --button1 回复 --button1-action '<helper> notify <ts> "$REPLY"' --button2 打开终端 --button2-action '<Termux am 绝对路径> start -n com.termux/.app.TermuxActivity'`（`--on-delete` 不设，滑掉无副作用）
+- **“打开终端”用 Termux 自带的 am 封装**（`<PREFIX>/bin/am`，termux-am）：系统 `/system/bin/am` 是 shell 特权工具，Android 10+ 普通 app 调用被拒（实测 Permission Denial）。
 - 需求 2 options：`--id ask-<id> --title "❓ pi 提问 · HH:MM" --content <问题 + 选项列表> --button1 <opt1> --button1-action '<helper> ask <id> 1' ... --buttonN ...`；input：`--button1 回复 --button1-action '<helper> ask <id> "$REPLY"'`
 - options tool 同时提供 Direct Reply？**不**（D5 拆分：options tool 纯按钮；input tool 纯输入）。options 超 3 个 → tool 报错让 LLM 收敛。
 - `$REPLY` 转义：action 串内 `$REPLY` 保持字面（termux-api 替换），helper 参数用双引号包裹；helper 内 `printf '%s' "$2" > file` 防注入。
 - 空输入（Direct Reply 直接发送空串）→ 视为**取消**（写 cancelled 语义）。
+- **终结反馈（方案 B）**：不再依赖 `termux-notification-remove`（OPPO ColorOS/Android 16 实测无效——app 端 `NotificationManager.cancel()` 被系统静默忽略）。answered/timeout 时扩展用**同 id 重新 notify** 替换为状态通知（`✅ 已收到你的回复 ✓` / `⏰ 提问已超时`）+ `termux-toast`；cancelled（滑掉）无需替换。helper.sh 不调 remove。
 
 ### 4.2 helper.sh（启动时生成，绝对路径）
 ```sh

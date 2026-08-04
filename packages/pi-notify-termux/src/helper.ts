@@ -1,16 +1,12 @@
 /** helper.sh 生成（纯函数，TDD：test/helper.test.ts）。
  *  通知 action 在干净环境（dash -c、PATH 丢失）执行 → 一律绝对路径。
- *  回复经 printf '%s' 写入文件（防注入）；写完顺带 termux-notification-remove
- *  移除本条通知（Android 点按钮后不会自动消失，需主动 cancel）。 */
+ *  回复经 printf '%s' 写入文件（防注入）。终结后的状态反馈由扩展侧
+ *  用同 id 重新 notify 替换完成（部分设备 remove 无效，替换是可靠通道）。 */
 
 export interface HelperScriptOptions {
   repliesDir: string;
   /** Termux shell 绝对路径（shebang） */
   shBin: string;
-  /** termux-notification-remove 绝对路径 */
-  removeBin: string;
-  /** 需求 1 结果通知的固定 id（回复后移除） */
-  resultId: string;
 }
 
 export function buildHelperScript(opts: HelperScriptOptions): string {
@@ -22,12 +18,10 @@ export function buildHelperScript(opts: HelperScriptOptions): string {
     "  notify)",
     '    ts="$2"; text="$3"',
     '    printf \'%s\' "$text" > "$replies_dir/notify-${ts}.reply"',
-    `    "${opts.removeBin}" "${opts.resultId}"`,
     "    ;;",
     "  ask)",
     '    id="$2"; text="$3"',
     '    printf \'%s\' "$text" > "$replies_dir/ask-${id}.reply"',
-    `    "${opts.removeBin}" "ask-\${id}"`,
     "    ;;",
     "  cancel)",
     '    id="$2"',

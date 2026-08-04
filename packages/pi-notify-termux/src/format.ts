@@ -27,6 +27,11 @@ export function buildAskContent(question: string, options: readonly string[] = [
   return [question, ...lines].join("\n");
 }
 
+/** 终结状态通知文案（替换原通知，SPEC 方案 B） */
+export function buildStatusContent(status: "answered" | "timeout"): string {
+  return status === "answered" ? "已收到你的回复 ✓" : "⏰ 提问已超时，未收到回复";
+}
+
 /** 无可通知内容判定（空串/纯空白） */
 export function hasContent(text: string): boolean {
   return text.trim().length > 0;
