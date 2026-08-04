@@ -98,3 +98,11 @@
 - **实现**：`replaceWithStatus`（替换 + `AUTO_DISMISS_MS=2000` 延时 remove）→ `replaceAndDismiss`（替换 + **同步立即 remove**）；删除 `AUTO_DISMISS_MS` 常量与计时器
 - **实弹验证**：替换 → 立即 remove → `termux-notification-list` 确认不在栏（无时序竞争）；污染实例路径（Direct Reply）真机待用户验收
 - **验证**：74 tests 全绿 + typecheck
+
+## T10：Direct Reply 截断修复（2025-08，已完成）
+
+- **背景（用户实测报告）**：通知回复输入含空格的长内容（"测试 settled 通知效果，无需回复"）→ 扩展只收到第一段"测试"
+- **根因（源码实证）**：termux-api `NotificationAPI.onReceiveReplyToNotification` 用 `action.replace("$REPLY", shellEscape(reply))` 替换，**shellEscape 自带引号**（`"` + 转义内部引号 + `"`）；扩展 action 里又写了 `"$REPLY"` → 替换后双引号嵌套 `""输入""` → `sh -c` 解析错乱，含空格输入分词，helper `$3` 只取第一段。**无空格输入恰好不触发**（`""好的""` 拼成一个词）——早期验收被掩盖
+- **修复**：action 里裸写 `$REPLY`（引号由 termux-api 提供）；本地模拟 shellEscape 替换验证：含空格 42 字节完整 ✅、含双引号转义 ✅、无空格 ✅
+- **已知限制**：shellEscape 只转义双引号，输入含 `$`/反引号时双引号内仍会被 shell 展开（termux-api 上游缺陷，不处理）
+- **验证**：notify-cmd 13 tests 全绿 + typecheck；真机待用户复测

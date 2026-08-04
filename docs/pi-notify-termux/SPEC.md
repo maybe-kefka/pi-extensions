@@ -88,7 +88,8 @@ pi (TUI, 扩展进程)
 | `src/index.ts` | 接线：TUI 守卫、事件注册（agent_settled / session_shutdown）、tool 注册、命令注册、轮询循环、spawn 通知、helper 生成 | 不单测 |
 
 ### 4.1 `termux-notification` 参数约定
-- 需求 1：`--id pi-notify-result --title "✅ pi · HH:MM" --content <全文> --button1 回复 --button1-action '<helper> notify <ts> "$REPLY"' --button2 打开终端 --button2-action '<Termux am 绝对路径> start -n com.termux/.app.TermuxActivity'`（`--on-delete` 不设，滑掉无副作用）
+- 需求 1：`--id pi-notify-result --title "✅ pi · HH:MM" --content <全文> --button1 回复 --button1-action '<helper> notify <ts> $REPLY' --button2 打开终端 --button2-action '<Termux am 绝对路径> start -n com.termux/.app.TermuxActivity'`（`--on-delete` 不设，滑掉无副作用）
+  - ⚠️ **`$REPLY` 必须裸写**（不包引号）：termux-api 的 `shellEscape` 替换时自带引号（源码 `NotificationAPI.java` 实证），外层再包引号 → 双引号嵌套 `""输入""` → 含空格输入被 shell 分词，helper `$3` 只拿到第一段（实测 2025-08 用户报告截断）
 - **“打开终端”用 Termux 自带的 am 封装**（`<PREFIX>/bin/am`，termux-am）：系统 `/system/bin/am` 是 shell 特权工具，Android 10+ 普通 app 调用被拒（实测 Permission Denial）。action 带 `|| termux-toast “后台启动被拒…”` 降级提示（ColorOS 需“后台弹出界面”权限）。
 - 需求 2 options：`--id ask-<id> --title "❓ pi 提问 · HH:MM" --content <问题 + 选项列表> --button1 <opt1> --button1-action '<helper> ask <id> 1' ... --buttonN ...`；input：`--button1 回复 --button1-action '<helper> ask <id> "$REPLY"'`
 - options tool 同时提供 Direct Reply？**不**（D5 拆分：options tool 纯按钮；input tool 纯输入）。options 超 3 个 → tool 报错让 LLM 收敛。
