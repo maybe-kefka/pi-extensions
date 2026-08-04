@@ -7,7 +7,9 @@ import {
 } from "../src/notify-cmd.js";
 
 const HELPER = "/data/data/com.termux/files/home/.pi/pi-notify-termux/helper.sh";
-const AM = "/system/bin/am";
+// Termux's own am wrapper (termux-am, app_process-based): the system
+// /system/bin/am is a shell-uid tool and is rejected on Android 10+.
+const AM = "/data/data/com.termux/files/usr/bin/am";
 
 describe("buildResultNotificationArgs", () => {
   const args = buildResultNotificationArgs({
