@@ -4,7 +4,6 @@ import {
   buildAskOptionsArgs,
   buildOnDeleteArg,
   buildResultNotificationArgs,
-  buildStatusNotificationArgs,
 } from "../src/notify-cmd.js";
 
 const HELPER = "/data/data/com.termux/files/home/.pi/pi-notify-termux/helper.sh";
@@ -99,19 +98,5 @@ describe("buildOnDeleteArg", () => {
       "--on-delete",
       `${HELPER} cancel abc123`,
     ]);
-  });
-});
-
-describe("buildStatusNotificationArgs", () => {
-  it("replaces a notification with a plain status notice (same id, no buttons)", () => {
-    const args = buildStatusNotificationArgs({
-      id: "ask-abc123",
-      title: "✅ pi",
-      content: "已收到你的回复 ✓",
-    });
-    expect(args[args.indexOf("--id") + 1]).toBe("ask-abc123");
-    expect(args[args.indexOf("--title") + 1]).toBe("✅ pi");
-    expect(args[args.indexOf("--content") + 1]).toBe("已收到你的回复 ✓");
-    expect(args.some((a) => a.startsWith("--button"))).toBe(false);
   });
 });
