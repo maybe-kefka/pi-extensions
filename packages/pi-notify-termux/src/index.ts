@@ -25,6 +25,8 @@ import { findPiNotifications, parseNotificationList, renderNotificationStatus } 
 
 const TERMUX_TERMINAL_ACTIVITY = "com.termux/.app.TermuxActivity";
 const POLL_INTERVAL_MS = 500;
+/** 替换为状态通知后自动移除的延迟：Direct Reply 污染的是原实例，替换后是新实例，remove 有效 */
+const AUTO_DISMISS_MS = 2000;
 
 interface PendingAsk {
   ask: Ask;
@@ -77,6 +79,7 @@ export default function (pi: ExtensionAPI): void {
     spawnSync(`${prefix}/bin/termux-notification-remove`, [id], { encoding: "utf8" });
   }
 
+  /** 终结反馈：替换为状态通知，2s 后自动移除（新实例 remove 有效，闪一下“已收到”即消失） */
   function replaceWithStatus(id: string, status: "answered" | "timeout"): void {
     sendNotification(
       buildStatusNotificationArgs({
@@ -85,6 +88,9 @@ export default function (pi: ExtensionAPI): void {
         content: buildStatusContent(status),
       }),
     );
+    setTimeout(() => {
+      removeNotification(id);
+    }, AUTO_DISMISS_MS);
   }
 
   function settle(p: PendingAsk, result: AskResult): void {
