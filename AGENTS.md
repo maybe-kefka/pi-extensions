@@ -1,6 +1,6 @@
 # pi-extensions 项目说明
 
-个人 pi 扩展 monorepo（npm workspaces，包名模式 `@kefka/pi-*`）。当前只含一个包：`packages/pi-status`（`/status` 命令——上下文占用分类面板 + 已加载资源清单）。
+个人 pi 扩展 monorepo（npm workspaces，包名模式 `@kefka/pi-*`）。包含：`packages/pi-status`（`/status` 命令——上下文占用分类面板）与 `packages/pi-web`（`/web` 命令——本地 Web 控制台，含 `web/` 前端子工作区，构建产物 `web/dist` 提交进 git）。
 
 ## 目录结构
 
@@ -22,6 +22,7 @@ docs/
 ## 开发约定（硬约束）
 
 - **流程**：改动遵循 `docs/SPEC.md` → `docs/TICKETS.md` 新增 ticket → TDD（先写失败测试，再实现）→ `npm run typecheck` + `npm test` 全绿 → 提交
+- **发布（publish）必须用户明确指示后才能执行**：用户没说"发布/推送 npm"，一律不自行 `npm publish`、不 bump 版本号；实施完成后只汇报结果，把发布作为待办等用户开口
 - **`src/index.ts` 必须是薄接线层**：不写业务逻辑、不做单测；其余 src 模块全部纯函数 + 单测
 - **类型导入用 `import type`**（`verbatimModuleSyntax` 强制）
 - **运行时依赖仅 `@earendil-works/pi-tui`**；`@earendil-works/pi-coding-agent` 仅作类型导入（devDependency）
