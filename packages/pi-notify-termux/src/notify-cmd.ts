@@ -1,7 +1,9 @@
 /** termux-notification 参数数组构造（纯函数，TDD：test/notify-cmd.test.ts）。
  *  返回可直接被 child_process.spawn 消费的 argv（无 shell 拼接）。
  *  action 字符串由 termux-api 在干净环境（dash -c）执行：一律绝对路径，
- *  `$REPLY` 保持字面（termux-api 的 Direct Reply 会替换为带引号的用户输入）。 */
+ *  `$REPLY` 保持字面（termux-api 的 Direct Reply 会把它替换为 shellEscape 后的用户输入）。
+ *  ⚠️ 不要给 `$REPLY` 包引号：shellEscape 自带引号，外层再包引号 → 双引号嵌套
+ *  （`""输入""`），含空格输入会被 shell 分词截断（实测只收到第一段）。 */
 
 import { ASK_PREFIX } from "./replies.js";
 
@@ -41,7 +43,7 @@ export function buildResultNotificationArgs(opts: ResultNotificationArgs): strin
     "--title", opts.title,
     "--content", opts.content,
     "--button1", "回复",
-    "--button1-action", `${opts.helperPath} notify ${opts.ts} "$REPLY"`,
+    "--button1-action", `${opts.helperPath} notify ${opts.ts} $REPLY`,
     "--button2", "打开终端",
     "--button2-action",
     `${opts.amPath} start -n ${TERMUX_ACTIVITY} || ${opts.toastPath} 后台启动被拒：请在系统设置中允许 Termux 后台弹出界面`,
@@ -69,7 +71,7 @@ export function buildAskInputArgs(opts: AskInputArgs): string[] {
     "--title", opts.title,
     "--content", opts.content,
     "--button1", "回复",
-    "--button1-action", `${opts.helperPath} ask ${opts.id} "$REPLY"`,
+    "--button1-action", `${opts.helperPath} ask ${opts.id} $REPLY`,
   ];
 }
 

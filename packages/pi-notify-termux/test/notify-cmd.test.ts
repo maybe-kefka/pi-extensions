@@ -34,10 +34,12 @@ describe("buildResultNotificationArgs", () => {
     expect(args[args.indexOf("--content") + 1]).toBe("第一行\n第二行");
   });
 
-  it("has reply button with literal $REPLY routed to helper", () => {
+  it("has reply button with bare $REPLY (quotes come from termux-api shellEscape)", () => {
     expect(args[args.indexOf("--button1") + 1]).toBe("回复");
     const action = args[args.indexOf("--button1-action") + 1];
-    expect(action).toBe(`${HELPER} notify 1725000000 "$REPLY"`);
+    // 不能包引号：termux-api 替换 $REPLY 时自带引号，外层再包引号 → ""输入"" 双引号嵌套，
+    // 含空格输入被 shell 分词，helper 的 $3 只拿到第一段（实测截断为 "测试"）
+    expect(action).toBe(`${HELPER} notify 1725000000 $REPLY`);
     expect(action).toContain("$REPLY");
   });
 
@@ -90,7 +92,7 @@ describe("buildAskInputArgs", () => {
     });
     expect(args[args.indexOf("--id") + 1]).toBe("ask-xyz");
     expect(args[args.indexOf("--button1") + 1]).toBe("回复");
-    expect(args[args.indexOf("--button1-action") + 1]).toBe(`${HELPER} ask xyz "$REPLY"`);
+    expect(args[args.indexOf("--button1-action") + 1]).toBe(`${HELPER} ask xyz $REPLY`);
   });
 });
 
