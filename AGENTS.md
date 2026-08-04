@@ -44,7 +44,7 @@ npm version patch -w @kefka/<pkg>   # bump 版本（发版流程第一步）
 
 - push `main`（或 tag `v*`）→ GitHub Actions `.github/workflows/publish.yml`：质量门（test + typecheck）→ `.github/scripts/publish-changed.sh`
 - 脚本对比本地 package.json 版本与 npm registry 已发布版本，**只发布有更新的包**（pi-status / pi-web / pi-notify-termux），已发布的自动 skip
-- 认证：npm Trusted Publishing (OIDC)，无需 NPM_TOKEN；前置条件为 npmjs.com Account → Trusted Publishing 配置 OIDC 主体 `owner=maybe-kefka, repo=pi-extensions, workflow=publish.yml`（**是否已配置未验证**——CI 全绿运行过但从未真正调 publish）
+- 认证：npm Trusted Publishing (OIDC)，无需 NPM_TOKEN；前置条件为 npmjs.com 包 Settings → Trusted Publisher 配置（owner=maybe-kefka, repo=pi-extensions, workflow=publish.yml，权限 npm publish，**2026-08 已验证生效**——pi-status 0.1.3 由 CI 发布成功）
 - 用户发版流程：`npm version patch -w <pkg>` → 本地 typecheck + test → `git push` → CI 自动发布
 
 ## /status 行为要点（改这里前先读 docs/SPEC.md §2.1）
