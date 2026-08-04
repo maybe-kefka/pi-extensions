@@ -40,14 +40,8 @@ export function Header({
           <span className="tabular-nums">{label}</span>
         </span>
         {/* 窄屏：打开抽屉 */}
-        <Button
-          variant="ghost"
-          size="icon"
-          className="size-8 lg:hidden"
-          onClick={onOpenDrawer}
-          title="面板"
-        >
-          <SlidersHorizontal className="size-4" />
+        <Button variant="ghost" size="icon" className="size-8 lg:hidden" onClick={onOpenDrawer} title="面板">
+          <SlidersHorizontal />
         </Button>
         {/* 宽屏：折叠/展开侧栏 */}
         <Button
@@ -57,7 +51,7 @@ export function Header({
           onClick={onToggleSidebar}
           title={sidebarCollapsed ? "展开侧栏" : "折叠侧栏"}
         >
-          {sidebarCollapsed ? <PanelLeftOpen className="size-4" /> : <PanelLeftClose className="size-4" />}
+          {sidebarCollapsed ? <PanelLeftOpen /> : <PanelLeftClose />}
         </Button>
       </div>
     </header>
