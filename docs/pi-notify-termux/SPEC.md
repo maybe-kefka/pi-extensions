@@ -25,6 +25,7 @@
 | D6 | 超时/取消 | 默认超时 5 分钟（tool 参数 `timeout` 可覆盖，0=不超时）；**滑掉通知 = 取消**（`--on-delete` 钩子）；结构化返回 `{status: "answered" \| "timeout" \| "cancelled", ...}` |
 | D7 | 总开关 | 命令 `/notify on` / `/notify off` / `/notify`（无参=显示状态）；默认 on；**持久化** |
 | D11 | 确认引导（2025-08 新增） | **软引导**：`before_agent_start` 每 turn 追加 `buildConfirmPrompt()` 到 system prompt（不拦截工具，无硬约束）。config `confirmPrompt` 默认 true，`/notify confirm on|off` 持久化；独立开关（ask 工具不受 `enabled` 控制） |
+| D12 | 结果通知已读清理（2025-08 新增） | 结果通知是**一次性提醒**：`input`（用户提交消息）、`agent_start`（含 [回复] 注入的新 run，替代 2s 替换展示）、`session_shutdown`（new/resume/fork/reload/quit）、`session_start`（清上次残留）→ `removeNotification(RESULT_NOTIFICATION_ID)` |
 | D8 | 模式守卫 | **仅 TUI 模式**（`ctx.mode === "tui"`）加载全部功能；print/json/rpc 模式静默不加载（无会话可注入"下一轮"，回复通道半残） |
 | D9 | 命名 | 包 `@kefka/pi-notify-termux`；tool `notify_ask_options` / `notify_ask_input`；标题 `✅ pi` / `❓ pi 提问` |
 | D10 | 配置 | `{enabled: boolean, timeoutSec: number}`，存 **`~/.pi/pi-notify-termux/config.json`**（用户级，用 `CONFIG_DIR_NAME` 构建，不硬编码 `.pi`） |
@@ -120,6 +121,8 @@ esac
 - 内容：最终 assistant 消息文本。取 `agent_end` 的 `event.messages` 中最后一条 assistant 消息缓存，或 settled 时从 ctx 取（实现以可拿到为准，见 TICKETS 验证）；消息为空（无文本输出）→ 不弹通知。
 - 回复注入：轮询发现 `notify-*.reply` → `pi.sendUserMessage(text)`（settled 后空闲，立即触发新一轮，source=extension）。
 - 固定 id 原地更新；新一轮 agent 结束再次覆盖。
+- **已读清理（D12）**：用户开始下一轮（input / agent_start）、切换 session / reload / quit（session_shutdown）、或启动时清理残留（session_start）→ 立即移除结果通知。
+- 结果通知 [回复] 注入后：agent_start 直接移除（原「替换 + 2s 自动消失」在此路径不再需要——用户已在交互中）；ask 通知的回复路径不受影响（同一 run 内 resolve tool，不触发 agent_start，保留「已收到 ✓」2s 机制）。
 - 通知被滑掉：无副作用（不取消任何 pending）。
 
 ### 5.2 需求 2（tool）

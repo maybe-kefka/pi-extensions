@@ -81,3 +81,13 @@
   - `parseNotifyCommand` 支持 `confirm on|off` / `confirm`（无参=状态）、非法子参报错
 - **接线**：`/notify confirm on|off` 持久化写入 config.json；`/notify confirm` 显示状态；`before_agent_start` 链式追加 systemPrompt
 - **验证**：249 tests 全绿 + typecheck；真机待用户 reload 验收
+
+## T8：结果通知"已读即清"（2025-08，已完成）
+
+- **背景**：用户反馈 settled 后的结果通知在开启下一轮对话 / 切换 session / reload 后一直残留。结果通知语义 = 一次性提醒，用户回到交互后即过期
+- **实现**（薄接线，index.ts）：
+  - `input`：用户提交消息 → remove 结果通知
+  - `agent_start`：兜底一切新 run（含 [回复] 注入消息的路径——此路径原「替换 + 2s 自动消失」被更快的立即移除替代，ask 通知回复路径不受影响）
+  - `session_shutdown`：切 session（new/resume/fork）/ reload / quit → remove
+  - `session_start`：清理上次 session 残留（兜底 quit 时 remove 未发出的情况）
+- **验证**：74 tests 全绿 + typecheck；真机待用户 reload 验收
