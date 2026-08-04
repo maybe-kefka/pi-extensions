@@ -1,4 +1,6 @@
-/** 通知文案格式化（纯函数，TDD：test/format.test.ts） */
+/** 通知文案格式化与消息提取（纯函数，TDD：test/format.test.ts） */
+
+import type { TerminalStatus } from "./ask.js";
 
 export type NotifyKind = "result" | "ask";
 
@@ -28,11 +30,38 @@ export function buildAskContent(question: string, options: readonly string[] = [
 }
 
 /** 终结状态文案（替换原通知，Direct Reply 通知无法 remove 时的反馈通道） */
-export function buildStatusContent(status: "answered" | "timeout"): string {
+export function buildStatusContent(status: TerminalStatus): string {
   return status === "answered" ? "已收到你的回复 ✓" : "⏰ 提问已超时，未收到回复";
 }
 
 /** 无可通知内容判定（空串/纯空白） */
 export function hasContent(text: string): boolean {
   return text.trim().length > 0;
+}
+
+/** 从 agent run 消息里提取最后一条非空 assistant 文本（content 兼容 string / 文本块数组） */
+export function extractAssistantText(messages: unknown): string | null {
+  if (!Array.isArray(messages)) return null;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i] as { role?: unknown; content?: unknown } | null;
+    if (!m || m.role !== "assistant") continue;
+    const text = textFromContent(m.content);
+    if (text !== null && text.trim().length > 0) return text;
+  }
+  return null;
+}
+
+function textFromContent(content: unknown): string | null {
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
+    const parts: string[] = [];
+    for (const c of content) {
+      const block = c as { type?: unknown; text?: unknown } | null;
+      if (block && block.type === "text" && typeof block.text === "string") {
+        parts.push(block.text);
+      }
+    }
+    if (parts.length > 0) return parts.join("\n");
+  }
+  return null;
 }

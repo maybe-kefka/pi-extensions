@@ -76,20 +76,24 @@ pi (TUI, 扩展进程)
 |---|---|---|
 | `src/format.ts` | 标题/内容/按钮文案/时间格式化（`buildTitle(kind, date)`、`buildContent(...)`、选项列表渲染） | 纯函数 |
 | `src/notify-cmd.ts` | 构造 `termux-notification` 参数数组（`buildNotificationArgs(opts)`：title/content/id/buttons/action/on-delete/ongoing…）与 `buildHelperCall(...)`（helper 调用串，处理 `$REPLY` 转义） | 纯函数 |
-| `src/replies.ts` | 回复文件名生成/解析（`encodeReplyFile`/`parseReplyFile`）、`decodeReply`（$REPLY 原文 → 结构化） | 纯函数 |
-| `src/config.ts` | 默认配置、路径构建（`configDir()` 用 `CONFIG_DIR_NAME`）、`loadConfig`/`saveConfig`、`parseNotifyCommand`（`/notify` 参数解析） | 纯函数（fs 注入或薄封装） |
+| `src/replies.ts` | 文件桥编解码：`parseFileName` / `decodeReply` / `parseOptionSelection`（选项序号映射） | 纯函数 |
+| `src/config.ts` | 默认配置、路径构建（`configDir()` 用 `CONFIG_DIR_NAME`）、`parseConfig`、`parseNotifyCommand`（`/notify` 参数解析）、`renderStatus` | 纯函数 |
 | `src/ask.ts` | pending ask 状态机：`createAsk`/`resolveAsk`/`cancelAsk`/`checkTimeout`、超时计算、结果序列化 | 纯函数（时间注入） |
 | `src/notify-list.ts` | `termux-notification-list` 输出解析：`parseNotificationList` / `findPiNotifications` / `renderNotificationStatus`（/notify status 显示通知栏实时状态） | 纯函数 |
 | `src/index.ts` | 接线：TUI 守卫、事件注册（agent_settled / session_shutdown）、tool 注册、命令注册、轮询循环、spawn 通知、helper 生成 | 不单测 |
 
 ### 4.1 `termux-notification` 参数约定
 - 需求 1：`--id pi-notify-result --title "✅ pi · HH:MM" --content <全文> --button1 回复 --button1-action '<helper> notify <ts> "$REPLY"' --button2 打开终端 --button2-action '<Termux am 绝对路径> start -n com.termux/.app.TermuxActivity'`（`--on-delete` 不设，滑掉无副作用）
-- **“打开终端”用 Termux 自带的 am 封装**（`<PREFIX>/bin/am`，termux-am）：系统 `/system/bin/am` 是 shell 特权工具，Android 10+ 普通 app 调用被拒（实测 Permission Denial）。
+- **“打开终端”用 Termux 自带的 am 封装**（`<PREFIX>/bin/am`，termux-am）：系统 `/system/bin/am` 是 shell 特权工具，Android 10+ 普通 app 调用被拒（实测 Permission Denial）。action 带 `|| termux-toast “后台启动被拒…”` 降级提示（ColorOS 需“后台弹出界面”权限）。
 - 需求 2 options：`--id ask-<id> --title "❓ pi 提问 · HH:MM" --content <问题 + 选项列表> --button1 <opt1> --button1-action '<helper> ask <id> 1' ... --buttonN ...`；input：`--button1 回复 --button1-action '<helper> ask <id> "$REPLY"'`
 - options tool 同时提供 Direct Reply？**不**（D5 拆分：options tool 纯按钮；input tool 纯输入）。options 超 3 个 → tool 报错让 LLM 收敛。
 - `$REPLY` 转义：action 串内 `$REPLY` 保持字面（termux-api 替换），helper 参数用双引号包裹；helper 内 `printf '%s' "$2" > file` 防注入。
 - 空输入（Direct Reply 直接发送空串）→ 视为**取消**（写 cancelled 语义）。
-- **终结反馈（最终方案，2025-08 实测修订）**：`termux-notification-remove` 在 **Termux:API 通知权限全开**后有效（ColorOS 类别权限是根因，此前“系统限制”为误判）。answered/timeout/需求 1 回复时扩展侧调用 `termux-notification-remove` 移除通知 + `termux-toast` 反馈；helper.sh 不碰 remove（避免与扩展侧竞争）。替换方案（buildStatusNotificationArgs/buildStatusContent）已删除。
+- **终结反馈（最终方案，2025-08 实测修订）**：`termux-notification-remove` 在 **Termux:API 通知权限全开**后有效（ColorOS 类别权限是根因）。分场景：
+  - **按钮（options）**：扩展侧 `termux-notification-remove` 移除通知 + `termux-toast`（实测有效）
+  - **Direct Reply（ask_input / 结果通知回复）**：`remove` 被系统忽略（回复过的通知实例被污染）→ 扩展侧**同 id 替换**为状态通知（`✅ 已收到你的回复 ✓`），**2 秒后自动移除**（替换后是新实例，remove 恢复有效；`AUTO_DISMISS_MS=2000`）+ `termux-toast`
+  - **超时**（未经过回复）：`termux-notification-remove` + toast
+  - helper.sh 不碰 remove（避免竞争）。`buildStatusNotificationArgs`/`buildStatusContent` 为替换用纯函数（TDD）。
 
 ### 4.2 helper.sh（启动时生成，绝对路径）
 ```sh
@@ -116,14 +120,14 @@ esac
 - 通知被滑掉：无副作用（不取消任何 pending）。
 
 ### 5.2 需求 2（tool）
-- `notify_ask_options`：参数 `question: string`（必填）、`options: string[]`（1–3 项，超 3 → 错误）。通知含 `<id>`，按钮 1..N 对应选项；点击 → resolve `{status:"answered", selection: "N", option: "<原文>", text: "<原文>"}`。
+- `notify_ask_options`：参数 `question: string`（必填）、`options: string[]`（1–3 项，超 3 → 错误）。通知含 `<id>`，按钮 1..N 对应选项；点击 → resolve `{status:"answered", selection: N(数字序号), option: "<原文>", text: "<原文>"}`。
 - `notify_ask_input`：参数 `question: string`（必填）、`timeout?: number`（秒，0=不超时，默认取配置 `timeoutSec`）。Direct Reply → resolve `{status:"answered", selection: null, option: null, text: "<输入>"}`。
 - 空输入 / 滑掉 → `{status:"cancelled"}`；超时 → `{status:"timeout"}`（都带 `question` 回显，LLM 可重试或收尾）。
 - tool 描述与 `promptGuidelines`：指导 LLM 何时用（用户离开终端/需要即时决策/需明确选择时；`notify_ask_options` 用于有限选项，`notify_ask_input` 用于自由文本）。每条 guideline 带 tool 名。
 - 不可用降级：`termux-notification` 缺失/通知权限未授予 → tool 返回错误（LLM 转用 `ctx.ui` 提问或告知用户）。
 
 ### 5.3 /notify 命令
-- `/notify on` → enabled=true 持久化 + notify 确认；`/notify off` → enabled=false + notify；`/notify`（无参）→ 显示当前状态（含 Termux 环境/权限提示 + **通知栏实时状态**：调 `termux-notification-list` 解析出结果通知/提问通知是否在栏，`src/notify-list.ts`）。
+- `/notify on` → enabled=true 持久化 + notify 确认；`/notify off` → enabled=false + notify；`/notify`（无参）→ 显示当前状态（termux-api 环境探测 + **通知栏实时状态**：调 `termux-notification-list` 解析出结果通知/提问通知是否在栏，`src/notify-list.ts`；Android 13+ 通知权限无法程序化探测，见 README 权限矩阵）。
 - 未知参数 → 报错 + 用法（`parseNotifyCommand` 纯函数）。
 
 ### 5.4 竞态与并发

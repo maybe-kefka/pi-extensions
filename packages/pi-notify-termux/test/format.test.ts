@@ -4,6 +4,7 @@ import {
   buildResultContent,
   buildStatusContent,
   buildTitle,
+  extractAssistantText,
   hasContent,
 } from "../src/format.js";
 
@@ -57,5 +58,36 @@ describe("hasContent", () => {
   it("returns true for any non-whitespace text", () => {
     expect(hasContent("ok")).toBe(true);
     expect(hasContent(" \n x ")).toBe(true);
+  });
+});
+
+describe("extractAssistantText", () => {
+  it("extracts the last non-empty assistant text (string content)", () => {
+    const messages = [
+      { role: "user", content: "hi" },
+      { role: "assistant", content: "第一行" },
+      { role: "assistant", content: "" },
+    ];
+    expect(extractAssistantText(messages)).toBe("第一行");
+  });
+
+  it("extracts from text-block array content", () => {
+    const messages = [
+      { role: "assistant", content: [{ type: "text", text: "a" }, { type: "text", text: "b" }] },
+    ];
+    expect(extractAssistantText(messages)).toBe("a\nb");
+  });
+
+  it("skips non-text blocks and empty assistants", () => {
+    const messages = [
+      { role: "assistant", content: [{ type: "tool_use", name: "x" }] },
+      { role: "assistant", content: "   " },
+    ];
+    expect(extractAssistantText(messages)).toBeNull();
+  });
+
+  it("returns null for non-array input", () => {
+    expect(extractAssistantText(undefined)).toBeNull();
+    expect(extractAssistantText("nope")).toBeNull();
   });
 });

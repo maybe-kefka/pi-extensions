@@ -19,7 +19,7 @@ src/
 ├── notify-cmd.ts   # 纯函数：termux-notification 参数数组构造
 ├── notify-list.ts  # 纯函数：termux-notification-list 输出解析（/notify status）
 └── replies.ts      # 纯函数：文件桥编解码（防穿越、空输入=取消）
-test/               # vitest 单测（TDD，231 tests）
+test/               # vitest 单测（TDD，以 npm test 全绿为准）
 ```
 
 ## 硬约束

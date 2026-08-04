@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   buildConfigPaths,
   defaultConfig,
-  loadConfig,
   parseConfig,
   parseNotifyCommand,
   renderStatus,
@@ -31,7 +30,7 @@ describe("parseConfig / loadConfig", () => {
     expect(parseConfig("not json")).toEqual(defaultConfig);
     expect(parseConfig("")).toEqual(defaultConfig);
     expect(parseConfig("[]")).toEqual(defaultConfig);
-    expect(loadConfig("null")).toEqual(defaultConfig);
+    expect(parseConfig("null")).toEqual(defaultConfig);
   });
 
   it("keeps valid fields", () => {
@@ -67,9 +66,8 @@ describe("parseNotifyCommand", () => {
 
 describe("renderStatus", () => {
   it("renders enabled state with environment hints", () => {
-    expect(renderStatus({ enabled: true, envOk: true, permOk: true })).toContain("已开启");
-    expect(renderStatus({ enabled: false, envOk: true, permOk: true })).toContain("已关闭");
-    expect(renderStatus({ enabled: true, envOk: false, permOk: true })).toContain("termux-api");
-    expect(renderStatus({ enabled: true, envOk: true, permOk: false })).toContain("通知权限");
+    expect(renderStatus({ enabled: true, envOk: true })).toContain("已开启");
+    expect(renderStatus({ enabled: false, envOk: true })).toContain("已关闭");
+    expect(renderStatus({ enabled: true, envOk: false })).toContain("termux-api");
   });
 });

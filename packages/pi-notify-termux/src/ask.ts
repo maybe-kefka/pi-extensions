@@ -1,6 +1,6 @@
 /** pending ask 状态机（纯函数，TDD：test/ask.test.ts）。
- *  index.ts 持有 Ask 引用并负责把函数返回的结果写回 ask.result。
- *  幂等：已终结（result 非空）的 ask 再次 resolve/cancel → null（调用方忽略）。 */
+ *  状态变更函数（resolveAsk/cancelAsk/checkTimeout）自行写回 ask.result；
+ *  幂等：已终结（result 非空）的 ask 再次调用 → null（调用方忽略）。 */
 
 export interface Ask {
   id: string;
@@ -10,11 +10,15 @@ export interface Ask {
   result: AskResult | null;
 }
 
+/** 终结状态（供文案/反馈逻辑复用） */
+export type TerminalStatus = "answered" | "timeout";
+
 export type AskResult =
   | { status: "answered"; selection: number | null; option: string | null; text: string }
   | { status: "timeout" }
   | { status: "cancelled" };
 
+/** 回复/取消/超时均直接写入 ask.result（调用方无需回写）；已终结再调用返回 null */
 export interface ReplyInput {
   selection?: number | null;
   option?: string | null;

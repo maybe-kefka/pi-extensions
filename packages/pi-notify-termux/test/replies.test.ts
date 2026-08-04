@@ -1,28 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
   decodeReply,
-  encodeCancelFile,
-  encodeReplyFile,
   parseFileName,
+  parseOptionSelection,
 } from "../src/replies.js";
 
-describe("encodeReplyFile / parseFileName", () => {
-  it("encodes notify reply files", () => {
-    expect(encodeReplyFile("notify", "1725000000")).toBe("notify-1725000000.reply");
-  });
-
-  it("encodes ask reply files", () => {
-    expect(encodeReplyFile("ask", "abc123")).toBe("ask-abc123.reply");
-  });
-
-  it("parses valid reply file names", () => {
+describe("parseFileName", () => {
+  it("parses valid reply and cancel file names", () => {
     expect(parseFileName("notify-1725000000.reply")).toEqual({ kind: "notify", id: "1725000000", type: "reply" });
     expect(parseFileName("ask-abc123.reply")).toEqual({ kind: "ask", id: "abc123", type: "reply" });
     expect(parseFileName("ask-a_b-9.reply")).toEqual({ kind: "ask", id: "a_b-9", type: "reply" });
-  });
-
-  it("encodes and parses cancel files", () => {
-    expect(encodeCancelFile("abc123")).toBe("ask-abc123.cancel");
     expect(parseFileName("ask-abc123.cancel")).toEqual({ kind: "ask", id: "abc123", type: "cancel" });
   });
 
@@ -53,5 +40,23 @@ describe("decodeReply", () => {
   it("treats empty input as cancellation", () => {
     expect(decodeReply("")).toBeNull();
     expect(decodeReply("   ")).toBeNull();
+  });
+});
+
+describe("parseOptionSelection", () => {
+  it("maps a numeric reply to its option", () => {
+    const r = parseOptionSelection("2", ["继续", "跳过"]);
+    expect(r).toEqual({ selection: 2, option: "跳过", text: "跳过" });
+  });
+
+  it("returns null for non-numeric or out-of-range replies", () => {
+    expect(parseOptionSelection("abc", ["继续", "跳过"])).toBeNull();
+    expect(parseOptionSelection("3", ["继续", "跳过"])).toBeNull();
+    expect(parseOptionSelection("0", ["继续", "跳过"])).toBeNull();
+    expect(parseOptionSelection("", ["继续", "跳过"])).toBeNull();
+  });
+
+  it("returns null when there are no options (free input)", () => {
+    expect(parseOptionSelection("1", [])).toBeNull();
   });
 });

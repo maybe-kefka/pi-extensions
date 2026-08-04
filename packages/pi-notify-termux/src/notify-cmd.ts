@@ -3,7 +3,12 @@
  *  action 字符串由 termux-api 在干净环境（dash -c）执行：一律绝对路径，
  *  `$REPLY` 保持字面（termux-api 的 Direct Reply 会替换为带引号的用户输入）。 */
 
+import { ASK_PREFIX } from "./replies.js";
+
+/** 固定 id：需求 1 结果通知（原地更新） */
 export const RESULT_NOTIFICATION_ID = "pi-notify-result";
+/** Termux 终端 Activity（打开终端按钮） */
+export const TERMUX_ACTIVITY = "com.termux/.app.TermuxActivity";
 export const MAX_OPTIONS = 3;
 
 export interface NotificationBase {
@@ -39,7 +44,7 @@ export function buildResultNotificationArgs(opts: ResultNotificationArgs): strin
     "--button1-action", `${opts.helperPath} notify ${opts.ts} "$REPLY"`,
     "--button2", "打开终端",
     "--button2-action",
-    `${opts.amPath} start -n com.termux/.app.TermuxActivity || ${opts.toastPath} 后台启动被拒：请在系统设置中允许 Termux 后台弹出界面`,
+    `${opts.amPath} start -n ${TERMUX_ACTIVITY} || ${opts.toastPath} 后台启动被拒：请在系统设置中允许 Termux 后台弹出界面`,
   ];
 }
 
@@ -49,7 +54,7 @@ export function buildAskOptionsArgs(opts: AskOptionsArgs): string[] {
   if (options.length < 1) throw new Error("options 至少 1 项");
   if (options.length > MAX_OPTIONS) throw new Error(`options 最多 ${MAX_OPTIONS} 项，请让 LLM 收敛选项`);
 
-  const args = ["--id", `ask-${opts.id}`, "--title", opts.title, "--content", opts.content];
+  const args = ["--id", `${ASK_PREFIX}${opts.id}`, "--title", opts.title, "--content", opts.content];
   options.forEach((opt, i) => {
     const n = i + 1;
     args.push(`--button${n}`, opt, `--button${n}-action`, `${opts.helperPath} ask ${opts.id} ${n}`);
@@ -60,7 +65,7 @@ export function buildAskOptionsArgs(opts: AskOptionsArgs): string[] {
 /** 需求 2 input：单个回复按钮（Direct Reply 自由输入） */
 export function buildAskInputArgs(opts: AskInputArgs): string[] {
   return [
-    "--id", `ask-${opts.id}`,
+    "--id", `${ASK_PREFIX}${opts.id}`,
     "--title", opts.title,
     "--content", opts.content,
     "--button1", "回复",

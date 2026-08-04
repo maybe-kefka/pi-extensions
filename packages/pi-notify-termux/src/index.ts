@@ -5,6 +5,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { spawnSync } from "node:child_process";
 import {
+  existsSync,
   mkdirSync,
   readFileSync,
   readdirSync,
@@ -16,14 +17,13 @@ import { join } from "node:path";
 import { Type } from "typebox";
 
 import { cancelAsk, checkTimeout, createAsk, resolveAsk, serializeResult, type Ask, type AskResult } from "./ask.js";
-import { buildConfigPaths, defaultConfig, loadConfig, parseNotifyCommand, renderStatus, type NotifyConfig } from "./config.js";
-import { buildAskContent, buildResultContent, buildStatusContent, buildTitle, hasContent } from "./format.js";
+import { buildConfigPaths, defaultConfig, parseConfig, parseNotifyCommand, renderStatus, type NotifyConfig } from "./config.js";
+import { buildAskContent, buildResultContent, buildStatusContent, buildTitle, extractAssistantText, hasContent } from "./format.js";
 import { buildHelperScript } from "./helper.js";
 import { buildAskInputArgs, buildAskOptionsArgs, buildOnDeleteArg, buildResultNotificationArgs, buildStatusNotificationArgs, RESULT_NOTIFICATION_ID } from "./notify-cmd.js";
-import { decodeReply, parseFileName } from "./replies.js";
+import { ASK_PREFIX, decodeReply, parseFileName, parseOptionSelection } from "./replies.js";
 import { findPiNotifications, parseNotificationList, renderNotificationStatus } from "./notify-list.js";
 
-const TERMUX_TERMINAL_ACTIVITY = "com.termux/.app.TermuxActivity";
 const POLL_INTERVAL_MS = 500;
 /** 替换为状态通知后自动移除的延迟：Direct Reply 污染的是原实例，替换后是新实例，remove 有效 */
 const AUTO_DISMISS_MS = 2000;
@@ -66,6 +66,11 @@ export default function (pi: ExtensionAPI): void {
     }
   }
 
+  /** 发送前确保 helper 存在（SPEC §4.2：防用户删/被覆盖），缺失则重新生成 */
+  function ensureHelperFresh(): void {
+    if (!existsSync(paths.helperFile)) ensureHelper();
+  }
+
   /** 发通知（同步，快；失败返回 stderr） */
   function sendNotification(args: string[]): string | null {
     const r = spawnSync("termux-notification", args, { encoding: "utf8" });
@@ -93,22 +98,25 @@ export default function (pi: ExtensionAPI): void {
     }, AUTO_DISMISS_MS);
   }
 
+  /** 终结反馈：按钮/超时 remove（有效）；Direct Reply 回复过的通知 remove 被系统忽略 → 替换 + 2s 自动移除 */
+  function terminationFeedback(id: string, kind: "remove" | "replace", status: "answered" | "timeout"): void {
+    if (kind === "remove") {
+      removeNotification(id);
+    } else {
+      replaceWithStatus(id, status);
+    }
+    spawnSync("termux-toast", [status === "answered" ? "已收到回复 ✓" : "提问已超时"], { encoding: "utf8" });
+  }
+
   function settle(p: PendingAsk, result: AskResult): void {
     pending.delete(p.ask.id);
     if (result.status === "answered") {
-      if (p.options.length > 0) {
-        // 按钮场景：remove 有效
-        removeNotification(`ask-${p.ask.id}`);
-      } else {
-        // Direct Reply 场景：替换为已收到
-        replaceWithStatus(`ask-${p.ask.id}`, "answered");
-      }
-      spawnSync("termux-toast", ["已收到回复 ✓"], { encoding: "utf8" });
+      // 按钮场景 remove 有效；Direct Reply 场景替换（新实例 2s 后自动移除）
+      terminationFeedback(`${ASK_PREFIX}${p.ask.id}`, p.options.length > 0 ? "remove" : "replace", "answered");
     }
     if (result.status === "timeout") {
       // 超时未经过 Direct Reply，remove 有效
-      removeNotification(`ask-${p.ask.id}`);
-      spawnSync("termux-toast", ["提问已超时"], { encoding: "utf8" });
+      terminationFeedback(`${ASK_PREFIX}${p.ask.id}`, "remove", "timeout");
     }
     p.resolve(serializeResult(result, p.ask.question));
   }
@@ -146,8 +154,7 @@ export default function (pi: ExtensionAPI): void {
         // Direct Reply 回复过的通知 remove 被系统忽略 → 替换为已收到 + toast
         const reply = decodeReply(raw);
         if (reply) {
-          replaceWithStatus(RESULT_NOTIFICATION_ID, "answered");
-          spawnSync("termux-toast", ["已收到回复 ✓"], { encoding: "utf8" });
+          terminationFeedback(RESULT_NOTIFICATION_ID, "replace", "answered");
           pi.sendUserMessage(reply.text);
         }
         continue;
@@ -159,18 +166,13 @@ export default function (pi: ExtensionAPI): void {
       if (reply === null) {
         // 空输入 = 取消（SPEC §4.1）
         r = cancelAsk(p.ask, Date.now());
-      } else if (p.options.length > 0 && /^\d+$/.test(reply.text.trim())) {
-        // options 按钮：helper 写入的是选项序号
-        const n = Number(reply.text.trim());
-        const opt = p.options[n - 1];
-        if (opt !== undefined) {
-          r = resolveAsk(p.ask, { selection: n, option: opt, text: opt }, Date.now());
-        } else {
-          r = resolveAsk(p.ask, { selection: null, option: null, text: reply.text }, Date.now());
-        }
       } else {
-        // 自由输入
-        r = resolveAsk(p.ask, { selection: null, option: null, text: reply.text }, Date.now());
+        const sel = parseOptionSelection(reply.text, p.options);
+        r = resolveAsk(
+          p.ask,
+          sel ?? { selection: null, option: null, text: reply.text },
+          Date.now(),
+        );
       }
       if (r) settle(p, r);
     }
@@ -216,7 +218,7 @@ export default function (pi: ExtensionAPI): void {
       }
       ctx.ui.notify(
         [
-          renderStatus({ enabled: config.enabled, envOk, permOk: true }),
+          renderStatus({ enabled: config.enabled, envOk }),
           ...notificationShadeLines(),
         ].join("\n"),
         "info",
@@ -252,6 +254,7 @@ export default function (pi: ExtensionAPI): void {
       input.options.length > 0
         ? buildAskOptionsArgs({ id, title, content: buildAskContent(input.question, input.options), options: input.options, helperPath: paths.helperFile })
         : buildAskInputArgs({ id, title, content: buildAskContent(input.question), helperPath: paths.helperFile });
+    ensureHelperFresh();
     const err = sendNotification([...args, ...buildOnDeleteArg({ id, helperPath: paths.helperFile })]);
     if (err !== null) {
       return { content: [{ type: "text", text: JSON.stringify({ status: "error", error: `通知发送失败：${err}` }) }], details: {} };
@@ -312,7 +315,7 @@ export default function (pi: ExtensionAPI): void {
 
   pi.on("session_start", async (_event, ctx) => {
     if (ctx.mode !== "tui") return;
-    config = loadConfig(readFileSafe(paths.configFile));
+    config = parseConfig(readFileSafe(paths.configFile) ?? "");
     envOk = probeEnv();
     try {
       ensureHelper();
@@ -322,7 +325,7 @@ export default function (pi: ExtensionAPI): void {
     timer = setInterval(poll, POLL_INTERVAL_MS);
     if (!envOk) {
       ctx.ui.notify(
-        renderStatus({ enabled: config.enabled, envOk: false, permOk: true }),
+        renderStatus({ enabled: config.enabled, envOk: false }),
         "error",
       );
     }
@@ -337,6 +340,8 @@ export default function (pi: ExtensionAPI): void {
     if (ctx.mode !== "tui") return;
     const text = lastAssistantText;
     lastAssistantText = null;
+    // SPEC §5.1：仅当 pi 彻底空闲（无重试/压缩/排队 follow-up）才通知
+    if (!ctx.isIdle()) return;
     if (!config.enabled || !envOk || text === null || !hasContent(text)) return;
     const args = buildResultNotificationArgs({
       title: buildTitle("result", new Date()),
@@ -346,6 +351,7 @@ export default function (pi: ExtensionAPI): void {
       toastPath: `${prefix}/bin/termux-toast`,
       ts: Date.now(),
     });
+    ensureHelperFresh();
     const err = sendNotification(args);
     if (err !== null) {
       ctx.ui.notify(`pi 通知发送失败：${err}`, "error");
@@ -375,29 +381,3 @@ function readFileSafe(path: string): string | null {
   }
 }
 
-/** 从 agent run 消息里提取最后一条非空 assistant 文本（content 兼容 string / 文本块数组） */
-function extractAssistantText(messages: unknown): string | null {
-  if (!Array.isArray(messages)) return null;
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const m = messages[i] as { role?: unknown; content?: unknown } | null;
-    if (!m || m.role !== "assistant") continue;
-    const text = textFromContent(m.content);
-    if (text !== null && text.trim().length > 0) return text;
-  }
-  return null;
-}
-
-function textFromContent(content: unknown): string | null {
-  if (typeof content === "string") return content;
-  if (Array.isArray(content)) {
-    const parts: string[] = [];
-    for (const c of content) {
-      const block = c as { type?: unknown; text?: unknown } | null;
-      if (block && block.type === "text" && typeof block.text === "string") {
-        parts.push(block.text);
-      }
-    }
-    if (parts.length > 0) return parts.join("\n");
-  }
-  return null;
-}
