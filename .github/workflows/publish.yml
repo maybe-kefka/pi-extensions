@@ -29,6 +29,9 @@ jobs:
           registry-url: https://registry.npmjs.org/
           cache: npm
 
+      - name: Update npm (OIDC requires >= 11.5.1)
+        run: npm install -g npm@latest
+
       - run: npm ci
 
       - name: Quality gates
@@ -37,4 +40,14 @@ jobs:
           npm run typecheck
 
       - name: Publish changed packages
-        run: bash .github/scripts/publish-changed.sh
+        run: |
+          set +e
+          bash .github/scripts/publish-changed.sh 2>&1 | tee /tmp/publish.log
+          status=${PIPESTATUS[0]}
+          if [ $status -ne 0 ]; then
+            echo "::error::npm publish failed (exit $status), last lines:"
+            tail -40 /tmp/publish.log | while IFS= read -r line; do
+              [ -n "$line" ] && echo "::error::$line"
+            done
+            exit 1
+          fi
