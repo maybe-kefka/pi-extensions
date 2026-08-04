@@ -1,18 +1,17 @@
 name: publish
 
-# 发布 @kefka/pi-status 到 npm，用 Trusted Publishing（OIDC）自动认证，
-# 无需 NPM_TOKEN，且自动满足 2FA（--provenance 附带来源签名）。
+# 推送 main 时自动发布「版本有更新」的包（对比 npm registry 已发布版本，bump 过的才发）。
+# 也支持 git tag v* 触发，同样走版本对比，已发布的包自动跳过。
 #
-# 前置条件（npm 侧，一次性配置）：
+# 认证：npm Trusted Publishing (OIDC)，无需 NPM_TOKEN，自动满足 2FA 与 provenance。
+# 前置条件（npmjs.com 一次性配置）：
 #   npmjs.com → Account → Trusted Publishing → Add
 #   OIDC 主体：owner=maybe-kefka, repo=pi-extensions, workflow=publish.yml
-#
-# 发布方式：git tag v0.1.0 && git push origin v0.1.0
 
 on:
   push:
-    tags:
-      - "v*"
+    branches: [main]
+    tags: ["v*"]
 
 permissions:
   id-token: write # OIDC：npm registry 据此签发一次性发布凭据
@@ -37,6 +36,5 @@ jobs:
           npm test
           npm run typecheck
 
-      - name: Publish @kefka/pi-status
-        # provenance 由 Trusted Publishing (OIDC) 自动生成，无需 --provenance
-        run: npm publish -w @kefka/pi-status --access public
+      - name: Publish changed packages
+        run: bash .github/scripts/publish-changed.sh

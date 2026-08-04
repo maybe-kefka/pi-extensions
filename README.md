@@ -31,14 +31,27 @@ npm run typecheck     # 各包 tsc --noEmit
 
 ## 发布
 
-`@kefka/pi-status` 已发布到 npm。安装：
+三个包均已发布到 npm：`@kefka/pi-status`、`@kefka/pi-web`、`@kefka/pi-notify-termux`。安装：
 
 ```bash
 pi install npm:@kefka/pi-status   # 从 npm
 pi install ./packages/pi-status   # 本地路径（开发）
 ```
 
-发布新版本：
+### 自动发布（推送代码即发布）
+
+推送代码到 `main` 时，GitHub Actions 自动发布「版本有更新」的包（对比 npm registry 已发布版本，未 bump 的包自动跳过）：
+
+```bash
+npm version patch -w @kefka/pi-status   # bump 版本
+npm run typecheck && npm test           # 本地先过一遍质量门
+git push                                # CI：typecheck + test → 自动 npm publish
+```
+
+- 也支持 `git tag v0.1.1 && git push origin v0.1.1` 触发同样流程
+- 认证走 npm Trusted Publishing (OIDC)，无需 NPM_TOKEN；前置条件：npmjs.com → Account → Trusted Publishing 配置 OIDC 主体 `owner=maybe-kefka, repo=pi-extensions, workflow=publish.yml`
+
+### 手动发布
 
 ```bash
 npm run publish:pi-status   # prepublishOnly 自动跑 typecheck + test
