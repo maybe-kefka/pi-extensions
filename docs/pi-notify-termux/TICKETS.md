@@ -67,4 +67,5 @@
 - `registerTool` × 2：`notify_ask_options` / `notify_ask_input`（TypeBox schema、阻塞 + 超时 + on-delete 取消 + abort 处理，返回结构化内容 + details）
 - `registerCommand("notify")`：on/off/status + 持久化 + 提示（含 Android 13+ 权限提示）
 - `session_shutdown`：取消 pending、停轮询
-- 验收：`npm run typecheck` + `npm test` 全绿（220 tests）✅；本机 `/reload` 后手动验收待做（SPEC §6）
+- 验收：`npm run typecheck` + `npm test` 全绿（233 tests）✅；**手动验收全部通过（2025-08，OPPO/Android 16 实测）**：按钮回传+消失、Direct Reply 回传+替换为“已收到”、超时消失、滑掉 cancelled、settled 通知+注入下一轮、/notify 通知栏状态、打开终端（termux-am + 后台弹出界面权限）✅
+- 备注：“这个是从”注入之谜 = 结果通知与提问通知时间戳相同易点混，注入仅结果通知路径，非 bug
