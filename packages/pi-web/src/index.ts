@@ -22,6 +22,7 @@ import { mapEvent, requiresStateRefresh } from "./events.js";
 import { makeEvent, serialize } from "./protocol.js";
 import { startWebServer, WebServerError, type WebServerHandle } from "./server.js";
 import { buildState } from "./state.js";
+import { messageTextOf, messageThinkingOf, messageToolCalls } from "./http-util.js";
 
 const WEB_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "web", "dist");
 const FLUSH_INTERVAL_MS = 60;
@@ -354,13 +355,42 @@ async function handleRequest(id: string | number, method: string, params: Record
 
     case "pi:getMessages": {
       const ctx = requireCtx();
-      const entries = ctx.sessionManager.getEntries();
-      const messages = entries
-        .filter((e) => e.type === "message")
-        .map((e) => {
-          const msg = (e as { message?: { role?: string; content?: unknown } }).message;
-          return { role: msg?.role ?? "unknown", text: messageText(msg?.content), thinking: messageThinking(msg?.content) };
-        });
+      const entries = ctx.sessionManager.getEntries() as {
+        type?: string;
+        message?: { role?: string; content?: unknown; toolCallId?: unknown; isError?: unknown };
+      }[];
+      // 第一遍：toolResult 结果按 toolCallId 索引
+      const resultById = new Map<string, { result: string; isError: boolean }>();
+      for (const e of entries) {
+        const m = e?.message;
+        if (e?.type !== "message" || !m || m.role !== "toolResult" || m.toolCallId == null) continue;
+        resultById.set(String(m.toolCallId), { result: messageTextOf(m.content), isError: m.isError === true });
+      }
+      // 第二遍：组装消息（assistant 带 toolCalls；空消息筛掉）
+      const messages: {
+        role: string;
+        text: string;
+        thinking: string;
+        toolCalls: { id: string; name: string; arguments: unknown; result: string; isError: boolean }[];
+      }[] = [];
+      for (const e of entries) {
+        const m = e?.message;
+        if (e?.type !== "message" || !m) continue;
+        const role = m.role ?? "unknown";
+        if (role === "toolResult") continue;
+        if (role === "assistant") {
+          const toolCalls = messageToolCalls(m.content).map((tc) => {
+            const r = resultById.get(tc.id);
+            return { ...tc, result: r?.result ?? "", isError: r?.isError ?? false };
+          });
+          const text = messageTextOf(m.content);
+          const thinking = messageThinkingOf(m.content);
+          if (!text && !thinking && toolCalls.length === 0) continue; // 空消息直接筛掉
+          messages.push({ role, text, thinking, toolCalls });
+        } else {
+          messages.push({ role, text: messageTextOf(m.content), thinking: "", toolCalls: [] });
+        }
+      }
       return { messages };
     }
 
@@ -378,26 +408,6 @@ async function handleRequest(id: string | number, method: string, params: Record
 function requireCtx(): ExtensionContext {
   if (!state.ctx) throw new WebServerError(3, "会话未就绪（切换中？），请重试");
   return state.ctx;
-}
-
-function messageText(content: unknown): string {
-  if (typeof content === "string") return content;
-  if (!Array.isArray(content)) return "";
-  return content
-    .map((b) => (b && typeof b === "object" && "text" in (b as object) ? String((b as { text: unknown }).text) : ""))
-    .join("\n");
-}
-
-/** 提取 assistant 消息的 thinking 块（content 里 type==="thinking"） */
-function messageThinking(content: unknown): string {
-  if (!Array.isArray(content)) return "";
-  return content
-    .map((b) =>
-      b && typeof b === "object" && (b as { type?: unknown }).type === "thinking" && "thinking" in (b as object)
-        ? String((b as { thinking: unknown }).thinking)
-        : "",
-    )
-    .join("\n");
 }
 
 // ---------------------------------------------------------------------------
