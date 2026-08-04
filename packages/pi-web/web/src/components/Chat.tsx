@@ -40,7 +40,15 @@ function UserAvatar() {
 }
 
 /** QQ 风格：Message 行 + Bubble 表面。文字折行由 BubbleContent 内置 wrap-break-word 处理。 */
-function MessageBubble({ msg, dispatch }: { msg: ChatMessage; dispatch: React.Dispatch<StreamAction> }) {
+function MessageBubble({
+  msg,
+  tools,
+  dispatch,
+}: {
+  msg: ChatMessage;
+  tools: StreamState["tools"];
+  dispatch: React.Dispatch<StreamAction>;
+}) {
   if (msg.role === "user") {
     return (
       <Message align="end">
@@ -55,37 +63,50 @@ function MessageBubble({ msg, dispatch }: { msg: ChatMessage; dispatch: React.Di
       </Message>
     );
   }
+  // 本消息声明的工具卡片（按 content 顺序，匹配实时 tools 行；到达后自动出现）
+  const toolRows = msg.toolCallIds
+    .map((id) => tools.find((t) => t.toolCallId === id))
+    .filter((t): t is StreamState["tools"][number] => t !== undefined);
+  // 空气泡隐藏：无 text 无 thinking 且非 streaming（纯工具调用消息只显示工具卡片）
+  const showBubble = msg.streaming === true || msg.text.trim().length > 0 || msg.thinking.length > 0;
   return (
     <Message align="start">
       <MessageAvatar>
         <BotAvatar />
       </MessageAvatar>
       <MessageContent>
-        <MessageHeader>
-          助手
-          {msg.streaming && <Loader2 className="text-muted-foreground size-3 animate-spin" />}
-        </MessageHeader>
-        <Bubble variant="outline">
-          {msg.thinking && (
-            <button
-              className="bg-muted/50 text-muted-foreground flex w-fit cursor-pointer items-center gap-1 rounded-lg px-2 py-1 text-xs transition-colors hover:bg-muted"
-              onClick={() => dispatch({ type: "toggle_thinking", id: msg.id })}
-            >
-              <Brain className="size-3" />
-              思考
-              {msg.thinkingExpanded ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
-            </button>
-          )}
-          {msg.thinking && msg.thinkingExpanded && (
-            <div className="text-muted-foreground max-w-full whitespace-pre-wrap text-xs italic">
-              {msg.thinking}
-            </div>
-          )}
-          <BubbleContent>
-            {msg.text}
-            {msg.streaming && !msg.text && <span className="animate-pulse">▍</span>}
-          </BubbleContent>
-        </Bubble>
+        {showBubble && (
+          <>
+            <MessageHeader>
+              助手
+              {msg.streaming && <Loader2 className="text-muted-foreground size-3 animate-spin" />}
+            </MessageHeader>
+            <Bubble variant="outline">
+              {msg.thinking && (
+                <button
+                  className="bg-muted/50 text-muted-foreground flex w-fit cursor-pointer items-center gap-1 rounded-lg px-2 py-1 text-xs transition-colors hover:bg-muted"
+                  onClick={() => dispatch({ type: "toggle_thinking", id: msg.id })}
+                >
+                  <Brain className="size-3" />
+                  思考
+                  {msg.thinkingExpanded ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
+                </button>
+              )}
+              {msg.thinking && msg.thinkingExpanded && (
+                <div className="text-muted-foreground max-w-full whitespace-pre-wrap text-xs italic">
+                  {msg.thinking}
+                </div>
+              )}
+              <BubbleContent>
+                {msg.text}
+                {msg.streaming && !msg.text && <span className="animate-pulse">▍</span>}
+              </BubbleContent>
+            </Bubble>
+          </>
+        )}
+        {toolRows.map((row) => (
+          <ToolCard key={row.toolCallId} row={row} />
+        ))}
       </MessageContent>
     </Message>
   );
@@ -206,14 +227,9 @@ export function Chat({
                     >
                       <MessageGroup>
                         {g.items.map((m) => (
-                          <MessageBubble key={m.id} msg={m} dispatch={dispatch} />
+                          <MessageBubble key={m.id} msg={m} tools={state.tools} dispatch={dispatch} />
                         ))}
                       </MessageGroup>
-                    </MessageScrollerItem>
-                  ))}
-                  {state.tools.map((t) => (
-                    <MessageScrollerItem key={t.toolCallId} messageId={t.toolCallId}>
-                      <ToolCard row={t} />
                     </MessageScrollerItem>
                   ))}
                   {queueText && (

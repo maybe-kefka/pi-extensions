@@ -10,6 +10,8 @@ export interface ChatMessage {
   /** assistant 的 thinking 块（可折叠） */
   thinking: string;
   thinkingExpanded: boolean;
+  /** 本消息 content 里声明的 toolCall 列表（对应 tools 列表渲染工具卡片） */
+  toolCallIds: string[];
   toolName?: string;
   toolCallId?: string;
   toolArgs?: unknown;
@@ -128,7 +130,21 @@ export function textOfContent(content: unknown): string {
   if (!Array.isArray(content)) return "";
   return content
     .map((b) => (b && typeof b === "object" && "text" in (b as object) ? ((b as { text: unknown }).text as string) : ""))
+    .filter((s) => s.length > 0)
     .join("\n");
+}
+
+/** 提取 content 里 toolCall 块的 id（顺序保持） */
+export function toolCallIdsOf(content: unknown): string[] {
+  if (!Array.isArray(content)) return [];
+  const ids: string[] = [];
+  for (const b of content) {
+    if (b && typeof b === "object" && (b as { type?: unknown }).type === "toolCall") {
+      const id = (b as { id?: unknown }).id;
+      if (id != null) ids.push(String(id));
+    }
+  }
+  return ids;
 }
 
 function updateMessage(state: StreamState, id: string, patch: Partial<ChatMessage>): StreamState {
@@ -149,6 +165,7 @@ export function streamReducer(state: StreamState, action: StreamAction): StreamS
           text: m.text,
           thinking: m.thinking ?? "",
           thinkingExpanded: false,
+          toolCallIds: [],
           toolOutputExpanded: false,
           final: true,
         }));
@@ -167,6 +184,7 @@ export function streamReducer(state: StreamState, action: StreamAction): StreamS
         text,
         thinking: "",
         thinkingExpanded: false,
+        toolCallIds: toolCallIdsOf(action.message.content),
         toolOutputExpanded: false,
         final: role !== "assistant",
         streaming: role === "assistant",
@@ -202,9 +220,10 @@ export function streamReducer(state: StreamState, action: StreamAction): StreamS
       if (action.message.role !== "assistant") return state;
       if (!state.currentAssistantId) return state;
       const finalText = textOfContent(action.message.content);
-      const withText = finalText
-        ? updateMessage(state, state.currentAssistantId, { text: finalText })
-        : state;
+      const ids = toolCallIdsOf(action.message.content);
+      const withIds =
+        ids.length > 0 ? updateMessage(state, state.currentAssistantId, { toolCallIds: ids }) : state;
+      const withText = finalText ? updateMessage(withIds, state.currentAssistantId, { text: finalText }) : withIds;
       return {
         ...updateMessage(withText, state.currentAssistantId, { final: true, streaming: false }),
         currentAssistantId: null,

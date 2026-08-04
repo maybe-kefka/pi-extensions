@@ -106,4 +106,36 @@ describe("Chat 渲染", () => {
     expect(s.messages[0].thinking).toBe("历史思考内容");
     expect(screen.getByRole("button", { name: /思考/ })).toBeTruthy();
   });
+
+  it("纯工具消息（无 text 无 thinking）→ 不渲染空气泡，工具卡片穿插在消息内", () => {
+    let s = run([
+      { type: "message_start", message: { role: "assistant", content: [] } },
+      { type: "message_end", message: { role: "assistant", content: [{ type: "toolCall", id: "tool:1", name: "bash", arguments: {} }] } },
+      { type: "tool_start", toolCallId: "tool:1", toolName: "bash", args: { command: "ls" } },
+      { type: "tool_end", toolCallId: "tool:1", result: { content: "file1" }, isError: false },
+    ]);
+    const dispatch = vi.fn();
+    const { container } = render(<Chat state={s} dispatch={dispatch} />);
+    // 无 assistant 气泡（air bubble 隐藏）
+    expect(screen.queryByText(/助手/)).toBeNull();
+    // 工具卡片按钮存在（点击弹详情）
+    const toolBtn = screen.getByRole("button", { name: /bash/ });
+    expect(toolBtn).toBeTruthy();
+    // 卡片位于消息组内（穿插）
+    const group = container.querySelector('[data-slot="message-group"]');
+    expect(group?.textContent).toContain("bash");
+    // 点击 → Dialog 详情
+    fireEvent.click(toolBtn);
+    expect(screen.getByText("输出")).toBeTruthy();
+    // 预览与弹窗内都有输出文本
+    expect(screen.getAllByText("file1").length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("streaming 且无 text → 仍渲染气泡（不闪烁）", () => {
+    const s = run([{ type: "message_start", message: { role: "assistant", content: [] } }]);
+    expect(s.messages[0].streaming).toBe(true);
+    const dispatch = vi.fn();
+    render(<Chat state={s} dispatch={dispatch} />);
+    expect(screen.getByText(/助手/)).toBeTruthy();
+  });
 });

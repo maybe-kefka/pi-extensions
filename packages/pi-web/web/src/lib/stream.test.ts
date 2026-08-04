@@ -49,6 +49,31 @@ describe("消息文本累积", () => {
     const s = run([{ type: "message_start", message: { role: "toolResult", content: "out", toolName: "bash" } }]);
     expect(s.messages).toHaveLength(0);
   });
+
+  it("message_end 提取 toolCallIds（纯工具消息 text 为空但保留工具引用）", () => {
+    let s = run([{ type: "message_start", message: { role: "assistant", content: [] } }]);
+    s = streamReducer(s, {
+      type: "message_end",
+      message: {
+        role: "assistant",
+        content: [
+          { type: "thinking", thinking: "先想想" },
+          { type: "toolCall", id: "tool:1", name: "bash", arguments: {} },
+          { type: "toolCall", id: "tool:2", name: "read", arguments: {} },
+        ],
+      },
+    });
+    expect(s.messages[0].toolCallIds).toEqual(["tool:1", "tool:2"]);
+    expect(s.messages[0].text).toBe("");
+    expect(s.messages[0].thinking).toBe("");
+  });
+
+  it("message_start 也提取 toolCallIds（start 时 content 已有 toolCall）", () => {
+    const s = run([
+      { type: "message_start", message: { role: "assistant", content: [{ type: "toolCall", id: "t9", name: "x", arguments: {} }] } },
+    ]);
+    expect(s.messages[0].toolCallIds).toEqual(["t9"]);
+  });
 });
 
 describe("工具行", () => {
