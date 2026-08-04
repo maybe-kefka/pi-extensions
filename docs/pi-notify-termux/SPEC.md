@@ -24,6 +24,7 @@
 | D5 | 需求 2 tool 拆分 | **两个 tool**：`notify_ask_options`（question + options ≤3，每个选项一个按钮，点击即选）、`notify_ask_input`（question + Direct Reply 自由输入） |
 | D6 | 超时/取消 | 默认超时 5 分钟（tool 参数 `timeout` 可覆盖，0=不超时）；**滑掉通知 = 取消**（`--on-delete` 钩子）；结构化返回 `{status: "answered" \| "timeout" \| "cancelled", ...}` |
 | D7 | 总开关 | 命令 `/notify on` / `/notify off` / `/notify`（无参=显示状态）；默认 on；**持久化** |
+| D11 | 确认引导（2025-08 新增） | **软引导**：`before_agent_start` 每 turn 追加 `buildConfirmPrompt()` 到 system prompt（不拦截工具，无硬约束）。config `confirmPrompt` 默认 true，`/notify confirm on|off` 持久化；独立开关（ask 工具不受 `enabled` 控制） |
 | D8 | 模式守卫 | **仅 TUI 模式**（`ctx.mode === "tui"`）加载全部功能；print/json/rpc 模式静默不加载（无会话可注入"下一轮"，回复通道半残） |
 | D9 | 命名 | 包 `@kefka/pi-notify-termux`；tool `notify_ask_options` / `notify_ask_input`；标题 `✅ pi` / `❓ pi 提问` |
 | D10 | 配置 | `{enabled: boolean, timeoutSec: number}`，存 **`~/.pi/pi-notify-termux/config.json`**（用户级，用 `CONFIG_DIR_NAME` 构建，不硬编码 `.pi`） |
@@ -61,6 +62,7 @@ pi (TUI, 扩展进程)
  │       ▲
  │       └── 轮询循环（500ms）解析 replies/ 目录 ──► resolve / sendUserMessage
  └─ /notify on|off ──► 读写 ~/.pi/pi-notify-termux/config.json
+ └─ before_agent_start（confirmPrompt=true）──► systemPrompt += buildConfirmPrompt()
 ```
 
 - **文件桥目录**：`~/.pi/pi-notify-termux/`（用户级 pi 配置目录下，与配置同根）：
@@ -77,9 +79,10 @@ pi (TUI, 扩展进程)
 | `src/format.ts` | 标题/内容/按钮文案/时间格式化（`buildTitle(kind, date)`、`buildContent(...)`、选项列表渲染） | 纯函数 |
 | `src/notify-cmd.ts` | 构造 `termux-notification` 参数数组（`buildNotificationArgs(opts)`：title/content/id/buttons/action/on-delete/ongoing…）与 `buildHelperCall(...)`（helper 调用串，处理 `$REPLY` 转义） | 纯函数 |
 | `src/replies.ts` | 文件桥编解码：`parseFileName` / `decodeReply` / `parseOptionSelection`（选项序号映射） | 纯函数 |
-| `src/config.ts` | 默认配置、路径构建（`configDir()` 用 `CONFIG_DIR_NAME`）、`parseConfig`、`parseNotifyCommand`（`/notify` 参数解析）、`renderStatus` | 纯函数 |
+| `src/config.ts` | 默认配置（`enabled`/`timeoutSec`/`confirmPrompt`）、路径构建（`configDir()` 用 `CONFIG_DIR_NAME`）、`parseConfig`、`parseNotifyCommand`（`/notify on|off|confirm [on|off]` 参数解析）、`renderStatus` | 纯函数 |
 | `src/ask.ts` | pending ask 状态机：`createAsk`/`resolveAsk`/`cancelAsk`/`checkTimeout`、超时计算、结果序列化 | 纯函数（时间注入） |
 | `src/notify-list.ts` | `termux-notification-list` 输出解析：`parseNotificationList` / `findPiNotifications` / `renderNotificationStatus` / `checkPosted` / `renderPermissionHint`（权限自检 + 通知栏实时状态） | 纯函数 |
+| `src/format.ts`（确认引导） | `buildConfirmPrompt()`：英文纯指令（3 触发准则：意图歧义/不可逆操作/信息缺失 + 2 反例防过度询问，指向 `notify_ask_options` 优先）；无 few-shot 示例 | 纯函数 |
 | `src/index.ts` | 接线：TUI 守卫、事件注册（agent_settled / session_shutdown）、tool 注册、命令注册、轮询循环、spawn 通知、helper 生成 | 不单测 |
 
 ### 4.1 `termux-notification` 参数约定

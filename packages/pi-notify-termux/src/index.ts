@@ -18,7 +18,7 @@ import { Type } from "typebox";
 
 import { cancelAsk, checkTimeout, createAsk, resolveAsk, serializeResult, type Ask, type AskResult } from "./ask.js";
 import { buildConfigPaths, defaultConfig, parseConfig, parseNotifyCommand, renderStatus, type NotifyConfig } from "./config.js";
-import { buildAskContent, buildResultContent, buildStatusContent, buildTitle, extractAssistantText, hasContent } from "./format.js";
+import { buildAskContent, buildConfirmPrompt, buildResultContent, buildStatusContent, buildTitle, extractAssistantText, hasContent } from "./format.js";
 import { buildHelperScript } from "./helper.js";
 import { buildAskInputArgs, buildAskOptionsArgs, buildDiagnosticArgs, buildOnDeleteArg, buildResultNotificationArgs, buildStatusNotificationArgs, RESULT_NOTIFICATION_ID } from "./notify-cmd.js";
 import { ASK_PREFIX, decodeReply, parseFileName, parseOptionSelection } from "./replies.js";
@@ -235,10 +235,31 @@ export default function (pi: ExtensionAPI): void {
         }
         return;
       }
+      if (parsed.action === "confirm-on" || parsed.action === "confirm-off") {
+        config = { ...config, confirmPrompt: parsed.action === "confirm-on" };
+        try {
+          mkdirSync(paths.dir, { recursive: true });
+          writeFileSync(paths.configFile, JSON.stringify(config, null, 2));
+          ctx.ui.notify(
+            `确认引导已${parsed.action === "confirm-on" ? "开启" : "关闭"}`,
+            "info",
+          );
+        } catch (e) {
+          ctx.ui.notify(`配置写入失败：${String(e)}`, "error");
+        }
+        return;
+      }
+      if (parsed.action === "confirm-status") {
+        ctx.ui.notify(
+          renderStatus({ enabled: config.enabled, envOk, confirmPrompt: config.confirmPrompt }),
+          "info",
+        );
+        return;
+      }
       const permOk = runPermissionSelfCheck();
       ctx.ui.notify(
         [
-          renderStatus({ enabled: config.enabled, envOk }),
+          renderStatus({ enabled: config.enabled, envOk, confirmPrompt: config.confirmPrompt }),
           ...(permOk === null ? [] : [renderPermissionHint(permOk)]),
           ...notificationShadeLines(),
         ].join("\n"),
@@ -346,7 +367,7 @@ export default function (pi: ExtensionAPI): void {
     timer = setInterval(poll, POLL_INTERVAL_MS);
     if (!envOk) {
       ctx.ui.notify(
-        renderStatus({ enabled: config.enabled, envOk: false }),
+        renderStatus({ enabled: config.enabled, envOk: false, confirmPrompt: config.confirmPrompt }),
         "error",
       );
     } else {
@@ -357,6 +378,15 @@ export default function (pi: ExtensionAPI): void {
         }
       }, 1000);
     }
+  });
+
+  // 确认引导（需求：LLM 不确定时优先用 notify 工具问用户，而非自作主张）
+  // 软引导：每 turn 追加到 system prompt（链式，权重最高、compaction 不丢）；可 /notify confirm off 关闭
+  pi.on("before_agent_start", (event) => {
+    if (!config.confirmPrompt) return undefined;
+    return {
+      systemPrompt: `${event.systemPrompt}\n\n${buildConfirmPrompt()}`,
+    };
   });
 
   pi.on("agent_end", (event) => {

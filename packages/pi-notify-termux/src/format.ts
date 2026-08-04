@@ -65,3 +65,15 @@ function textFromContent(content: unknown): string | null {
   }
   return null;
 }
+
+/** 确认引导提示词（软引导）：LLM 不确定时优先用 notify 工具问用户，而非自作主张。
+ *  纯指令、无示例（few-shot 会教条化）；英文与 pi system prompt 主体一致、紧凑省 token。
+ *  由 before_agent_start 每 turn 追加到 system prompt（config.confirmPrompt=true 时）。 */
+export function buildConfirmPrompt(): string {
+  return (
+    "Prefer asking via notify_ask_options (or notify_ask_input if options can't be enumerated) " +
+    "over guessing. Ask when intent is ambiguous, the action is hard to reverse " +
+    "(delete, overwrite, publish, spend), or information is missing. Do NOT ask when " +
+    "the answer is already in context, the choice is trivial, or direction is clear."
+  );
+}
