@@ -7,6 +7,9 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { FileGroup, SkillInfo } from "@/lib/types";
 
+/** 插入内容类型（chip 视觉区分） */
+export type InsertKind = "skill" | "file" | "text";
+
 /** "+" 弹层：可搜索，分块展示全部 skills 与工作目录文件（SPEC §7） */
 export function PlusPicker({
   open,
@@ -21,7 +24,7 @@ export function PlusPicker({
   skills: SkillInfo[];
   files: FileGroup[];
   loading: boolean;
-  onInsert: (text: string) => void;
+  onInsert: (text: string, kind: InsertKind) => void;
 }) {
   const [query, setQuery] = useState("");
 
@@ -84,7 +87,7 @@ export function PlusPicker({
                     <li key={s.name}>
                       <button
                         className="flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs hover:bg-muted/60"
-                        onClick={() => onInsert(`/${s.name} `)}
+                        onClick={() => onInsert(`/skill:${s.name}`, "skill")}
                       >
                         <Badge variant="secondary" className="shrink-0 font-mono">/{s.name}</Badge>
                         <span className="text-muted-foreground min-w-0 flex-1 truncate">{s.description ?? ""}</span>
@@ -115,7 +118,7 @@ export function PlusPicker({
                           <li key={f.path}>
                             <button
                               className="flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1 text-left text-xs hover:bg-muted/60"
-                              onClick={() => onInsert(f.path)}
+                              onClick={() => onInsert(f.path, "file")}
                             >
                               <FileText className="text-muted-foreground size-3 shrink-0" />
                               <span className="min-w-0 flex-1 truncate font-mono">{f.path}</span>

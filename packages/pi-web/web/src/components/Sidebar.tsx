@@ -81,45 +81,44 @@ export function SidebarContent(props: SidebarContentProps) {
         />
       </Panel>
 
-      <Panel title="模型">
-        <Select
-          value={currentModel ?? undefined}
-          onValueChange={(v) => {
-            const idx = v.lastIndexOf("/");
-            onSetModel(v.slice(0, idx), v.slice(idx + 1));
-          }}
-        >
-          <SelectTrigger className="w-full">
-            <SelectValue placeholder="加载中…" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectGroup>
-              {models.map((m) => (
-                <SelectItem key={`${m.provider}/${m.id}`} value={`${m.provider}/${m.id}`}>
-                  {m.name} ({m.provider})
-                </SelectItem>
-              ))}
-            </SelectGroup>
-          </SelectContent>
-        </Select>
-      </Panel>
-
-      <Panel title="思考等级">
-        <Select value={thinkingLevel ?? undefined} onValueChange={onSetThinking}>
-          <SelectTrigger className="w-full">
-            <SelectValue placeholder="—" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectGroup>
-              {thinkingLevels.length === 0 && <SelectItem value="off">off</SelectItem>}
-              {thinkingLevels.map((lvl) => (
-                <SelectItem key={lvl} value={lvl}>
-                  {lvl}
-                </SelectItem>
-              ))}
-            </SelectGroup>
-          </SelectContent>
-        </Select>
+      <Panel title="模型 / 思考">
+        <div className="flex flex-col gap-2">
+          <Select
+            value={currentModel ?? undefined}
+            onValueChange={(v) => {
+              const idx = v.lastIndexOf("/");
+              onSetModel(v.slice(0, idx), v.slice(idx + 1));
+            }}
+          >
+            <SelectTrigger className="w-full">
+              <SelectValue placeholder="模型…" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectGroup>
+                {models.map((m) => (
+                  <SelectItem key={`${m.provider}/${m.id}`} value={`${m.provider}/${m.id}`}>
+                    {m.name} ({m.provider})
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+          <Select value={thinkingLevel ?? undefined} onValueChange={onSetThinking}>
+            <SelectTrigger className="w-full">
+              <SelectValue placeholder="思考等级…" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectGroup>
+                {thinkingLevels.length === 0 && <SelectItem value="off">off</SelectItem>}
+                {thinkingLevels.map((lvl) => (
+                  <SelectItem key={lvl} value={lvl}>
+                    {lvl}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+        </div>
       </Panel>
 
       <Panel title="状态桥接">

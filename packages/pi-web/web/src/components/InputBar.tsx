@@ -1,11 +1,19 @@
-import { useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
+import type * as React from "react";
 import { Plus, SendHorizonal, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
-import { PlusPicker } from "@/components/PlusPicker";
+import { PlusPicker, type InsertKind } from "@/components/PlusPicker";
+import { isContentEmpty, serializeContent } from "@/lib/chip-serialize";
 import type { FileGroup, SkillInfo } from "@/lib/types";
 import type { StreamState } from "@/lib/stream";
+
+/** chip 视觉：按插入类型区分 */
+const CHIP_STYLES: Record<InsertKind, { icon: string; cls: string }> = {
+  skill: { icon: "✨", cls: "bg-purple-500/15 text-purple-400" },
+  file: { icon: "📄", cls: "bg-sky-500/15 text-sky-400" },
+  text: { icon: "", cls: "bg-muted text-foreground" },
+};
 
 export function InputBar(props: {
   busy: boolean;
@@ -19,34 +27,92 @@ export function InputBar(props: {
   onPickerOpen: () => void;
 }) {
   const { busy, queue, conn, skills, files, pickerLoading, onSend, onAbort, onPickerOpen } = props;
-  const [text, setText] = useState("");
   const [deliverAs, setDeliverAs] = useState<"steer" | "followUp">("followUp");
   const [pickerOpen, setPickerOpen] = useState(false);
-  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const [hasInput, setHasInput] = useState(false);
+  const editorRef = useRef<HTMLDivElement | null>(null);
 
-  const submit = () => {
-    const t = text.trim();
+  const submit = useCallback(() => {
+    const el = editorRef.current;
+    if (!el) return;
+    const t = serializeContent(el).trim();
     if (!t) return;
     onSend(t, busy ? deliverAs : undefined);
-    setText("");
-  };
+    el.innerHTML = "";
+    setHasInput(false);
+  }, [busy, deliverAs, onSend]);
 
-  const insert = (chunk: string) => {
-    const el = textareaRef.current;
-    const start = el?.selectionStart ?? text.length;
-    const end = el?.selectionEnd ?? text.length;
-    const next = text.slice(0, start) + chunk + (el && start !== end ? "" : " ") + text.slice(end);
-    setText(next);
-    setPickerOpen(false);
-    requestAnimationFrame(() => {
-      const el2 = textareaRef.current;
-      if (el2) {
-        const pos = start + chunk.length + (el && start !== end ? 0 : 1);
-        el2.focus();
-        el2.setSelectionRange(pos, pos);
+  /** 在光标处插入原子 chip（contenteditable=false，浏览器原生支持像文本一样删除整块） */
+  const insertChip = useCallback((label: string, insertText: string, kind: InsertKind) => {
+    const el = editorRef.current;
+    if (!el) return;
+    const style = CHIP_STYLES[kind];
+    const span = document.createElement("span");
+    span.contentEditable = "false";
+    span.dataset.insert = insertText;
+    span.className = `${style.cls} mx-0.5 inline-flex cursor-default items-center gap-1 rounded-md px-1.5 py-0.5 align-middle text-xs font-medium whitespace-nowrap`;
+    span.textContent = `${style.icon} ${label}`.trim();
+    const space = document.createTextNode(" ");
+
+    // 定位光标（在编辑器内才插入到光标处，否则追加末尾）
+    const sel = window.getSelection();
+    let range: Range | null = null;
+    if (sel && sel.rangeCount > 0) {
+      const r = sel.getRangeAt(0);
+      if (el.contains(r.commonAncestorContainer)) range = r.cloneRange();
+    }
+    if (range) {
+      range.deleteContents();
+      range.insertNode(span);
+      range.insertNode(space);
+      range.setStartAfter(space);
+      range.setEndAfter(space);
+    } else {
+      el.appendChild(span);
+      el.appendChild(space);
+      range = document.createRange();
+      range.setStartAfter(space);
+      range.setEndAfter(space);
+    }
+    sel?.removeAllRanges();
+    sel?.addRange(range);
+    el.focus();
+    setHasInput(true);
+  }, []);
+
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLDivElement>) => {
+      // 中文输入法组词回车不触发发送
+      if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+        e.preventDefault();
+        submit();
       }
-    });
-  };
+    },
+    [submit],
+  );
+
+  const handlePaste = useCallback((e: React.ClipboardEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const text = e.clipboardData.getData("text/plain");
+    try {
+      document.execCommand("insertText", false, text);
+    } catch {
+      // 极端 fallback：手动插入文本节点
+      const el = editorRef.current;
+      if (!el) return;
+      const sel = window.getSelection();
+      if (sel && sel.rangeCount > 0) {
+        const r = sel.getRangeAt(0);
+        if (el.contains(r.commonAncestorContainer)) {
+          r.deleteContents();
+          r.insertNode(document.createTextNode(text));
+        }
+      } else {
+        el.appendChild(document.createTextNode(text));
+      }
+    }
+    setHasInput(true);
+  }, []);
 
   return (
     <footer className="border-t p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
@@ -90,21 +156,19 @@ export function InputBar(props: {
         >
           <Plus className="size-5" />
         </Button>
-        <Textarea
-          ref={textareaRef}
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              submit();
-            }
-          }}
-          placeholder="消息…（Enter 发送，Shift+Enter 换行）"
-          className="min-h-10 max-h-40 flex-1 resize-none"
-          rows={1}
+        <div
+          ref={editorRef}
+          contentEditable
+          suppressContentEditableWarning
+          role="textbox"
+          aria-multiline="true"
+          className="border-input bg-background focus-visible:ring-ring/50 flex min-h-10 max-h-40 flex-1 resize-none items-center overflow-y-auto rounded-md border px-3 py-2 text-sm focus-visible:ring-[3px] focus-visible:outline-none"
+          onInput={() => setHasInput(true)}
+          onKeyDown={handleKeyDown}
+          onPaste={handlePaste}
+          onFocus={() => setHasInput(!isContentEmpty(editorRef.current as HTMLElement))}
         />
-        <Button onClick={submit} disabled={conn !== "open" || text.trim() === ""}>
+        <Button onClick={submit} disabled={conn !== "open" || !hasInput}>
           <SendHorizonal data-icon="inline-start" /> 发送
         </Button>
       </div>
@@ -114,7 +178,7 @@ export function InputBar(props: {
         skills={skills}
         files={files}
         loading={pickerLoading}
-        onInsert={insert}
+        onInsert={(text, kind) => insertChip(text, text, kind)}
       />
     </footer>
   );

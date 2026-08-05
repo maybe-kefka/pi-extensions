@@ -176,3 +176,15 @@
 - README 更新（新能力简述）
 - E2E 冒烟（RPC 模式）：`pi:switchSession`（有效 path 切换 / 特权缺失错误路径）、`pi:getTree`、`pi:listFiles`（gitignore 过滤）、`pi:deleteSession`（当前会话拒绝 / 非当前删除成功）、`pi:fork` 越界 userIndex 错误
 - commit（SPEC §1.3/§1.4/§1.5/§3.1/§4.2/§4.4/§7/§9/§10 已同步）
+
+## R14 UI 打磨（2026-02，用户反馈 4 项）✅
+
+- R14.1 气泡空白行修复：根因 = 纯工具/纯 thinking turn（正文空）仍渲染 `<div class="border-t">`。渲染层过滤空 turn（无正文且非流式不渲染），分隔线只出现在有内容 turn 之间；数据层不动（thinking/toolCall 供弹窗）
+- R14.2 sidebar 模型 + 思考等级合并为一个 Panel"模型 / 思考"（上下两个 Select）
+- R14.3 输入框移除 placeholder
+- R14.4 输入框改造为 contenteditable chip 编辑器（用户选 B）：
+  - "+" 弹窗插入的内容变为原子 chip（`contenteditable=false` span，`data-insert` 存插入文本），无 × 按钮，Backspace/Delete 像删文本一样整块删除（浏览器原生行为）
+  - chip 按类型区分视觉：skill ✨ 紫、file 📄 蓝；光标处插入（编辑器外追加末尾），插入后带尾随空格
+  - Enter 发送 / Shift+Enter 换行；中文组词回车不发送（nativeEvent.isComposing）；粘贴转纯文本
+  - 发送时按 DOM 顺序序列化：chip 还原为 data-insert、`<br>` 为 `\n`——新 `web/src/lib/chip-serialize.ts` 纯函数（+8 测试）
+  - 发送按钮禁用态由 onInput/chip 插入驱动的 hasInput 状态控制
