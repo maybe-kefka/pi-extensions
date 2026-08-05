@@ -86,6 +86,13 @@ export default function App() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
 
+  /** 稳定引用：ContextPanel 挂载时取最新 rpc（避免每次渲染重建导致重拉） */
+  const getRequest = useCallback(() => {
+    const c = rpcRef.current;
+    if (!c) throw new Error("未连接");
+    return c.request;
+  }, []);
+
   useEffect(() => {
     const token = new URLSearchParams(location.search).get("token") ?? "";
     if (!token) {
@@ -314,6 +321,7 @@ export default function App() {
         onToggleSidebar={() => setSidebarCollapsed((c) => !c)}
         onOpenDrawer={() => setDrawerOpen(true)}
         onCompact={compact}
+        getRequest={getRequest}
       />
       <DisconnectBannerMemo conn={conn} />
       <div className="flex min-h-0 flex-1">

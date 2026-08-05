@@ -136,6 +136,7 @@
 | `pi:listFiles` | `{maxDepth?, limit?}` | `src/file-lister.ts`：递归扫描 `ctx.cwd`（默认 3 层 / 200 上限），gitignore 排除（`ignore` 包，含嵌套 `.gitignore`），按目录分组 → `{groups: [{dir, files: [{name, path}]}]}` |
 | `pi:getMessages` | — | `getEntries()` 过滤 message 条目 → `{messages: [{role, text, thinking, toolCalls: [{id, name, arguments, result, isError}], userIndex?}]}`：assistant 带 thinking/toolCalls（toolCallId 配对 toolResult）；**user 消息带 `userIndex`**（该会话第几条 user，0-based，供前端气泡 fork 用）；空消息（无 text/thinking/toolCalls）筛掉 |
 | `pi:getState` | — | 快照：会话文件/id/名、模型、思考等级、上下文占用、isStreaming、messageCount |
+| `pi:getContextBreakdown` | — | 上下文占用分类估算（与 pi-status 同款 chars/4 逻辑，`src/context-breakdown.ts`）：`ctx.getSystemPromptOptions()`（customPrompt/promptGuidelines/appendSystemPrompt/contextFiles/skills/toolSnippets，运行时普通会话 ctx 提供，类型仅在 command ctx 声明——index.ts 内交叉类型断言）+ `ctx.sessionManager.buildContextEntries()` → 五类（系统提示词/上下文文件/技能/工具定义/对话消息）+ 对话细分（user/assistant/toolResult/other）+ total；`usage` = getContextUsage（percent 归一化 0-1）。**非特权数据源，TUI 手动切会话后依然可用** |
 
 - 错误：JSON-RPC error；`code` 语义自定（如 `-32602` 参数错、`1` 业务错、`2` 忙碌需 deliverAs、`3` ctx stale/会话未就绪），消息为人类可读中文。
 - **特权 ctx 缺失/失效**（TUI 手动切换后）：会话类方法（switchSession/newSession/fork/clone/navigateTree）返回 `code 1` 错误"会话控制能力已失效：请在 TUI 重跑 /web 恢复"。
@@ -162,13 +163,14 @@
 - **工程位置**：`packages/pi-web/web/` 子工作区（`pi-web-frontend`，private），独立 `package.json`/`vite.config.ts`；构建产物 `web/dist/`。
   - 构建：`npm run build:web`（根）/ `npm run build -w pi-web-frontend`；`npm publish` 时 `prepublishOnly` 先构建（`cd web && npm run build`）。
   - **`web/dist` 提交进 git**（个人仓库开箱即用）；`/web` 启动前检查 `dist/index.html` 存在，缺失则报错提示先构建。
-- **布局**：header（连接状态 / 会话名 / 模型 / 思考等级 / 上下文占用条 / **compact 按钮**）+ chat 流 + 侧栏（**会话列表：可点击切换 + 顶部新建按钮 + 每项工具栏（删除/重命名/查看树/复制）**、模型选择、思考等级、状态桥接面板）+ 输入区（**最左 "+" 按钮 → 可搜索弹层**）。
+- **布局**：header（连接状态 / 会话名 / 模型 / 思考等级 / **上下文占用条（可点击 → Popover 上下文占用面板，含 compact 按钮）**）+ chat 流 + 侧栏（**会话列表：可点击切换 + 顶部新建按钮 + 每项工具栏（删除/重命名/查看树/复制）**、模型选择、思考等级、状态桥接面板）+ 输入区（**最左 "+" 按钮 → 可搜索弹层**）。
 - **轮次聚合（v-next）**：聊天流按**气泡**渲染——每条 user 消息开启新气泡，到下一条 user 消息前的全部内容聚合进同一气泡（工具循环的多个 assistant turn、thinking、toolcall、toolResult 均在内）。
   - 气泡 = `{userText, userIndex, turns: [{text, thinking, toolCallIds, final}]}`；`userIndex`（第几条 user 消息，0-based）由后端在 `pi:getMessages` 标记，流式消息由前端自增计数——**fork 即发 `pi:fork {userIndex}`**。
   - 气泡底部**工具栏**（轮结束后出现，即无活跃 turn 且 agent 空闲）：fork（分叉该轮）、reasoning（有 thinking 时，弹窗查看全文）、tools（有 toolCall 时，弹窗查看全部工具详情：参数 + 结果）。
   - 流式中气泡实时更新（thinking / 文本累积）；`turn_end` / `agent_settled` 驱动轮次边界与工具栏显隐。
 - **交互升级（v2 重构）**：thinking 与工具输出**可展开/收起**（工具输出折叠态截断 ~1200 字符）；**跟随滚动开关**（上翻暂停自动滚动，出现"回到底部"按钮）；输入框为多行 `Textarea`（Enter 发送 / Shift+Enter 换行）；**断线横幅** + 指数退避重连（≤10s）。
-- **"+" 弹层（v-next）**：输入框最左加号按钮 → `Popover` + 搜索框（substring 过滤）；分块展示：**全部 skills**（`pi:listSkills`，点击插入 `/skill:<name>` 到输入框光标处）与**工作目录文件**（`pi:listFiles`，按目录分组，点击插入相对路径）；点击均不自动发送。
+- **上下文占用面板（v-next）**：点击 header 占用条 → `Popover`（`@radix-ui/react-popover`），每次展开重新拉取 `pi:getContextBreakdown`：总览（估算 total / contextWindow / 实时 percent）+ 五类行（标签 + 细进度条 + tokens + 百分比，比例相对面板内部 total，与 /status 口径一致）+ 对话细分（user/assistant/toolResult/other，比例相对 conversation.total）+ **底部 compact 通栏按钮**（原 header 图标按钮移除）。数据源非特权，无降级问题；失败显示错误 + 重试。
+- **输入框标签化（v2 打磨）**：输入区为 contenteditable 容器；"+" 弹层插入的内容渲染为原子 chip（`contenteditable=false` span，`data-insert` 存插入文本；skill ✨ 紫 / file 📄 蓝），无 × 按钮，Backspace/Delete 整块删除（浏览器原生）；Enter 发送 / Shift+Enter 换行 / 中文组词回车不发送（`nativeEvent.isComposing`）/ 粘贴转纯文本；发送时按 DOM 顺序序列化（`web/src/lib/chip-serialize.ts`：chip 还原为插入文本、`<br>` 为 `\n`）。
 - **会话控制 UI（v-next）**：点击会话列表项 = `pi:switchSession`（当前项高亮）；顶部"新建"按钮 = `pi:newSession`；每项工具栏：删除（`pi:deleteSession` + 确认弹窗，当前会话禁用）、重命名（`pi:setSessionName` + 输入弹窗）、查看树（`pi:getTree` 树弹窗，点击节点 → 确认 → `pi:navigateTree`）、复制（`pi:clone`）。
 - **降级提示（v-next）**：特权操作失败（code 1 "会话控制能力已失效"）→ toast；侧栏会话区常驻提示条"会话操作需在 TUI 重跑 /web 恢复"（仅特权能力缺失时显示）。
 - **状态管理**：单 `useReducer` 根 store；WS 事件流 → reducer action（`web/src/lib/stream.ts` 纯 reducer，单测覆盖）。

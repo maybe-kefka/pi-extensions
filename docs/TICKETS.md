@@ -188,3 +188,13 @@
   - Enter 发送 / Shift+Enter 换行；中文组词回车不发送（nativeEvent.isComposing）；粘贴转纯文本
   - 发送时按 DOM 顺序序列化：chip 还原为 data-insert、`<br>` 为 `\n`——新 `web/src/lib/chip-serialize.ts` 纯函数（+8 测试）
   - 发送按钮禁用态由 onInput/chip 插入驱动的 hasInput 状态控制
+
+## R15 上下文占用面板（2026-02，用户反馈）✅
+
+- R15.1 header 上下文占用条可点击 → Popover 展开面板（@radix-ui/react-popover 新建 ui/popover.tsx）
+- R15.2 新 RPC `pi:getContextBreakdown`：后端新纯函数模块 src/context-breakdown.ts（复制 pi-status 同款 chars/4 估算，+15 测试）；
+  数据源 getSystemPromptOptions（运行时普通会话 ctx 提供，agent-session.js:1924 源码核实，类型仅 command ctx 声明 → 交叉类型断言）+
+  buildContextEntries + getContextUsage → 五类 + 对话细分 + total + usage(percent 归一化 0-1)；非特权、无降级问题
+- R15.3 面板内容：总览（total / window / percent）+ 五类行（进度条比例相对 total，/status 口径）+ 对话细分 4 行（比例相对 conversation.total）+ 底部 compact 通栏按钮；每次展开重新拉取，失败显示错误 + 重试
+- R15.4 header 移除原 compact 图标按钮；compact 移入面板
+- E2E：RPC 模式实测 pi:getContextBreakdown 结构正确（无会话时五类为 0 属预期）
