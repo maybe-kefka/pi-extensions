@@ -79,8 +79,14 @@ export function checkPosted(list: ShadeNotification[], diagnosticId: string): bo
   return list.some((n) => n.packageName === "com.termux.api" && n.tag === diagnosticId);
 }
 
-/** 权限不足提示（自检失败时返回提示行，成功返回空） */
+/** 权限不足提示（自检失败时返回提示行，成功返回空）
+ *  注意：list/自检依赖 Termux:API 的监听服务（通知使用权），与通知权限是两个独立开关——
+ *  监听服务被杀/未绑定时 list 返回空同样触发此警告（T11，用户实测）。 */
 export function renderPermissionHint(posted: boolean): string {
   if (posted) return "";
-  return "⚠️ Termux:API 通知权限未开启或未开全：设置 → 应用 → Termux:API → 通知 → 全部开启（ColorOS 需开细分类别），否则通知/移除/列表均失效";
+  return [
+    "⚠️ Termux:API 通知链路异常（通知/移除/列表失效）：",
+    "① 通知权限：设置 → 应用 → Termux:API → 通知 → 全部开启（ColorOS 需开细分类别）",
+    "② 通知使用权（监听服务）：设置 → 搜「通知使用权」→ 开启 Termux:API —— 列表/自检依赖它，未开或服务被杀同样报警",
+  ].join("\n");
 }

@@ -85,6 +85,9 @@ describe("checkPosted / renderPermissionHint", () => {
     const hint = renderPermissionHint(false);
     expect(hint).toContain("Termux:API");
     expect(hint).toContain("通知");
+    // T11：list 依赖监听服务（通知使用权），与通知权限是两个独立开关，文案必须同时提示
+    expect(hint).toContain("通知使用权");
+    expect(hint).toContain("监听");
     expect(renderPermissionHint(true)).toBe("");
   });
 });
