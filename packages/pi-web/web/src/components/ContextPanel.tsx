@@ -73,9 +73,9 @@ export function ContextPanel({
       ) : data ? (
         <>
           {/* 总览 */}
-          <div className="flex items-baseline justify-between border-b pb-2">
-            <span className="text-muted-foreground text-xs">总占用</span>
-            <span className="text-xs tabular-nums">
+          <div className="flex items-baseline justify-between gap-2 border-b pb-2">
+            <span className="text-muted-foreground shrink-0 text-xs">总占用</span>
+            <span className="shrink-0 whitespace-nowrap text-xs tabular-nums">
               <span className="text-sm font-semibold">{fmt(data.total)}</span>
               <span className="text-muted-foreground">
                 {" "}
@@ -91,10 +91,10 @@ export function ContextPanel({
               const ratio = data.total > 0 ? c.tokens / data.total : 0;
               return (
                 <div key={c.key} className="flex items-center gap-2">
-                  <span className="w-16 shrink-0 text-xs">{c.label}</span>
-                  <Progress value={ratio * 100} className="h-1 flex-1" />
-                  <span className="w-14 text-right text-xs tabular-nums">{fmt(c.tokens)}</span>
-                  <span className="text-muted-foreground w-10 text-right text-xs tabular-nums">
+                  <span className="w-16 shrink-0 truncate text-xs">{c.label}</span>
+                  <Progress value={ratio * 100} className="h-1 min-w-0 flex-1" />
+                  <span className="shrink-0 text-right text-xs tabular-nums">{fmt(c.tokens)}</span>
+                  <span className="text-muted-foreground w-10 shrink-0 text-right text-xs tabular-nums">
                     {pct(ratio)}
                   </span>
                 </div>
@@ -109,12 +109,12 @@ export function ContextPanel({
               const ratio = data.conversation.total > 0 ? tokens / data.conversation.total : 0;
               return (
                 <div key={key} className="flex items-center gap-2 pl-6">
-                  <span className="text-muted-foreground w-16 shrink-0 text-xs">{label}</span>
-                  <Progress value={ratio * 100} className="bg-foreground/5 h-1 flex-1" />
-                  <span className="text-muted-foreground w-14 text-right text-xs tabular-nums">
+                  <span className="text-muted-foreground w-16 shrink-0 truncate text-xs">{label}</span>
+                  <Progress value={ratio * 100} className="bg-foreground/5 h-1 min-w-0 flex-1" />
+                  <span className="text-muted-foreground shrink-0 text-right text-xs tabular-nums">
                     {fmt(tokens)}
                   </span>
-                  <span className="text-muted-foreground/70 w-10 text-right text-xs tabular-nums">
+                  <span className="text-muted-foreground/70 w-10 shrink-0 text-right text-xs tabular-nums">
                     {pct(ratio)}
                   </span>
                 </div>
