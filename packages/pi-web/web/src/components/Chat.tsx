@@ -170,26 +170,28 @@ function TurnBubbleView({
           </MessageAvatar>
           <MessageContent>
             <Bubble variant="outline" className="w-full">
-              {bubble.turns.map((turn, i) => {
-                const last = i === bubble.turns.length - 1;
-                return (
-                  <div key={i} className={i > 0 ? "mt-2 border-t pt-2" : ""}>
-                    {turn.text.trim() ? (
-                      last && !turn.final ? (
-                        <span className="wrap-break-word whitespace-pre-wrap">
-                          {turn.text}
-                          {!turn.text && <span className="animate-pulse">▍</span>}
-                          {turn.text && <span className="animate-pulse">▍</span>}
-                        </span>
-                      ) : (
-                        <Markdown text={turn.text} />
-                      )
-                    ) : last && !turn.final ? (
-                      <span className="animate-pulse">▍</span>
-                    ) : null}
-                  </div>
-                );
-              })}
+              {bubble.turns
+                .map((turn, i) => ({ turn, isLast: i === bubble.turns.length - 1 }))
+                // 空 turn（无正文且非流式中）不渲染——纯工具/纯 thinking turn 的正文为空，避免产生"只有分隔线的空白行"
+                .filter(({ turn, isLast }) => turn.text.trim().length > 0 || (isLast && !turn.final))
+                .map(({ turn, isLast }, visibleIdx) => {
+                  return (
+                    <div key={visibleIdx} className={visibleIdx > 0 ? "mt-2 border-t pt-2" : ""}>
+                      {turn.text.trim() ? (
+                        isLast && !turn.final ? (
+                          <span className="wrap-break-word whitespace-pre-wrap">
+                            {turn.text}
+                            <span className="animate-pulse">▍</span>
+                          </span>
+                        ) : (
+                          <Markdown text={turn.text} />
+                        )
+                      ) : isLast && !turn.final ? (
+                        <span className="animate-pulse">▍</span>
+                      ) : null}
+                    </div>
+                  );
+                })}
             </Bubble>
             {showToolbar && (
               <div className="flex items-center gap-1 pt-1">
