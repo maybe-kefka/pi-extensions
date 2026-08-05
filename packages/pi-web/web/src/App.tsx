@@ -2,12 +2,13 @@ import { memo, useCallback, useEffect, useMemo, useReducer, useRef, useState } f
 import { toast } from "sonner";
 import { createRpcClient, type RpcClient } from "@/lib/rpc";
 import { initialState, streamReducer, type StreamAction } from "@/lib/stream";
-import type { CommandInfo, ModelInfo, PiEvent, SessionInfo, WebState } from "@/lib/types";
+import type { CommandInfo, FileGroup, ModelInfo, PiEvent, SessionInfo, SkillInfo, TreeNode, WebState } from "@/lib/types";
 import { Header } from "@/components/Header";
 import { Chat } from "@/components/Chat";
 import { Sidebar, SidebarSheet, type SidebarContentProps } from "@/components/Sidebar";
 import { InputBar } from "@/components/InputBar";
 import { DisconnectBanner } from "@/components/DisconnectBanner";
+import { TreeDialog } from "@/components/TreeDialog";
 
 /** 服务器 pi:event → reducer action（薄映射） */
 function toAction(evt: PiEvent): StreamAction | null {
@@ -24,6 +25,10 @@ function toAction(evt: PiEvent): StreamAction | null {
       return { type: "tool_update", toolCallId: String(evt.toolCallId), partialResult: (evt.partialResult as { content?: unknown } | null) ?? null };
     case "tool_execution_end":
       return { type: "tool_end", toolCallId: String(evt.toolCallId), result: (evt.result as { content?: unknown } | null) ?? null, isError: evt.isError === true };
+    case "turn_start":
+      return { type: "turn_start" };
+    case "turn_end":
+      return { type: "turn_end" };
     case "agent_start":
       return { type: "agent_start" };
     case "agent_end":
@@ -58,12 +63,24 @@ const SidebarSheetMemo = memo(SidebarSheet);
 const InputBarMemo = memo(InputBar);
 const DisconnectBannerMemo = memo(DisconnectBanner);
 
+/** 特权能力失效判定（后端 code 1 + 会话控制文案） */
+function isPrivilegedError(e: Error): boolean {
+  return e.message.includes("会话控制能力");
+}
+
 export default function App() {
   const [state, dispatch] = useReducer(streamReducer, initialState);
   const [conn, setConn] = useState(initialState.conn);
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
   const [models, setModels] = useState<ModelInfo[]>([]);
-  const [commands, setCommands] = useState<CommandInfo[]>([]);
+  const [skills, setSkills] = useState<SkillInfo[]>([]);
+  const [files, setFiles] = useState<FileGroup[]>([]);
+  const [pickerLoading, setPickerLoading] = useState(false);
+  const [treeOpen, setTreeOpen] = useState(false);
+  const [tree, setTree] = useState<TreeNode[] | null>(null);
+  const [leafId, setLeafId] = useState<string | null>(null);
+  const [treeLoading, setTreeLoading] = useState(false);
+  const [degraded, setDegraded] = useState(false);
   const rpcRef = useRef<RpcClient | null>(null);
   const [booted, setBooted] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -94,6 +111,10 @@ export default function App() {
     return () => client.disconnect();
   }, []);
 
+  const refreshSessions = useCallback(() => {
+    rpcRef.current?.request<SessionInfo[]>("pi:listSessions").then(setSessions).catch(() => undefined);
+  }, []);
+
   // 连接建立后拉取初始数据
   useEffect(() => {
     if (conn !== "open" || !rpcRef.current) return;
@@ -101,12 +122,27 @@ export default function App() {
     c.request<WebState>("pi:getState")
       .then((st) => dispatch({ type: "state", state: st as unknown as Record<string, unknown> }))
       .catch((e) => toast.error(`getState: ${e.message}`));
-    c.request<{ messages: { role: string; text: string }[] }>("pi:getMessages")
+    c.request<{ messages: { role: string; text: string; thinking?: string; toolCalls?: { id: string; name: string; arguments: unknown; result?: string; isError?: boolean }[]; userIndex?: number }[] }>("pi:getMessages")
       .then((r) => dispatch({ type: "history", messages: r.messages ?? [] }))
       .catch(() => undefined);
-    c.request<SessionInfo[]>("pi:listSessions").then(setSessions).catch(() => undefined);
+    refreshSessions();
     c.request<ModelInfo[]>("pi:listModels").then(setModels).catch(() => undefined);
-    c.request<CommandInfo[]>("pi:listCommands").then(setCommands).catch(() => undefined);
+  }, [conn, refreshSessions]);
+
+  // "+" 弹层数据（懒加载：打开时刷新）
+  const refreshPicker = useCallback(() => {
+    const c = rpcRef.current;
+    if (!c || conn !== "open") return;
+    setPickerLoading(true);
+    Promise.all([
+      c.request<SkillInfo[]>("pi:listSkills").catch(() => [] as SkillInfo[]),
+      c.request<FileGroup[]>("pi:listFiles").catch(() => [] as FileGroup[]),
+    ])
+      .then(([sk, fl]) => {
+        setSkills(sk);
+        setFiles(fl);
+      })
+      .finally(() => setPickerLoading(false));
   }, [conn]);
 
   const send = useCallback((text: string, deliverAs?: "steer" | "followUp") => {
@@ -121,6 +157,10 @@ export default function App() {
     rpcRef.current?.request("pi:abort").catch((e) => toast.error(`abort: ${e.message}`));
   }, []);
 
+  const compact = useCallback(() => {
+    rpcRef.current?.request("pi:compact").catch((e) => toast.error(`compact: ${e.message}`));
+  }, []);
+
   const setModel = useCallback((provider: string, modelId: string) => {
     rpcRef.current?.request("pi:setModel", { provider, modelId }).then(() => {
       toast.success(`已切换 ${provider}/${modelId}`);
@@ -131,6 +171,123 @@ export default function App() {
     rpcRef.current?.request("pi:setThinkingLevel", { level }).catch((e) => toast.error(`setThinkingLevel: ${e.message}`));
   }, []);
 
+  /** 特权操作统一错误处理：降级提示 */
+  const privilegedError = useCallback((e: Error, action: string) => {
+    if (isPrivilegedError(e)) {
+      setDegraded(true);
+      toast.error(e.message);
+    } else {
+      toast.error(`${action}: ${e.message}`);
+    }
+  }, []);
+
+  const switchSession = useCallback((path: string) => {
+    const c = rpcRef.current;
+    if (!c) return;
+    c.request<{ cancelled: boolean }>("pi:switchSession", { path })
+      .then((r) => {
+        if (r.cancelled) toast.info("切换已取消");
+        else toast.success("会话已切换");
+      })
+      .catch((e) => privilegedError(e, "切换会话"));
+  }, [privilegedError]);
+
+  const newSession = useCallback(() => {
+    const c = rpcRef.current;
+    if (!c) return;
+    c.request<{ cancelled: boolean }>("pi:newSession")
+      .then((r) => {
+        if (r.cancelled) toast.info("新建已取消");
+        else toast.success("已新建会话");
+      })
+      .catch((e) => privilegedError(e, "新建会话"));
+  }, [privilegedError]);
+
+  const fork = useCallback((userIndex: number) => {
+    const c = rpcRef.current;
+    if (!c) return;
+    c.request<{ cancelled: boolean }>("pi:fork", { userIndex })
+      .then((r) => {
+        if (r.cancelled) toast.info("fork 已取消");
+        else toast.success("已从此轮分叉新会话");
+      })
+      .catch((e) => privilegedError(e, "fork"));
+  }, [privilegedError]);
+
+  const clone = useCallback(() => {
+    const c = rpcRef.current;
+    if (!c) return;
+    c.request<{ cancelled: boolean }>("pi:clone")
+      .then((r) => {
+        if (r.cancelled) toast.info("克隆已取消");
+        else toast.success("已复制当前会话");
+      })
+      .catch((e) => privilegedError(e, "复制会话"));
+  }, [privilegedError]);
+
+  const navigateTree = useCallback((targetId: string) => {
+    const c = rpcRef.current;
+    if (!c) return;
+    c.request<{ cancelled: boolean }>("pi:navigateTree", { targetId })
+      .then((r) => {
+        if (r.cancelled) toast.info("导航已取消");
+        else {
+          toast.success("已导航到该节点");
+          setTreeOpen(false);
+        }
+      })
+      .catch((e) => privilegedError(e, "树导航"));
+  }, [privilegedError]);
+
+  const openTree = useCallback(() => {
+    const c = rpcRef.current;
+    if (!c) return;
+    setTreeOpen(true);
+    setTreeLoading(true);
+    c.request<{ tree: TreeNode[]; leafId: string | null }>("pi:getTree")
+      .then((r) => {
+        setTree(r.tree);
+        setLeafId(r.leafId);
+      })
+      .catch((e) => toast.error(`getTree: ${e.message}`))
+      .finally(() => setTreeLoading(false));
+  }, []);
+
+  const deleteSession = useCallback((path: string) => {
+    const c = rpcRef.current;
+    if (!c) return;
+    c.request("pi:deleteSession", { path })
+      .then(() => {
+        toast.success("会话已删除");
+        refreshSessions();
+      })
+      .catch((e) => toast.error(`删除: ${e.message}`));
+  }, [refreshSessions]);
+
+  const renameSession = useCallback((_path: string, name: string) => {
+    const c = rpcRef.current;
+    if (!c) return;
+    c.request("pi:setSessionName", { name })
+      .then(() => {
+        toast.success(name ? `已重命名为 ${name}` : "已清除名称");
+        refreshSessions();
+      })
+      .catch((e) => toast.error(`重命名: ${e.message}`));
+  }, [refreshSessions]);
+
+  const sessionActions = useMemo(
+    () => ({
+      onSelect: switchSession,
+      onNew: newSession,
+      onDelete: deleteSession,
+      onRename: renameSession,
+      onClone: clone,
+      onShowTree: openTree,
+      onRefresh: refreshSessions,
+    }),
+    [switchSession, newSession, deleteSession, renameSession, clone, openTree, refreshSessions],
+  );
+
   const sidebarProps = useMemo<SidebarContentProps>(
     () => ({
       sessions,
@@ -139,12 +296,13 @@ export default function App() {
       currentModel: state.model ? `${state.model.provider}/${state.model.id}` : null,
       thinkingLevel: state.thinkingLevel,
       thinkingLevels: state.availableThinkingLevels,
-      commands,
       bridge: state.bridge,
+      sessionDegraded: degraded,
+      sessionActions,
       onSetModel: setModel,
       onSetThinking: setThinking,
     }),
-    [sessions, state.sessionFile, state.model, state.thinkingLevel, state.availableThinkingLevels, state.bridge, models, commands, setModel, setThinking],
+    [sessions, state.sessionFile, state.model, state.thinkingLevel, state.availableThinkingLevels, state.bridge, models, degraded, sessionActions, setModel, setThinking],
   );
 
   return (
@@ -155,14 +313,34 @@ export default function App() {
         sidebarCollapsed={sidebarCollapsed}
         onToggleSidebar={() => setSidebarCollapsed((c) => !c)}
         onOpenDrawer={() => setDrawerOpen(true)}
+        onCompact={compact}
       />
       <DisconnectBannerMemo conn={conn} />
       <div className="flex min-h-0 flex-1">
-        <Chat state={state} dispatch={dispatch} />
+        <Chat state={state} dispatch={dispatch} onFork={fork} />
         <SidebarMemo collapsed={sidebarCollapsed} {...sidebarProps} />
       </div>
       <SidebarSheetMemo open={drawerOpen} onOpenChange={setDrawerOpen} {...sidebarProps} />
-      <InputBarMemo busy={state.streaming} queue={state.queue} conn={conn} onSend={send} onAbort={abort} />
+      <InputBarMemo
+        busy={state.streaming}
+        queue={state.queue}
+        conn={conn}
+        skills={skills}
+        files={files}
+        pickerLoading={pickerLoading}
+        onSend={send}
+        onAbort={abort}
+        onPickerOpen={refreshPicker}
+      />
+      <TreeDialog
+        open={treeOpen}
+        onOpenChange={setTreeOpen}
+        tree={tree}
+        loading={treeLoading}
+        currentLeafId={leafId}
+        navigable={!degraded}
+        onNavigate={navigateTree}
+      />
     </div>
   );
 }

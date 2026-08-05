@@ -1,268 +1,240 @@
 import { describe, expect, it } from "vitest";
-import { initialState, streamReducer, textOfContent } from "../lib/stream.js";
-import type { StreamAction } from "../lib/stream.js";
+import {
+  bubbleStreaming,
+  bubbleThinking,
+  bubbleToolCallIds,
+  initialState,
+  streamReducer,
+  textOfContent,
+  thinkingOfContent,
+  toolCallIdsOf,
+  type StreamAction,
+  type StreamState,
+} from "./stream";
 
-function run(actions: StreamAction[]) {
-  return actions.reduce(streamReducer, initialState);
+function reduce(actions: StreamAction[], from: StreamState = initialState): StreamState {
+  return actions.reduce(streamReducer, from);
 }
 
-describe("消息文本累积", () => {
-  it("user message_start → 直接成文", () => {
-    const s = run([{ type: "message_start", message: { role: "user", content: "你好" } }]);
-    expect(s.messages).toHaveLength(1);
-    expect(s.messages[0].role).toBe("user");
-    expect(s.messages[0].text).toBe("你好");
-    expect(s.messages[0].final).toBe(true);
+describe("辅助函数", () => {
+  it("textOfContent / thinkingOfContent / toolCallIdsOf", () => {
+    expect(textOfContent("hi")).toBe("hi");
+    expect(textOfContent([{ type: "text", text: "a" }, { type: "text", text: "" }, { type: "other" }])).toBe("a");
+    expect(thinkingOfContent([{ type: "thinking", thinking: "想" }, { type: "text", text: "x" }])).toBe("想");
+    expect(
+      toolCallIdsOf([{ type: "toolCall", id: "t1" }, { type: "text", text: "x" }, { type: "toolCall", id: "t2" }]),
+    ).toEqual(["t1", "t2"]);
   });
 
-  it("assistant 流式：text_delta 累积 → message_end 定稿", () => {
-    let s = run([{ type: "message_start", message: { role: "assistant", content: [] } }]);
-    expect(s.currentAssistantId).not.toBeNull();
-    s = streamReducer(s, {
-      type: "message_update",
-      event: { type: "text_delta", delta: "你" },
-    });
-    s = streamReducer(s, {
-      type: "message_update",
-      event: { type: "text_delta", delta: "好" },
-    });
-    expect(s.messages[0].text).toBe("你好");
-    s = streamReducer(s, { type: "message_end", message: { role: "assistant", content: [{ type: "text", text: "你好世界" }] } });
-    expect(s.messages[0].text).toBe("你好世界");
-    expect(s.messages[0].final).toBe(true);
-    expect(s.currentAssistantId).toBeNull();
+  it("bubbleStreaming / bubbleThinking / bubbleToolCallIds", () => {
+    const b = {
+      id: "b1",
+      userIndex: 0,
+      userText: "q",
+      userFinal: true,
+      turns: [
+        { text: "a", thinking: "想1", toolCallIds: ["t1"], final: true },
+        { text: "b", thinking: "想2", toolCallIds: ["t2", "t1"], final: false },
+      ],
+    };
+    expect(bubbleStreaming(b)).toBe(true);
+    expect(bubbleThinking(b)).toBe("想1\n\n想2");
+    expect(bubbleToolCallIds(b)).toEqual(["t1", "t2"]);
   });
+});
 
-  it("thinking_delta 累积（partial 优先）", () => {
-    let s = run([{ type: "message_start", message: { role: "assistant", content: [] } }]);
-    s = streamReducer(s, { type: "message_update", event: { type: "thinking_delta", delta: "思" } });
-    s = streamReducer(s, { type: "message_update", event: { type: "thinking_delta", delta: "考", partial: { thinking: "思考中" } } });
-    expect(s.messages[0].thinking).toBe("思考中");
-  });
-
-  it("非 assistant 的 message_end 忽略", () => {
-    const s = run([{ type: "message_end", message: { role: "user", content: "x" } }]);
-    expect(s.currentAssistantId).toBeNull();
-  });
-
-  it("toolResult 的 message 事件忽略（避免与工具行重复）", () => {
-    const s = run([{ type: "message_start", message: { role: "toolResult", content: "out", toolName: "bash" } }]);
-    expect(s.messages).toHaveLength(0);
-  });
-
-  it("message_end 提取 toolCallIds（纯工具消息 text 为空但保留工具引用）", () => {
-    let s = run([{ type: "message_start", message: { role: "assistant", content: [] } }]);
-    s = streamReducer(s, {
-      type: "message_end",
-      message: {
-        role: "assistant",
-        content: [
-          { type: "thinking", thinking: "先想想" },
-          { type: "toolCall", id: "tool:1", name: "bash", arguments: {} },
-          { type: "toolCall", id: "tool:2", name: "read", arguments: {} },
-        ],
-      },
-    });
-    expect(s.messages[0].toolCallIds).toEqual(["tool:1", "tool:2"]);
-    expect(s.messages[0].text).toBe("");
-    expect(s.messages[0].thinking).toBe("");
-  });
-
-  it("message_end 空消息（无 text 无 thinking 无工具）→ 数据层筛除", () => {
-    let s = run([{ type: "message_start", message: { role: "assistant", content: [] } }]);
-    s = streamReducer(s, { type: "message_end", message: { role: "assistant", content: [] } });
-    expect(s.messages).toHaveLength(0);
-    expect(s.currentAssistantId).toBeNull();
-  });
-
-  it("history 构建工具行 + 消息 toolCallIds（含结果配对）", () => {
-    const s = run([
+describe("history 回填", () => {
+  it("user（带 userIndex）开气泡、assistant 归入最近气泡、多 turn 聚合", () => {
+    const state = reduce([
       {
         type: "history",
         messages: [
-          { role: "user", text: "列出文件" },
-          {
-            role: "assistant",
-            text: "",
-            thinking: "",
-            toolCalls: [{ id: "t1", name: "bash", arguments: { command: "ls" }, result: "file1", isError: false }],
-          },
-          { role: "assistant", text: "完成", thinking: "" },
+          { role: "user", text: "q1", userIndex: 0 },
+          { role: "assistant", text: "a1", thinking: "想1", toolCalls: [{ id: "t1", name: "bash", arguments: {} }] },
+          { role: "assistant", text: "a2" },
+          { role: "user", text: "q2", userIndex: 1 },
+          { role: "assistant", text: "a3" },
         ],
       },
     ]);
-    expect(s.messages).toHaveLength(3); // user + 纯工具(有卡片保留) + 完成
-    expect(s.messages[1].text).toBe("");
-    expect(s.messages[1].toolCallIds).toEqual(["t1"]);
-    expect(s.messages[2].text).toBe("完成");
-    expect(s.tools).toHaveLength(1);
-    expect(s.tools[0]).toMatchObject({ toolCallId: "t1", toolName: "bash", output: "file1", final: true });
+    expect(state.bubbles).toHaveLength(2);
+    expect(state.bubbles[0].userText).toBe("q1");
+    expect(state.bubbles[0].turns.map((t) => t.text)).toEqual(["a1", "a2"]);
+    expect(state.bubbles[0].turns[0].thinking).toBe("想1");
+    expect(state.bubbles[0].turns[0].toolCallIds).toEqual(["t1"]);
+    expect(state.bubbles[1].userText).toBe("q2");
+    expect(state.bubbles[1].turns.map((t) => t.text)).toEqual(["a3"]);
+    expect(state.userCount).toBe(2);
+    expect(state.tools).toHaveLength(1);
+    expect(state.tools[0]).toMatchObject({ toolCallId: "t1", toolName: "bash", final: true });
   });
 
-  it("history 空消息（无 text 无 thinking 无工具）被过滤", () => {
-    const s = run([
-      {
-        type: "history",
-        messages: [{ role: "assistant", text: "", thinking: "" }],
-      },
+  it("空 assistant 消息筛除", () => {
+    const state = reduce([
+      { type: "history", messages: [{ role: "user", text: "q", userIndex: 0 }, { role: "assistant", text: "", thinking: "", toolCalls: [] }] },
     ]);
-    expect(s.messages).toHaveLength(0);
+    expect(state.bubbles[0].turns).toHaveLength(0);
   });
 
-  it("message_start 也提取 toolCallIds（start 时 content 已有 toolCall）", () => {
-    const s = run([
-      { type: "message_start", message: { role: "assistant", content: [{ type: "toolCall", id: "t9", name: "x", arguments: {} }] } },
+  it("缺 userIndex 时按顺序续接（防御）", () => {
+    const state = reduce([
+      { type: "history", messages: [{ role: "user", text: "q1" }, { role: "user", text: "q2" }] },
     ]);
-    expect(s.messages[0].toolCallIds).toEqual(["t9"]);
+    expect(state.bubbles.map((b) => b.userIndex)).toEqual([0, 1]);
+    expect(state.userCount).toBe(2);
+  });
+
+  it("历史开头无 user 的 assistant（异常）→ 孤儿气泡", () => {
+    const state = reduce([{ type: "history", messages: [{ role: "assistant", text: "a" }] }]);
+    expect(state.bubbles).toHaveLength(1);
+    expect(state.bubbles[0].userIndex).toBe(-1);
   });
 });
 
-describe("工具行", () => {
-  it("start → update → end 生命周期", () => {
-    let s = run([
+describe("流式：user 开新气泡", () => {
+  it("userIndex 从 userCount 续接", () => {
+    const state = reduce([
+      { type: "history", messages: [{ role: "user", text: "q1", userIndex: 0 }] },
+      { type: "message_start", message: { role: "user", content: "q2" } },
+    ]);
+    expect(state.bubbles).toHaveLength(2);
+    expect(state.bubbles[1].userIndex).toBe(1);
+    expect(state.bubbles[1].userText).toBe("q2");
+    expect(state.bubbles[1].userFinal).toBe(false);
+    expect(state.userCount).toBe(2);
+  });
+
+  it("user message_end 定稿 userText", () => {
+    const state = reduce([
+      { type: "message_start", message: { role: "user", content: "q" } },
+      { type: "message_end", message: { role: "user", content: "q!" } },
+    ]);
+    expect(state.bubbles[0].userText).toBe("q!");
+    expect(state.bubbles[0].userFinal).toBe(true);
+  });
+});
+
+describe("流式：assistant turn 聚合", () => {
+  it("assistant message_start 追加 turn，delta 累积，message_end 定稿", () => {
+    const state = reduce([
+      { type: "message_start", message: { role: "user", content: "q" } },
+      { type: "message_start", message: { role: "assistant", content: [] } },
+      { type: "message_update", event: { type: "text_delta", delta: "你" } },
+      { type: "message_update", event: { type: "text_delta", delta: "好" } },
+      { type: "message_update", event: { type: "thinking_delta", delta: "思", partial: { thinking: "思考中" } } },
+      { type: "message_end", message: { role: "assistant", content: [{ type: "text", text: "你好" }] } },
+    ]);
+    const bubble = state.bubbles[0];
+    expect(bubble.turns).toHaveLength(1);
+    expect(bubble.turns[0].text).toBe("你好");
+    expect(bubble.turns[0].thinking).toBe("思考中");
+    expect(bubble.turns[0].final).toBe(true);
+    expect(bubbleStreaming(bubble)).toBe(false);
+  });
+
+  it("工具循环：多个 assistant 消息聚合进同一气泡", () => {
+    const state = reduce([
+      { type: "message_start", message: { role: "user", content: "q" } },
+      { type: "message_start", message: { role: "assistant", content: [{ type: "toolCall", id: "t1", name: "bash", arguments: {} }] } },
       { type: "tool_start", toolCallId: "t1", toolName: "bash", args: { command: "ls" } },
+      { type: "tool_end", toolCallId: "t1", result: { content: [{ type: "text", text: "out" }] }, isError: false },
+      { type: "message_end", message: { role: "assistant", content: [{ type: "toolCall", id: "t1", name: "bash", arguments: {} }] } },
+      { type: "message_start", message: { role: "assistant", content: [{ type: "text", text: "完成" }] } },
+      { type: "message_end", message: { role: "assistant", content: [{ type: "text", text: "完成" }] } },
     ]);
-    expect(s.tools).toHaveLength(1);
-    expect(s.tools[0].final).toBe(false);
-    s = streamReducer(s, {
-      type: "tool_update",
-      toolCallId: "t1",
-      partialResult: { content: [{ type: "text", text: "a.txt" }] },
-    });
-    expect(s.tools[0].output).toBe("a.txt");
-    s = streamReducer(s, {
-      type: "tool_end",
-      toolCallId: "t1",
-      result: { content: [{ type: "text", text: "a.txt\nb.txt" }] },
-      isError: false,
-    });
-    expect(s.tools[0].final).toBe(true);
-    expect(s.tools[0].output).toBe("a.txt\nb.txt");
-    expect(s.tools[0].isError).toBe(false);
+    expect(state.bubbles).toHaveLength(1);
+    expect(state.bubbles[0].turns).toHaveLength(2);
+    expect(state.bubbles[0].turns[0].toolCallIds).toEqual(["t1"]);
+    expect(state.bubbles[0].turns[1].text).toBe("完成");
+    expect(state.tools).toHaveLength(1);
+    expect(state.tools[0].output).toBe("out");
   });
 
-  it("tool_end 错误标记", () => {
-    const s = run([
-      { type: "tool_start", toolCallId: "t1", toolName: "x", args: {} },
-      { type: "tool_end", toolCallId: "t1", result: null, isError: true },
+  it("message_end 覆盖流式文本与 thinking（最终快照权威）", () => {
+    const state = reduce([
+      { type: "message_start", message: { role: "user", content: "q" } },
+      { type: "message_start", message: { role: "assistant", content: [] } },
+      { type: "message_update", event: { type: "text_delta", delta: "流式" } },
+      { type: "message_end", message: { role: "assistant", content: [{ type: "text", text: "定稿" }] } },
     ]);
-    expect(s.tools[0].isError).toBe(true);
+    expect(state.bubbles[0].turns[0].text).toBe("定稿");
+  });
+
+  it("空 turn（无 text/thinking/toolCall）→ 移除；孤儿气泡一并移除", () => {
+    const state = reduce([
+      { type: "message_start", message: { role: "assistant", content: [] } },
+      { type: "message_end", message: { role: "assistant", content: [] } },
+    ]);
+    expect(state.bubbles).toHaveLength(0);
+    expect(state.currentBubbleId).toBeNull();
+  });
+
+  it("turn_end 兜底 final 化活跃 turn", () => {
+    const state = reduce([
+      { type: "message_start", message: { role: "user", content: "q" } },
+      { type: "message_start", message: { role: "assistant", content: [{ type: "text", text: "x" }] } },
+      { type: "turn_end" },
+    ]);
+    expect(state.bubbles[0].turns[0].final).toBe(true);
+  });
+
+  it("message_update 在无活跃 turn 时 no-op", () => {
+    const s1 = reduce([{ type: "history", messages: [{ role: "user", text: "q", userIndex: 0 }] }]);
+    const s2 = streamReducer(s1, { type: "message_update", event: { type: "text_delta", delta: "x" } });
+    expect(s2).toBe(s1);
   });
 });
 
-describe("busy / 队列", () => {
-  it("agent_start → streaming；agent_end(willRetry) 保持；agent_settled 停止", () => {
-    let s = run([{ type: "agent_start" }]);
-    expect(s.streaming).toBe(true);
-    s = streamReducer(s, { type: "agent_end", willRetry: true });
-    expect(s.streaming).toBe(true);
-    s = streamReducer(s, { type: "agent_end", willRetry: false });
-    expect(s.streaming).toBe(false);
-    s = streamReducer(s, { type: "agent_start" });
-    s = streamReducer(s, { type: "agent_settled" });
-    expect(s.streaming).toBe(false);
+describe("agent 状态与会话切换", () => {
+  it("agent_start / agent_end / agent_settled 驱动 streaming", () => {
+    const s1 = reduce([{ type: "agent_start" }]);
+    expect(s1.streaming).toBe(true);
+    const s2 = reduce([{ type: "agent_end" }], s1);
+    expect(s2.streaming).toBe(false);
+    const s3 = reduce([{ type: "agent_end", willRetry: true }], s1);
+    expect(s3.streaming).toBe(true);
+    expect(reduce([{ type: "agent_settled" }], s3).streaming).toBe(false);
   });
 
-  it("queue_update", () => {
-    const s = run([{ type: "queue_update", steering: ["a"], followUp: ["b", "c"] }]);
-    expect(s.queue).toEqual({ steering: ["a"], followUp: ["b", "c"] });
-  });
-
-  it("state 事件更新模型/上下文/streaming", () => {
-    const s = run([
-      {
-        type: "state",
-        state: {
-          isStreaming: true,
-          model: { provider: "anthropic", id: "m", name: "M" },
-          thinkingLevel: "high",
-          context: { tokens: 100, contextWindow: 200, percent: 0.5 },
-          messageCount: 3,
-        },
-      },
+  it("session_start 清空气泡/工具/userCount", () => {
+    const s1 = reduce([
+      { type: "message_start", message: { role: "user", content: "q" } },
+      { type: "message_start", message: { role: "assistant", content: [] } },
+      { type: "tool_start", toolCallId: "t", toolName: "bash", args: {} },
     ]);
+    expect(s1.bubbles).toHaveLength(1);
+    expect(s1.tools).toHaveLength(1);
+    const s2 = reduce([{ type: "session_start", reason: "resume" }], s1);
+    expect(s2.bubbles).toHaveLength(0);
+    expect(s2.tools).toHaveLength(0);
+    expect(s2.userCount).toBe(0);
+    expect(s2.sessionReason).toBe("resume");
+  });
+
+  it("queue_update / notify / setStatus / setWidget / conn / state 保留行为", () => {
+    const s = reduce([
+      { type: "conn", state: "open" },
+      { type: "queue_update", steering: ["s"], followUp: ["f"] },
+      { type: "notify", message: "hi", notifyType: "info" },
+      { type: "setStatus", statusKey: "k", statusText: "v" },
+      { type: "setWidget", widgetKey: "w", widgetLines: ["l1"] },
+      { type: "state", state: { isStreaming: true, sessionFile: "/s.jsonl", model: { provider: "a", id: "m", name: "M" }, thinkingLevel: "high", availableThinkingLevels: ["high", "low"], context: { tokens: 1, contextWindow: 2, percent: 0.5 }, messageCount: 3 } },
+    ]);
+    expect(s.conn).toBe("open");
+    expect(s.queue).toEqual({ steering: ["s"], followUp: ["f"] });
+    expect(s.bridge.notifies).toHaveLength(1);
+    expect(s.bridge.status).toEqual({ k: "v" });
+    expect(s.bridge.widget).toEqual({ key: "w", lines: ["l1"] });
+    expect(s.streaming).toBe(true);
+    expect(s.sessionFile).toBe("/s.jsonl");
     expect(s.model?.id).toBe("m");
     expect(s.thinkingLevel).toBe("high");
     expect(s.context.percent).toBe(0.5);
-    expect(s.streaming).toBe(true);
-  });
-});
-
-describe("会话切换", () => {
-  it("session_start 清空消息与工具", () => {
-    let s = run([
-      { type: "message_start", message: { role: "user", content: "hi" } },
-      { type: "tool_start", toolCallId: "t1", toolName: "x", args: {} },
-    ]);
-    expect(s.messages.length + s.tools.length).toBe(2);
-    s = streamReducer(s, { type: "session_start", reason: "resume" });
-    expect(s.messages).toHaveLength(0);
-    expect(s.tools).toHaveLength(0);
-    expect(s.sessionReason).toBe("resume");
+    expect(s.messageCount).toBe(3);
   });
 
-  it("history 回填（只保留 user/assistant）", () => {
-    const s = run([
-      {
-        type: "history",
-        messages: [
-          { role: "user", text: "hi" },
-          { role: "assistant", text: "yo" },
-          { role: "toolResult", text: "out" },
-        ],
-      },
-    ]);
-    expect(s.messages).toHaveLength(2);
-    expect(s.messages[0].text).toBe("hi");
-    expect(s.messages[1].text).toBe("yo");
-  });
-});
-
-describe("桥接面板", () => {
-  it("notify 保留最近 6 条", () => {
-    let s = initialState;
-    for (let i = 0; i < 8; i++) s = streamReducer(s, { type: "notify", message: `n${i}`, notifyType: "info" });
-    expect(s.bridge.notifies).toHaveLength(6);
-    expect(s.bridge.notifies[0].message).toBe("n7");
-  });
-
-  it("setStatus 设置/清除", () => {
-    let s = run([{ type: "setStatus", statusKey: "k", statusText: "v" }]);
-    expect(s.bridge.status.k).toBe("v");
-    s = streamReducer(s, { type: "setStatus", statusKey: "k", statusText: null });
-    expect(s.bridge.status.k).toBeUndefined();
-  });
-
-  it("setWidget 空行清除", () => {
-    let s = run([{ type: "setWidget", widgetKey: "w", widgetLines: ["a", "b"] }]);
-    expect(s.bridge.widget?.lines).toEqual(["a", "b"]);
-    s = streamReducer(s, { type: "setWidget", widgetKey: "w", widgetLines: null });
-    expect(s.bridge.widget).toBeNull();
-  });
-});
-
-describe("conn / 其它", () => {
-  it("conn 状态", () => {
-    expect(run([{ type: "conn", state: "open" }]).conn).toBe("open");
-  });
-
-  it("toggle_thinking", () => {
-    let s = run([{ type: "message_start", message: { role: "assistant", content: [] } }]);
-    const id = s.messages[0].id;
-    s = streamReducer(s, { type: "toggle_thinking", id });
-    expect(s.messages[0].thinkingExpanded).toBe(true);
-  });
-
-  it("未知 action 不崩溃", () => {
-    expect(streamReducer(initialState, { type: "bogus" } as never)).toBe(initialState);
-  });
-});
-
-describe("textOfContent", () => {
-  it("字符串 / 文本块数组 / 其它", () => {
-    expect(textOfContent("str")).toBe("str");
-    expect(textOfContent([{ type: "text", text: "a" }, { type: "text", text: "b" }])).toBe("a\nb");
-    expect(textOfContent(null)).toBe("");
-    expect(textOfContent([{ type: "image" }])).toBe("");
+  it("未知 action 返回原状态", () => {
+    const s = reduce([{ type: "session_before_switch", reason: "resume" }]);
+    expect(s.sessionReason).toBe("switching:resume");
   });
 });

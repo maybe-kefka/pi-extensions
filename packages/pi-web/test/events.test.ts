@@ -111,3 +111,32 @@ describe("requiresStateRefresh", () => {
     expect(requiresStateRefresh("nope")).toBe(false);
   });
 });
+
+describe("mapEvent — 轮次边界", () => {
+  it("turn_start 透传 turnIndex/timestamp", () => {
+    expect(mapEvent("turn_start", { turnIndex: 1, timestamp: 123 }).fields).toEqual({
+      turnIndex: 1,
+      timestamp: 123,
+    });
+    expect(mapEvent("turn_start", {}).fields).toEqual({ turnIndex: null, timestamp: null });
+  });
+
+  it("turn_end 透传 turnIndex/message/toolResults（缺省空数组）", () => {
+    const msg = { role: "assistant", content: [] };
+    expect(mapEvent("turn_end", { turnIndex: 2, message: msg, toolResults: [{ toolCallId: "a" }] }).fields).toEqual({
+      turnIndex: 2,
+      message: msg,
+      toolResults: [{ toolCallId: "a" }],
+    });
+    expect(mapEvent("turn_end", { turnIndex: 2, message: msg }).fields).toEqual({
+      turnIndex: 2,
+      message: msg,
+      toolResults: [],
+    });
+  });
+
+  it("turn 事件不触发 state 刷新", () => {
+    expect(mapEvent("turn_start", {}).refreshState).toBe(false);
+    expect(mapEvent("turn_end", {}).refreshState).toBe(false);
+  });
+});

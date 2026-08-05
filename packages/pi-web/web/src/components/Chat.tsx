@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type * as React from "react";
-import { Bot, Brain, ChevronDown, ChevronRight, CircleCheck, CircleX, Loader2, User } from "lucide-react";
+import { Bot, Brain, CircleCheck, CircleX, GitFork, Loader2, User, Wrench } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -18,7 +18,15 @@ import {
   MessageScrollerProvider,
   MessageScrollerViewport,
 } from "@/components/ui/message-scroller";
-import type { ChatMessage, StreamAction, StreamState } from "@/lib/stream";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  bubbleStreaming,
+  bubbleThinking,
+  bubbleToolCallIds,
+  type StreamAction,
+  type StreamState,
+  type TurnBubble,
+} from "@/lib/stream";
 
 function BotAvatar() {
   return (
@@ -37,87 +45,6 @@ function UserAvatar() {
         <User className="size-4" />
       </AvatarFallback>
     </Avatar>
-  );
-}
-
-/** QQ 风格：Message 行 + Bubble 表面。文字折行由 BubbleContent 内置 wrap-break-word 处理。 */
-function MessageBubble({
-  msg,
-  tools,
-  dispatch,
-}: {
-  msg: ChatMessage;
-  tools: StreamState["tools"];
-  dispatch: React.Dispatch<StreamAction>;
-}) {
-  if (msg.role === "user") {
-    return (
-      <Message align="end">
-        <MessageAvatar>
-          <UserAvatar />
-        </MessageAvatar>
-        <MessageContent>
-          <Bubble variant="default" align="end">
-            <BubbleContent>{msg.text}</BubbleContent>
-          </Bubble>
-        </MessageContent>
-      </Message>
-    );
-  }
-  // 本消息声明的工具卡片（按 content 顺序，匹配实时 tools 行；到达后自动出现）
-  const toolRows = msg.toolCallIds
-    .map((id) => tools.find((t) => t.toolCallId === id))
-    .filter((t): t is StreamState["tools"][number] => t !== undefined);
-  // 空气泡隐藏：无 text 无 thinking 且非 streaming（纯工具调用消息只显示工具卡片）
-  const showBubble = msg.streaming === true || msg.text.trim().length > 0 || msg.thinking.length > 0;
-  // 数据层已筛空消息；此处兜底：无气泡且无工具卡片 → 整行（含头像）不渲染
-  if (!showBubble && toolRows.length === 0) return null;
-  return (
-    <Message align="start">
-      <MessageAvatar>
-        <BotAvatar />
-      </MessageAvatar>
-      <MessageContent>
-        {showBubble && (
-          <>
-            <MessageHeader>
-              助手
-              {msg.streaming && <Loader2 className="text-muted-foreground size-3 animate-spin" />}
-            </MessageHeader>
-            <Bubble variant="outline">
-              {msg.thinking && (
-                <button
-                  className="bg-muted/50 text-muted-foreground flex w-fit cursor-pointer items-center gap-1 rounded-lg px-2 py-1 text-xs transition-colors hover:bg-muted"
-                  onClick={() => dispatch({ type: "toggle_thinking", id: msg.id })}
-                >
-                  <Brain className="size-3" />
-                  思考
-                  {msg.thinkingExpanded ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
-                </button>
-              )}
-              {msg.thinking && msg.thinkingExpanded && (
-                <div className="text-muted-foreground max-w-full whitespace-pre-wrap text-xs italic">
-                  {msg.thinking}
-                </div>
-              )}
-              <BubbleContent>
-                {msg.streaming ? (
-                  <>
-                    <span className="wrap-break-word whitespace-pre-wrap">{msg.text}</span>
-                    {!msg.text && <span className="animate-pulse">▍</span>}
-                  </>
-                ) : msg.text.trim() ? (
-                  <Markdown text={msg.text} />
-                ) : null}
-              </BubbleContent>
-            </Bubble>
-          </>
-        )}
-        {toolRows.map((row) => (
-          <ToolCard key={row.toolCallId} row={row} />
-        ))}
-      </MessageContent>
-    </Message>
   );
 }
 
@@ -140,7 +67,7 @@ const STATUS_LABEL: Record<ToolStatus, { text: string; variant: "secondary" | "d
   error: { text: "失败", variant: "destructive" },
 };
 
-/** 工具 = 卡片风格按钮，点击弹窗展开详情 */
+/** 单个工具详情卡片（点击弹窗） */
 function ToolCard({ row }: { row: StreamState["tools"][number] }) {
   const [open, setOpen] = useState(false);
   const status = toolStatus(row);
@@ -152,13 +79,12 @@ function ToolCard({ row }: { row: StreamState["tools"][number] }) {
     <>
       <Button
         variant="outline"
-        className="flex h-auto max-w-[85%] cursor-pointer items-center gap-2 rounded-xl px-3 py-2 text-left text-xs"
+        className="flex h-auto w-full cursor-pointer items-center gap-2 rounded-xl px-3 py-2 text-left text-xs"
         onClick={() => setOpen(true)}
       >
         <StatusIcon status={status} />
         <span className="shrink-0 font-medium">{row.toolName}</span>
         {preview && <span className="text-muted-foreground min-w-0 flex-1 truncate">{preview}</span>}
-        <ChevronRight data-icon="inline-end" className="text-muted-foreground shrink-0" />
       </Button>
 
       <Dialog open={open} onOpenChange={setOpen}>
@@ -190,26 +116,171 @@ function ToolCard({ row }: { row: StreamState["tools"][number] }) {
   );
 }
 
+/** 轮次聚合气泡（SPEC §7）：user 消息开气泡，后续 assistant turns 聚合 */
+function TurnBubbleView({
+  bubble,
+  tools,
+  agentStreaming,
+  onFork,
+}: {
+  bubble: TurnBubble;
+  tools: StreamState["tools"];
+  agentStreaming: boolean;
+  onFork: (userIndex: number) => void;
+}) {
+  const [detail, setDetail] = useState<"reasoning" | "tools" | null>(null);
+  const hasUser = bubble.userIndex >= 0;
+  const hasThinking = bubbleThinking(bubble).trim().length > 0;
+  const toolIds = bubbleToolCallIds(bubble);
+  const toolRows = toolIds
+    .map((id) => tools.find((t) => t.toolCallId === id))
+    .filter((t): t is StreamState["tools"][number] => t !== undefined);
+  const hasTools = toolIds.length > 0;
+  const streaming = bubbleStreaming(bubble);
+  // 工具栏：轮结束后出现（气泡内无活跃 turn 且 agent 空闲、有 user 消息）
+  const showToolbar = hasUser && !streaming && !agentStreaming;
+
+  return (
+    <>
+      {hasUser && (
+        <Message align="end">
+          <MessageAvatar>
+            <UserAvatar />
+          </MessageAvatar>
+          <MessageContent>
+            <Bubble variant="default" align="end">
+              <BubbleContent>
+                {bubble.userFinal && bubble.userText.trim() ? (
+                  <span className="wrap-break-word whitespace-pre-wrap">{bubble.userText}</span>
+                ) : (
+                  <>
+                    <span className="wrap-break-word whitespace-pre-wrap">{bubble.userText}</span>
+                    {!bubble.userText && <span className="animate-pulse">▍</span>}
+                  </>
+                )}
+              </BubbleContent>
+            </Bubble>
+          </MessageContent>
+        </Message>
+      )}
+      {bubble.turns.length > 0 && (
+        <Message align="start">
+          <MessageAvatar>
+            <BotAvatar />
+          </MessageAvatar>
+          <MessageContent>
+            <Bubble variant="outline" className="w-full">
+              {bubble.turns.map((turn, i) => {
+                const last = i === bubble.turns.length - 1;
+                return (
+                  <div key={i} className={i > 0 ? "mt-2 border-t pt-2" : ""}>
+                    {turn.text.trim() ? (
+                      last && !turn.final ? (
+                        <span className="wrap-break-word whitespace-pre-wrap">
+                          {turn.text}
+                          {!turn.text && <span className="animate-pulse">▍</span>}
+                          {turn.text && <span className="animate-pulse">▍</span>}
+                        </span>
+                      ) : (
+                        <Markdown text={turn.text} />
+                      )
+                    ) : last && !turn.final ? (
+                      <span className="animate-pulse">▍</span>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </Bubble>
+            {showToolbar && (
+              <div className="flex items-center gap-1 pt-1">
+                {hasUser && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-muted-foreground h-6 cursor-pointer px-2 text-[11px]"
+                        onClick={() => onFork(bubble.userIndex)}
+                      >
+                        <GitFork data-icon="inline-start" className="size-3" />
+                        fork
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>从此轮分叉新会话</TooltipContent>
+                  </Tooltip>
+                )}
+                {hasThinking && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-muted-foreground h-6 cursor-pointer px-2 text-[11px]"
+                    onClick={() => setDetail("reasoning")}
+                  >
+                    <Brain data-icon="inline-start" className="size-3" />
+                    reasoning
+                  </Button>
+                )}
+                {hasTools && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-muted-foreground h-6 cursor-pointer px-2 text-[11px]"
+                    onClick={() => setDetail("tools")}
+                  >
+                    <Wrench data-icon="inline-start" className="size-3" />
+                    tools
+                  </Button>
+                )}
+              </div>
+            )}
+          </MessageContent>
+        </Message>
+      )}
+
+      <Dialog open={detail === "reasoning"} onOpenChange={(o) => !o && setDetail(null)}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-base">🧠 Reasoning</DialogTitle>
+            <DialogDescription>本轮完整思考过程</DialogDescription>
+          </DialogHeader>
+          <pre className="bg-muted/50 border-border max-h-[60vh] overflow-y-auto rounded-md border p-3 text-xs whitespace-pre-wrap [overflow-wrap:anywhere]">
+            {bubbleThinking(bubble)}
+          </pre>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={detail === "tools"} onOpenChange={(o) => !o && setDetail(null)}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-base">⚙ 工具调用（{toolRows.length}）</DialogTitle>
+            <DialogDescription>本轮全部工具执行详情</DialogDescription>
+          </DialogHeader>
+          <div className="flex max-h-[60vh] flex-col gap-2 overflow-y-auto">
+            {toolRows.map((row) => (
+              <ToolCard key={row.toolCallId} row={row} />
+            ))}
+            {toolRows.length === 0 && <div className="text-muted-foreground text-xs">（工具执行记录尚未到达）</div>}
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
 export function Chat({
   state,
   dispatch,
+  onFork,
 }: {
   state: StreamState;
   dispatch: React.Dispatch<StreamAction>;
+  onFork: (userIndex: number) => void;
 }) {
   const queueText =
     state.queue.steering.length > 0 || state.queue.followUp.length > 0
       ? `队列: ${state.queue.steering.length ? `steer×${state.queue.steering.length}` : ""}${state.queue.steering.length && state.queue.followUp.length ? " " : ""}${state.queue.followUp.length ? `followUp×${state.queue.followUp.length}` : ""}`
       : null;
-
-  // 连续同角色消息合并为一组（工具循环产生的多段 assistant 输出视觉连贯）
-  const groups: { role: "user" | "assistant"; items: ChatMessage[] }[] = [];
-  for (const m of state.messages) {
-    const role = m.role === "assistant" ? "assistant" : "user";
-    const last = groups[groups.length - 1];
-    if (last && last.role === role) last.items.push(m);
-    else groups.push({ role, items: [m] });
-  }
+  const hasContent = state.bubbles.length > 0 || state.tools.length > 0;
 
   return (
     <main className="relative min-w-0 flex-1">
@@ -217,7 +288,7 @@ export function Chat({
         <MessageScroller className="min-h-0 flex-1">
           <MessageScrollerViewport>
             <MessageScrollerContent className="mx-auto w-full max-w-3xl gap-3 px-4 py-3">
-              {state.messages.length === 0 && state.tools.length === 0 ? (
+              {!hasContent ? (
                 <Empty className="mt-16">
                   <EmptyHeader>
                     <EmptyTitle className="text-sm font-medium">暂无消息</EmptyTitle>
@@ -228,16 +299,19 @@ export function Chat({
                 </Empty>
               ) : (
                 <>
-                  {groups.map((g) => (
+                  {state.bubbles.map((b) => (
                     <MessageScrollerItem
-                      key={g.items[0].id}
-                      messageId={g.items[0].id}
-                      scrollAnchor={g.role === "user"}
+                      key={b.id}
+                      messageId={b.id}
+                      scrollAnchor={b.userIndex >= 0}
                     >
                       <MessageGroup>
-                        {g.items.map((m) => (
-                          <MessageBubble key={m.id} msg={m} tools={state.tools} dispatch={dispatch} />
-                        ))}
+                        <TurnBubbleView
+                          bubble={b}
+                          tools={state.tools}
+                          agentStreaming={state.streaming}
+                          onFork={onFork}
+                        />
                       </MessageGroup>
                     </MessageScrollerItem>
                   ))}

@@ -1,25 +1,22 @@
-/** 聊天流状态机（纯 reducer，单测覆盖）。 */
+/** 聊天流状态机（纯 reducer，单测覆盖）——轮次聚合气泡模型（SPEC §7）。 */
 
-export type ChatRole = "user" | "assistant" | "toolResult";
-
-export interface ChatMessage {
-  id: string;
-  role: ChatRole;
-  /** 最终文本；assistant 流式时持续累积 */
+export interface Turn {
+  /** 该 turn 最终文本（流式中持续累积；message_end 用最终 content 覆盖） */
   text: string;
-  /** assistant 的 thinking 块（可折叠） */
+  /** thinking 块全文 */
   thinking: string;
-  thinkingExpanded: boolean;
-  /** 本消息 content 里声明的 toolCall 列表（对应 tools 列表渲染工具卡片） */
+  /** 本 turn content 声明的 toolCall 列表（对应全局 tools 列表） */
   toolCallIds: string[];
-  toolName?: string;
-  toolCallId?: string;
-  toolArgs?: unknown;
-  toolOutputExpanded: boolean;
-  isError?: boolean;
   final: boolean;
-  /** 是否仍在流式（assistant 未 message_end） */
-  streaming?: boolean;
+}
+
+export interface TurnBubble {
+  id: string;
+  /** 第几条 user 消息（0-based，fork 用）；-1 = 无 user 的孤儿气泡 */
+  userIndex: number;
+  userText: string;
+  userFinal: boolean;
+  turns: Turn[];
 }
 
 export interface ToolRow {
@@ -33,9 +30,11 @@ export interface ToolRow {
 }
 
 export interface StreamState {
-  messages: ChatMessage[];
-  /** 当前流式 assistant 条目 id（message_update 追加目标） */
-  currentAssistantId: string | null;
+  bubbles: TurnBubble[];
+  /** 最近气泡 id（assistant turn 追加目标） */
+  currentBubbleId: string | null;
+  /** 累计 user 消息数（流式 userIndex 续接） */
+  userCount: number;
   /** 工具执行行（以 tool_execution_* 事件为准，忽略 toolResult message 事件避免重复） */
   tools: ToolRow[];
   streaming: boolean;
@@ -65,6 +64,7 @@ export type StreamAction =
         text: string;
         thinking?: string;
         toolCalls?: { id: string; name: string; arguments: unknown; result?: string; isError?: boolean }[];
+        userIndex?: number;
       }[];
     }
   | { type: "message_start"; message: { role?: string; content?: unknown; toolName?: string } }
@@ -95,6 +95,8 @@ export type StreamAction =
       result: { content?: unknown } | null;
       isError: boolean;
     }
+  | { type: "turn_start" }
+  | { type: "turn_end" }
   | { type: "agent_start" }
   | { type: "agent_end"; willRetry?: boolean }
   | { type: "agent_settled" }
@@ -106,12 +108,12 @@ export type StreamAction =
   | { type: "session_switch_ready" }
   | { type: "notify"; message: string; notifyType: string }
   | { type: "setStatus"; statusKey: string; statusText: string | null }
-  | { type: "setWidget"; widgetKey: string; widgetLines: string[] | null }
-  | { type: "toggle_thinking"; id: string };
+  | { type: "setWidget"; widgetKey: string; widgetLines: string[] | null };
 
 export const initialState: StreamState = {
-  messages: [],
-  currentAssistantId: null,
+  bubbles: [],
+  currentBubbleId: null,
+  userCount: 0,
   tools: [],
   streaming: false,
   queue: { steering: [], followUp: [] },
@@ -130,7 +132,7 @@ export const initialState: StreamState = {
 let seq = 0;
 function nextId(): string {
   seq += 1;
-  return `m${seq}`;
+  return `b${seq}`;
 }
 
 export function textOfContent(content: unknown): string {
@@ -138,6 +140,18 @@ export function textOfContent(content: unknown): string {
   if (!Array.isArray(content)) return "";
   return content
     .map((b) => (b && typeof b === "object" && "text" in (b as object) ? ((b as { text: unknown }).text as string) : ""))
+    .filter((s) => s.length > 0)
+    .join("\n");
+}
+
+export function thinkingOfContent(content: unknown): string {
+  if (!Array.isArray(content)) return "";
+  return content
+    .map((b) =>
+      b && typeof b === "object" && (b as { type?: unknown }).type === "thinking" && "thinking" in (b as object)
+        ? String((b as { thinking: unknown }).thinking)
+        : "",
+    )
     .filter((s) => s.length > 0)
     .join("\n");
 }
@@ -155,8 +169,32 @@ export function toolCallIdsOf(content: unknown): string[] {
   return ids;
 }
 
-function updateMessage(state: StreamState, id: string, patch: Partial<ChatMessage>): StreamState {
-  return { ...state, messages: state.messages.map((m) => (m.id === id ? { ...m, ...patch } : m)) };
+/** 气泡是否仍在更新（有未 final 的 turn） */
+export function bubbleStreaming(bubble: TurnBubble): boolean {
+  return bubble.turns.some((t) => !t.final);
+}
+
+/** 气泡内聚合（多 turn 拼接） */
+export function bubbleThinking(bubble: TurnBubble): string {
+  return bubble.turns.map((t) => t.thinking).filter((s) => s.length > 0).join("\n\n");
+}
+
+export function bubbleToolCallIds(bubble: TurnBubble): string[] {
+  const out: string[] = [];
+  for (const t of bubble.turns) for (const id of t.toolCallIds) if (!out.includes(id)) out.push(id);
+  return out;
+}
+
+function updateBubble(state: StreamState, id: string, patch: Partial<TurnBubble>): StreamState {
+  return { ...state, bubbles: state.bubbles.map((b) => (b.id === id ? { ...b, ...patch } : b)) };
+}
+
+/** 最近气泡；无则创建孤儿气泡（异常序列兜底） */
+function currentBubble(state: StreamState): TurnBubble {
+  const existing = state.bubbles.find((b) => b.id === state.currentBubbleId);
+  if (existing) return existing;
+  const b: TurnBubble = { id: nextId(), userIndex: -1, userText: "", userFinal: true, turns: [] };
+  return b;
 }
 
 export function streamReducer(state: StreamState, action: StreamAction): StreamState {
@@ -165,24 +203,39 @@ export function streamReducer(state: StreamState, action: StreamAction): StreamS
       return { ...state, conn: action.state };
 
     case "history": {
-      const msgs: ChatMessage[] = [];
+      const bubbles: TurnBubble[] = [];
       const tools: ToolRow[] = [];
-      let i = 0;
+      let userCount = 0;
+      let current: TurnBubble | null = null;
       for (const m of action.messages) {
-        if (m.role !== "user" && m.role !== "assistant") continue;
         const toolCalls = m.toolCalls ?? [];
-        // 空消息（无 text 无 thinking 无工具）数据层筛掉（服务端已筛，这里防御）
-        if (m.role === "assistant" && !m.text && !(m.thinking ?? "") && toolCalls.length === 0) continue;
-        msgs.push({
-          id: `h${i++}`,
-          role: m.role as ChatRole,
-          text: m.text,
-          thinking: m.thinking ?? "",
-          thinkingExpanded: false,
-          toolCallIds: toolCalls.map((t) => t.id),
-          toolOutputExpanded: false,
-          final: true,
-        });
+        if (m.role === "user") {
+          const b: TurnBubble = {
+            id: nextId(),
+            userIndex: m.userIndex ?? userCount,
+            userText: m.text,
+            userFinal: true,
+            turns: [],
+          };
+          bubbles.push(b);
+          current = b;
+          userCount = Math.max(userCount, (m.userIndex ?? userCount) + 1);
+        } else if (m.role === "assistant") {
+          // 空消息（无 text 无 thinking 无工具）数据层筛掉（服务端已筛，这里防御）
+          if (!m.text && !(m.thinking ?? "") && toolCalls.length === 0) continue;
+          if (!current) {
+            current = { id: nextId(), userIndex: -1, userText: "", userFinal: true, turns: [] };
+            bubbles.push(current);
+          }
+          current.turns.push({
+            text: m.text,
+            thinking: m.thinking ?? "",
+            toolCallIds: toolCalls.map((t) => t.id),
+            final: true,
+          });
+        } else {
+          continue;
+        }
         for (const tc of toolCalls) {
           tools.push({
             toolCallId: tc.id,
@@ -195,74 +248,121 @@ export function streamReducer(state: StreamState, action: StreamAction): StreamS
           });
         }
       }
-      return { ...state, messages: msgs, tools, currentAssistantId: null };
+      return {
+        ...state,
+        bubbles,
+        tools,
+        currentBubbleId: bubbles.length > 0 ? bubbles[bubbles.length - 1].id : null,
+        userCount,
+      };
     }
 
     case "message_start": {
-      const role = (action.message.role ?? "unknown") as ChatRole;
+      const role = action.message.role ?? "unknown";
       // toolResult 消息事件忽略（tools 列表以 tool_execution_* 为准）
       if (role === "toolResult") return state;
-      const id = nextId();
-      const text = textOfContent(action.message.content);
-      const msg: ChatMessage = {
-        id,
-        role,
-        text,
+      if (role === "user") {
+        // 新 user 消息 → 新气泡（聚合边界）
+        const b: TurnBubble = {
+          id: nextId(),
+          userIndex: state.userCount,
+          userText: textOfContent(action.message.content),
+          userFinal: false,
+          turns: [],
+        };
+        return {
+          ...state,
+          bubbles: [...state.bubbles, b],
+          currentBubbleId: b.id,
+          userCount: state.userCount + 1,
+        };
+      }
+      // assistant：追加新 turn 到最近气泡
+      const bubble = currentBubble(state);
+      const turn: Turn = {
+        text: textOfContent(action.message.content),
         thinking: "",
-        thinkingExpanded: false,
         toolCallIds: toolCallIdsOf(action.message.content),
-        toolOutputExpanded: false,
-        final: role !== "assistant",
-        streaming: role === "assistant",
+        final: false,
       };
+      const withTurn: TurnBubble = { ...bubble, turns: [...bubble.turns, turn] };
       return {
         ...state,
-        messages: [...state.messages, msg],
-        currentAssistantId: role === "assistant" ? id : state.currentAssistantId,
+        bubbles:
+          state.bubbles.find((b) => b.id === bubble.id)
+            ? state.bubbles.map((b) => (b.id === bubble.id ? withTurn : b))
+            : [...state.bubbles, withTurn],
+        currentBubbleId: bubble.id,
       };
     }
 
     case "message_update": {
       const evt = action.event ?? {};
+      const bubble = state.bubbles.find((b) => b.id === state.currentBubbleId);
+      if (!bubble) return state;
+      const turn = bubble.turns[bubble.turns.length - 1];
+      if (!turn || turn.final) return state;
       if (evt.type === "text_delta") {
-        if (!state.currentAssistantId) return state;
-        const target = state.messages.find((m) => m.id === state.currentAssistantId);
-        if (!target || target.role !== "assistant") return state;
-        return updateMessage(state, target.id, { text: target.text + (evt.delta ?? "") });
+        return updateBubble(state, bubble.id, {
+          turns: [...bubble.turns.slice(0, -1), { ...turn, text: turn.text + (evt.delta ?? "") }],
+        });
       }
       if (evt.type === "thinking_delta") {
-        if (!state.currentAssistantId) return state;
-        const target = state.messages.find((m) => m.id === state.currentAssistantId);
-        if (!target || target.role !== "assistant") return state;
         const partialThinking = evt.partial?.thinking;
-        return updateMessage(state, target.id, {
-          thinking: partialThinking ?? target.thinking + (evt.delta ?? ""),
+        return updateBubble(state, bubble.id, {
+          turns: [
+            ...bubble.turns.slice(0, -1),
+            { ...turn, thinking: partialThinking ?? turn.thinking + (evt.delta ?? "") },
+          ],
         });
       }
       return state;
     }
 
     case "message_end": {
-      if (action.message.role !== "assistant") return state;
-      if (!state.currentAssistantId) return state;
-      const finalText = textOfContent(action.message.content);
-      const ids = toolCallIdsOf(action.message.content);
-      const target = state.messages.find((m) => m.id === state.currentAssistantId);
-      // 空消息（无 text、无 thinking、无工具）→ 数据层直接筛掉，不留在消息流
-      if (!finalText && !target?.thinking && ids.length === 0) {
-        return {
-          ...state,
-          messages: state.messages.filter((m) => m.id !== state.currentAssistantId),
-          currentAssistantId: null,
-        };
+      const role = action.message.role ?? "unknown";
+      if (role === "user") {
+        // user 消息定稿（文本覆盖）
+        const bubble = state.bubbles.find((b) => b.id === state.currentBubbleId);
+        if (!bubble || !bubble.userFinal) {
+          const target = state.bubbles.find((b) => b.id === state.currentBubbleId);
+          if (!target) return state;
+          return updateBubble(state, target.id, { userText: textOfContent(action.message.content), userFinal: true });
+        }
+        return state;
       }
-      const withIds =
-        ids.length > 0 ? updateMessage(state, state.currentAssistantId, { toolCallIds: ids }) : state;
-      const withText = finalText ? updateMessage(withIds, state.currentAssistantId, { text: finalText }) : withIds;
-      return {
-        ...updateMessage(withText, state.currentAssistantId, { final: true, streaming: false }),
-        currentAssistantId: null,
-      };
+      if (role !== "assistant") return state;
+      const bubble = state.bubbles.find((b) => b.id === state.currentBubbleId);
+      if (!bubble) return state;
+      const turn = bubble.turns[bubble.turns.length - 1];
+      if (!turn || turn.final) return state;
+      const finalText = textOfContent(action.message.content);
+      const thinking = thinkingOfContent(action.message.content);
+      const ids = toolCallIdsOf(action.message.content);
+      // 空 turn（无 text、无 thinking、无工具）→ 移除；turns 空且无 user 文本的孤儿气泡一并移除
+      if (!finalText && !thinking && ids.length === 0) {
+        const turns = bubble.turns.slice(0, -1);
+        const keepBubble = turns.length > 0 || bubble.userText.length > 0 || bubble.userIndex >= 0;
+        if (!keepBubble) {
+          return {
+            ...state,
+            bubbles: state.bubbles.filter((b) => b.id !== bubble.id),
+            currentBubbleId: state.currentBubbleId === bubble.id ? null : state.currentBubbleId,
+          };
+        }
+        return updateBubble(state, bubble.id, { turns });
+      }
+      return updateBubble(state, bubble.id, {
+        turns: [
+          ...bubble.turns.slice(0, -1),
+          {
+            text: finalText || turn.text,
+            thinking: thinking || turn.thinking,
+            toolCallIds: ids.length > 0 ? ids : turn.toolCallIds,
+            final: true,
+          },
+        ],
+      });
     }
 
     case "tool_start": {
@@ -278,7 +378,9 @@ export function streamReducer(state: StreamState, action: StreamAction): StreamS
       const existing = state.tools.find((t) => t.toolCallId === action.toolCallId);
       return {
         ...state,
-        tools: existing ? state.tools.map((t) => (t.toolCallId === action.toolCallId ? { ...t, args: action.args } : t)) : [...state.tools, row],
+        tools: existing
+          ? state.tools.map((t) => (t.toolCallId === action.toolCallId ? { ...t, args: action.args } : t))
+          : [...state.tools, row],
       };
     }
 
@@ -287,9 +389,7 @@ export function streamReducer(state: StreamState, action: StreamAction): StreamS
       if (!text) return state;
       return {
         ...state,
-        tools: state.tools.map((t) =>
-          t.toolCallId === action.toolCallId ? { ...t, output: text } : t,
-        ),
+        tools: state.tools.map((t) => (t.toolCallId === action.toolCallId ? { ...t, output: text } : t)),
       };
     }
 
@@ -303,6 +403,20 @@ export function streamReducer(state: StreamState, action: StreamAction): StreamS
             : t,
         ),
       };
+    }
+
+    // turn 边界：turn_end 兜底 final 化活跃 turn（message_end 已处理则 no-op）
+    case "turn_start":
+      return state;
+
+    case "turn_end": {
+      const bubble = state.bubbles.find((b) => b.id === state.currentBubbleId);
+      if (!bubble) return state;
+      const turn = bubble.turns[bubble.turns.length - 1];
+      if (!turn || turn.final) return state;
+      return updateBubble(state, bubble.id, {
+        turns: [...bubble.turns.slice(0, -1), { ...turn, final: true }],
+      });
     }
 
     case "agent_start":
@@ -343,10 +457,11 @@ export function streamReducer(state: StreamState, action: StreamAction): StreamS
       return {
         ...state,
         sessionReason: action.reason ?? "startup",
-        // 会话切换 → 清空旧会话消息与工具
-        messages: [],
+        // 会话切换 → 清空旧会话气泡与工具
+        bubbles: [],
         tools: [],
-        currentAssistantId: null,
+        currentBubbleId: null,
+        userCount: 0,
       };
 
     case "session_shutdown":
@@ -387,14 +502,6 @@ export function streamReducer(state: StreamState, action: StreamAction): StreamS
               ? { key: action.widgetKey, lines: action.widgetLines }
               : null,
         },
-      };
-
-    case "toggle_thinking":
-      return {
-        ...state,
-        messages: state.messages.map((m) =>
-          m.id === action.id ? { ...m, thinkingExpanded: !m.thinkingExpanded } : m,
-        ),
       };
 
     default:

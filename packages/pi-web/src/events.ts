@@ -60,6 +60,14 @@ export function mapEvent(type: string, payload: unknown): MappedEvent {
         refreshState: false,
       };
 
+    case "turn_start":
+      return { fields: { turnIndex: p.turnIndex ?? null, timestamp: p.timestamp ?? null }, refreshState: false };
+    case "turn_end":
+      return {
+        fields: { turnIndex: p.turnIndex ?? null, message: p.message ?? null, toolResults: Array.isArray(p.toolResults) ? p.toolResults : [] },
+        refreshState: false,
+      };
+
     case "agent_start":
       return { fields: {}, refreshState: true };
     case "agent_end":

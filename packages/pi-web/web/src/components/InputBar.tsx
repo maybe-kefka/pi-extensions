@@ -1,26 +1,51 @@
-import { useState } from "react";
-import { Square, SendHorizonal } from "lucide-react";
+import { useRef, useState } from "react";
+import { Plus, SendHorizonal, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { PlusPicker } from "@/components/PlusPicker";
+import type { FileGroup, SkillInfo } from "@/lib/types";
 import type { StreamState } from "@/lib/stream";
 
 export function InputBar(props: {
   busy: boolean;
   queue: StreamState["queue"];
   conn: StreamState["conn"];
+  skills: SkillInfo[];
+  files: FileGroup[];
+  pickerLoading: boolean;
   onSend: (text: string, deliverAs?: "steer" | "followUp") => void;
   onAbort: () => void;
+  onPickerOpen: () => void;
 }) {
-  const { busy, queue, conn, onSend, onAbort } = props;
+  const { busy, queue, conn, skills, files, pickerLoading, onSend, onAbort, onPickerOpen } = props;
   const [text, setText] = useState("");
   const [deliverAs, setDeliverAs] = useState<"steer" | "followUp">("followUp");
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   const submit = () => {
     const t = text.trim();
     if (!t) return;
     onSend(t, busy ? deliverAs : undefined);
     setText("");
+  };
+
+  const insert = (chunk: string) => {
+    const el = textareaRef.current;
+    const start = el?.selectionStart ?? text.length;
+    const end = el?.selectionEnd ?? text.length;
+    const next = text.slice(0, start) + chunk + (el && start !== end ? "" : " ") + text.slice(end);
+    setText(next);
+    setPickerOpen(false);
+    requestAnimationFrame(() => {
+      const el2 = textareaRef.current;
+      if (el2) {
+        const pos = start + chunk.length + (el && start !== end ? 0 : 1);
+        el2.focus();
+        el2.setSelectionRange(pos, pos);
+      }
+    });
   };
 
   return (
@@ -53,7 +78,20 @@ export function InputBar(props: {
         </div>
       )}
       <div className="flex items-end gap-2">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="text-muted-foreground size-9 shrink-0 cursor-pointer rounded-full"
+          title="插入 skill 或文件"
+          onClick={() => {
+            setPickerOpen(true);
+            onPickerOpen();
+          }}
+        >
+          <Plus className="size-5" />
+        </Button>
         <Textarea
+          ref={textareaRef}
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => {
@@ -70,6 +108,14 @@ export function InputBar(props: {
           <SendHorizonal data-icon="inline-start" /> 发送
         </Button>
       </div>
+      <PlusPicker
+        open={pickerOpen}
+        onOpenChange={setPickerOpen}
+        skills={skills}
+        files={files}
+        loading={pickerLoading}
+        onInsert={insert}
+      />
     </footer>
   );
 }
