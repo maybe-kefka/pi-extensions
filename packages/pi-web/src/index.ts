@@ -16,12 +16,17 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   SessionManager,
+  type BuildSystemPromptOptions,
   type ExtensionAPI,
   type ExtensionCommandContext,
   type ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
 import { parseArgs, USAGE, type WebArgs } from "./args.js";
 import { createCoalescer, type Coalescer } from "./coalescer.js";
+import {
+  computeContextBreakdown,
+  contextMessagesFromEntries,
+} from "./context-breakdown.js";
 import { mapEvent, requiresStateRefresh } from "./events.js";
 import { listFiles } from "./file-lister.js";
 import { isStaleError, resolveUserEntryId } from "./fork-util.js";
@@ -454,6 +459,38 @@ async function handleRequest(id: string | number, method: string, params: Record
         .getCommands()
         .filter((c) => c.source === "skill")
         .map((c) => ({ name: c.name, description: c.description ?? null }));
+    }
+
+    case "pi:getContextBreakdown": {
+      // 数据源均在普通会话 ctx 上（非特权），TUI 手动切会话后依然可用；
+      // getSystemPromptOptions 类型仅 ExtensionCommandContext 声明，但运行时普通 ctx 同样提供
+      // （agent-session.js:1924 源码核实：getSystemPromptOptions: () => this._baseSystemPromptOptions）
+      const ctx = requireCtx() as ExtensionContext & {
+        getSystemPromptOptions?: () => BuildSystemPromptOptions;
+      };
+      const options = ctx.getSystemPromptOptions?.();
+      const breakdown = computeContextBreakdown({
+        customPrompt: options?.customPrompt ?? null,
+        guidelines: options?.promptGuidelines ?? [],
+        appendSystemPrompt: options?.appendSystemPrompt ?? null,
+        contextFiles: options?.contextFiles ?? [],
+        skills: options?.skills ?? [],
+        toolSnippets: options?.toolSnippets ?? {},
+        messages: contextMessagesFromEntries(ctx.sessionManager.buildContextEntries()),
+      });
+      const usage = ctx.getContextUsage();
+      return {
+        categories: breakdown.categories,
+        conversation: breakdown.conversation,
+        total: breakdown.total,
+        usage: usage
+          ? {
+              tokens: usage.tokens,
+              contextWindow: usage.contextWindow,
+              percent: usage.percent == null ? null : usage.percent / 100,
+            }
+          : null,
+      };
     }
 
     case "pi:listFiles": {

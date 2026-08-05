@@ -56,6 +56,14 @@ export interface FileGroup {
   files: ListedFile[];
 }
 
+/** pi:getContextBreakdown 返回（镜像后端 ContextBreakdown + usage） */
+export interface ContextBreakdownData {
+  categories: { key: string; label: string; tokens: number }[];
+  conversation: { user: number; assistant: number; toolResult: number; other: number; total: number };
+  total: number;
+  usage: { tokens: number | null; contextWindow: number; percent: number | null } | null;
+}
+
 /** pi:getTree 返回的树节点（镜像 SessionTreeNode） */
 export interface TreeNode {
   entry: {
