@@ -106,3 +106,12 @@
 - **修复**：action 里裸写 `$REPLY`（引号由 termux-api 提供）；本地模拟 shellEscape 替换验证：含空格 42 字节完整 ✅、含双引号转义 ✅、无空格 ✅
 - **已知限制**：shellEscape 只转义双引号，输入含 `$`/反引号时双引号内仍会被 shell 展开（termux-api 上游缺陷，不处理）
 - **验证**：notify-cmd 13 tests 全绿 + typecheck；真机待用户复测
+
+## T11：权限自检警告文案完善——区分"通知权限"与"通知使用权（监听服务）"（2026-08，已完成）
+
+- **背景（用户实测报告）**：权限全开仍弹"Termux:API 通知权限未开启或未开全"。现场诊断（2026-08-05）：`termux-notification` 发送正常（exit 0，通知权限没问题），但 `termux-notification-list` 恒返回空（exit 0）——`com.termux.api` 进程不存活、监听服务未绑定。根因：list 依赖 Termux:API 的 **NotificationListenerService**（系统级「通知使用权」开关，与「通知权限」独立）；服务被杀/未绑定时 list 返回空 → 自检误判为权限未开全。用户开关切换（off→on 强制重新绑定）后恢复。
+- **改动**：
+  - `renderPermissionHint`（notify-list.ts）文案重写：同时提示 ① 通知权限全开（含 ColorOS 细分类别）② 通知使用权（监听服务）——列表/自检依赖它，未开或服务被杀同样触发此警告
+  - README 权限表新增「Termux:API 通知使用权（监听）」行；SPEC §2 权限清单补第 3 项（原 3/4 顺延）；AGENTS.md 实测知识库同步
+- **TDD**：`renderPermissionHint(false)` 断言新增 `通知使用权`；`renderPermissionHint(true)` 仍为 ""
+- **验证**：`npm test` + `npm run typecheck` 全绿；真机自检恢复（用户开关切换后已实测恢复）

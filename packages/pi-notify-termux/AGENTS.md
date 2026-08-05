@@ -33,12 +33,13 @@ test/               # vitest 单测（TDD，以 npm test 全绿为准）
 
 ### 权限（缺一项即静默失败）
 - **Termux:API 通知权限必须全开**（ColorOS 有细分类别，总开关≠全开）。只开总开关时：通知发得出去，但 `termux-notification-remove` 的 `cancel()` 被系统静默忽略（通知永不消失）。全开后 remove 有效（分步实测：发→看→remove→消失）。
+- **Termux:API 通知使用权（监听服务）与通知权限是两个独立开关**（T11，2026-08 用户实测）：`termux-notification-list` 依赖 NotificationListenerService；监听服务被杀/未绑定时 **list 恒返回空（exit 0）**，发送/移除仍正常 → 自检误报“权限未开全”。诊断手法：发通知后 `termux-notification-list` 读不到 + `ps -A | grep termux.api` 无进程 = 监听服务没绑。修复：设置搜「通知使用权」→ 关再开强制重绑（开关显示已开也要重开），仍不行重启手机；加电池白名单防再杀。
 - **ColorOS "后台弹出界面"**（设置→应用管理→Termux→权限）控制"打开终端"按钮：Android 10+ 禁止后台 app 启动 Activity，termux-am 也无绕过（源码确认普通 startActivityAsUser）。不开时点按钮无声失败（已降级为 toast 提示）。
 
 ### 命令/机制
 - **`/system/bin/am` 不可用**：shell 特权工具，普通 uid 调用报 `Permission Denial: package=com.android.shell does not belong to uid`。必须用 Termux 自带 `<PREFIX>/bin/am`（termux-am，app_process 以 app 身份执行）。
 - **`termux-notification-remove` 只接受位置参数**（`remove <id>`），没有 `--id` 选项（传了报 illegal option）。
-- **`termux-notification-list`** 权限全开后可用；**权限未开时它会挂起**（客户端等 app 响应）→ 所有 spawnSync 必须带 `timeout: 3000` 保护，自检失败返回 null 优雅降级（曾因此卡死 pi 启动，已修）。**权限自检**：发 `--alert-once` 诊断通知（`pi-perm-diag`）→ list 确认在栏 → 移除——在栏=权限可用，不在栏=未开/未开全（实测可行）；启动时与 `/notify` 时自动执行，失败弹警告。
+- **`termux-notification-list`** 权限全开后可用；**权限未开时它会挂起**（客户端等 app 响应）→ 所有 spawnSync 必须带 `timeout: 3000` 保护，自检失败返回 null 优雅降级（曾因此卡死 pi 启动，已修）。**权限自检**：发 `--alert-once` 诊断通知（`pi-perm-diag`）→ list 确认在栏 → 移除——在栏=链路正常；不在栏=通知权限未开全 **或监听服务被杀**（T11：两因同症状，警告文案同时提示）→ 启动时与 `/notify` 时自动执行，失败弹警告。
 - **通知 action 在干净环境执行**（dash -c，PATH 丢失）→ helper/am/toast 一律绝对路径。
 - **Direct Reply**：action 里字面 `$REPLY` 由 termux-api 替换为带引号的用户输入；helper 内 `printf '%s'` 防注入；**空输入 = 取消**。
 - **滑掉通知 = 取消**：`--on-delete` 写 `.cancel` 标记，阻塞 tool 立即返回 cancelled（不等超时）。

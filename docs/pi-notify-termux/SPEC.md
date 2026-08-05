@@ -48,10 +48,11 @@
 
 - Android + Termux；需安装 **Termux:API** app 与 `termux-api` 包（`termux-notification` / `termux-notification-list` 可用）。
 - **权限清单（实测，缺一项即静默失败）**：
-  1. **Termux:API 通知权限**（Android 13+，设置 → 应用 → Termux:API → 通知 → **全部开启**）：影响发送/移除/列表。**ColorOS/OPPO 必须开全**——通知权限有细分类别，只开总开关时 `NotificationManager.cancel()` 被系统静默忽略（实测：通知发得出但永远不消失；全开后 remove 恢复有效）
-  2. **Termux 通知权限**：按钮 action 经 Termux 服务执行
-  3. **Termux “后台弹出界面”（仅 ColorOS/OPPO）**：影响“打开终端”按钮——Android 10+ 禁止后台 app 启动 Activity（实测：termux-am 即普通 `startActivityAsUser`，无法绕过；bash 前台调用成功、后台调用被拒）
-  4. 电池优化白名单（建议）：锁屏后通知链路不被杀
+  1. **Termux:API 通知权限**（Android 13+，设置 → 应用 → Termux:API → 通知 → **全部开启**）：影响发送/移除。**ColorOS/OPPO 必须开全**——通知权限有细分类别，只开总开关时 `NotificationManager.cancel()` 被系统静默忽略（实测：通知发得出但永远不消失；全开后 remove 恢复有效）
+  2. **Termux:API 通知使用权（监听服务）**（设置 → 搜「通知使用权」→ 开启 Termux:API；各 ROM 位置不同：原生在 设置→通知→高级，ColorOS 在 设置→通知与状态栏→通知管理→高级设置）：影响**通知栏列表与权限自检**——`termux-notification-list` 依赖 NotificationListenerService，与通知权限是两个独立开关。**监听服务被杀/未绑定时 list 恒返回空（exit 0），自检误报“权限未开全”（T11，2026-08 用户实测诊断：发送正常、进程不存活、list 空）**；开关已开仍失效 → 先关再开强制重绑，仍不行重启手机；建议加电池白名单防杀
+  3. **Termux 通知权限**：按钮 action 经 Termux 服务执行
+  4. **Termux “后台弹出界面”（仅 ColorOS/OPPO）**：影响“打开终端”按钮——Android 10+ 禁止后台 app 启动 Activity（实测：termux-am 即普通 `startActivityAsUser`，无法绕过；bash 前台调用成功、后台调用被拒）
+  5. 电池优化白名单（建议）：锁屏后通知链路不被杀
 - 通知 action 在**干净环境**（`dash -c`）执行：PATH 丢失、`.profile` 不加载 → helper 脚本与所有命令一律**绝对路径**。
 - Direct Reply 输入经 termux-api 替换 `$REPLY` 后作为参数传给 action（官方语义：`--button1-action "termux-toast \$REPLY"`）。
 
@@ -136,7 +137,7 @@ esac
 
 ### 5.3 /notify 命令
 - `/notify on` → enabled=true 持久化 + notify 确认；`/notify off` → enabled=false + notify；`/notify`（无参）→ 显示当前状态（termux-api 环境探测 + **权限自检** + **通知栏实时状态**：调 `termux-notification-list` 解析出结果通知/提问通知是否在栏，`src/notify-list.ts`）。
-- **权限自检（2025-08 新增）**：发 `--alert-once` 静默诊断通知（`pi-perm-diag`）→ list 确认在栏 → 立即 remove。在栏 = 通知权限可用；不在栏 = 权限未开/未开全（ColorOS 类别权限）→ `renderPermissionHint` 警告。启动时（session_start）与 `/notify` 时各执行一次；envOk 不可用时跳过。
+- **权限自检（2025-08 新增，T11 修订 2026-08）**：发 `--alert-once` 静默诊断通知（`pi-perm-diag`）→ list 确认在栏 → 立即 remove。在栏 = 链路正常；不在栏 = 通知权限未开全 **或监听服务（通知使用权）未绑定/被杀** → `renderPermissionHint` 警告（文案同时提示两项，见 T11）。启动时（session_start）与 `/notify` 时各执行一次；envOk 不可用时跳过。
 - 未知参数 → 报错 + 用法（`parseNotifyCommand` 纯函数）。
 
 ### 5.4 竞态与并发
