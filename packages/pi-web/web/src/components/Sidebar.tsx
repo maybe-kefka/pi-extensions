@@ -1,16 +1,14 @@
 import { useEffect, useState } from "react";
 import type * as React from "react";
 import { Info, ListOrdered, RefreshCw } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
-import type { CommandInfo, ModelInfo, SessionInfo } from "@/lib/types";
+import { SessionList, type SessionActions } from "@/components/SessionList";
+import type { ModelInfo, SessionInfo } from "@/lib/types";
 import type { StreamState } from "@/lib/stream";
-
 
 export interface SidebarContentProps {
   sessions: SessionInfo[];
@@ -19,8 +17,9 @@ export interface SidebarContentProps {
   currentModel: string | null;
   thinkingLevel: string | null;
   thinkingLevels: string[];
-  commands: CommandInfo[];
   bridge: StreamState["bridge"];
+  sessionDegraded: boolean;
+  sessionActions: SessionActions;
   onSetModel: (provider: string, modelId: string) => void;
   onSetThinking: (level: string) => void;
 }
@@ -46,12 +45,17 @@ export function SidebarContent(props: SidebarContentProps) {
     currentModel,
     thinkingLevel,
     thinkingLevels,
-    commands,
     bridge,
+    sessionDegraded,
+    sessionActions,
     onSetModel,
     onSetThinking,
   } = props;
   const [refreshKey, setRefreshKey] = useState(0);
+
+  useEffect(() => {
+    if (refreshKey > 0) sessionActions.onRefresh();
+  }, [refreshKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <>
@@ -69,24 +73,12 @@ export function SidebarContent(props: SidebarContentProps) {
           </Button>
         }
       >
-        <div className="text-muted-foreground text-xs">切换仅支持 TUI（/resume、/new）</div>
-        <ScrollArea className="mt-2 h-40">
-          <ul className="flex flex-col gap-1">
-            {sessions.map((s) => {
-              const active = currentSessionFile === s.path;
-              return (
-                <li key={s.path} className="flex items-center gap-2 text-xs">
-                  <span className={`truncate ${active ? "text-foreground font-medium" : "text-muted-foreground"}`}>
-                    {s.name || s.firstMessage || s.path.split("/").pop()}
-                  </span>
-                  <span className="text-muted-foreground ml-auto shrink-0 tabular-nums">{s.messageCount}条</span>
-                  {active && <Badge variant="secondary">当前</Badge>}
-                </li>
-              );
-            })}
-            {sessions.length === 0 && <li className="text-muted-foreground text-xs">暂无会话</li>}
-          </ul>
-        </ScrollArea>
+        <SessionList
+          sessions={sessions}
+          currentSessionFile={currentSessionFile}
+          degraded={sessionDegraded}
+          actions={sessionActions}
+        />
       </Panel>
 
       <Panel title="模型">
@@ -128,20 +120,6 @@ export function SidebarContent(props: SidebarContentProps) {
             </SelectGroup>
           </SelectContent>
         </Select>
-      </Panel>
-
-      <Panel title="命令（只读）">
-        <ScrollArea className="h-36">
-          <ul className="flex flex-col gap-1.5">
-            {commands.map((c) => (
-              <li key={c.name} className="text-xs">
-                <div className="font-medium">/{c.name}</div>
-                <div className="text-muted-foreground line-clamp-2">{c.description || c.source}</div>
-              </li>
-            ))}
-            {commands.length === 0 && <li className="text-muted-foreground text-xs">无命令</li>}
-          </ul>
-        </ScrollArea>
       </Panel>
 
       <Panel title="状态桥接">

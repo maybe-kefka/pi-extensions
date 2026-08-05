@@ -105,3 +105,74 @@
   - index.css：`.markdown-body` 排版（标题/列表/表格/引用/任务列表）+ github-dark 主题（highlight.js@11 升级）
   - Chat.tsx：assistant 定稿后渲染 markdown，流式中保持纯文本（防未闭合语法闪烁）；user/thinking/工具输出不渲染
   - 测试：markdown.test.tsx 8 例（jsdom + jest-dom + cleanup）；踩坑：react-markdown v10 默认导出为同步 Markdown、CodeBlock children 为高亮元素需 nodeText 递归提取、CLI 单跑路径不匹配 environmentMatchGlobs
+
+## R10 命令派发 + 轮次聚合 + "+" 弹层（2026 v-next，全部完成后 commit）
+
+> 决策记录（2026-02 与用户逐题对齐）：
+> - 只做内置可派发命令；扩展命令/prompt 模板/skill 命令**不展示不派发**（0.83.0 无公开执行 API）
+> - 特权 ctx 捕获链：`/web` handler 捕获 `ExtensionCommandContext` + `withSession` 续链；TUI 手动切换后特权命令降级（toast + 侧栏提示条，需 TUI 重跑 /web）
+> - `/reload` `/quit` 不派发；TUI-only 命令（export/import/share/copy/login/logout/settings/trust/changelog/hotkeys 等）不展示
+> - 删除会话：fs unlink（仅非当前会话 + 确认弹窗）；重命名 setSessionName；compact 放 header 无确认；无 `/` 补全
+> - 气泡 = user 消息开新气泡，下一条 user 前全部内容聚合（含多 turn 工具循环）；工具栏（fork/reasoning/tools 弹窗）轮结束后出现
+> - "+" 弹层：可搜索、分块（全部 skills + 工作目录文件）；点击插入文本不发送；文件递归 3 层、gitignore 排除（`ignore` 依赖）、上限 200、按目录分组
+> - 树弹窗：查看 + 点击节点确认导航；历史回填协议升级（getMessages 带 thinking/toolCalls/userIndex）
+
+### R10.1 fork-util.ts（userIndex → entryId + stale 判定）✅
+文件：`src/fork-util.ts` + `test/fork-util.test.ts`
+- `resolveUserEntryId(entries, userIndex)`：按顺序数 `type === "message" && role === "user"` 的 entry，第 N 条（0-based）返回其 id；越界 → null
+- `isStaleError(err)`：错误消息含 "stale" → true（server 映射 code 3）
+- 输入防御：非 message entry / 非 user 跳过；空 entries → null
+
+### R10.2 session-files.ts（删除会话校验 + unlink）✅
+文件：`src/session-files.ts` + `test/session-files.test.ts`
+- `validateDeletableSession(sessionDir, path, currentSessionFile)`：纯校验——绝对路径解析后在 sessionDir 内、扩展名 `.jsonl`、非当前会话 → `{ok: true} | {ok: false, error}`
+- `deleteSessionFile(sessionDir, path, currentSessionFile)`：校验通过 → `fs.unlink`；失败返回错误（不 throw）
+- 边界：路径穿越（`../`）、非 jsonl、当前会话、空路径
+
+### R10.3 file-lister.ts（gitignore 文件列表）✅
+文件：`src/file-lister.ts` + `test/file-lister.test.ts`
+- `listFiles(cwd, opts)`：递归扫描（默认 `maxDepth: 3`、`limit: 200`）
+- gitignore 排除：`ignore` 包，读根 `.gitignore` + 逐层嵌套 `.gitignore`；内置兜底排除 `.git/` 与 `node_modules/`（目录遍历跳过）
+- 只列文件（不列目录本身）；按目录分组 → `{groups: [{dir, files: [{name, path}]}]}`；`path` 为相对 cwd 的路径
+- 上限截断（组内截断 + 全局截断）；深度越界跳过；空目录/无文件 → 空数组
+
+### R10.4 events.ts（turn 事件映射 + 回归）✅
+- `mapEvent` 增加 `turn_start`（透传 turnIndex/timestamp）、`turn_end`（透传 turnIndex/message/toolResults）
+- 现有 12 测试保持全绿
+
+### R10.5 index.ts 接线（特权 ctx 捕获链 + 新 RPC）✅
+- 模块级 `state.privileged: ExtensionCommandContext | null`；`/web` handler 捕获；`withSession` 回调续链
+- WS 请求统一"最新捕获"：api（factory 重跑重绑）/ ctx（session_start 重绑）/ privileged
+- 新 RPC：`pi:switchSession` `pi:newSession` `pi:fork {userIndex}` `pi:clone` `pi:navigateTree` `pi:getTree` `pi:deleteSession` `pi:setSessionName` `pi:listSkills`
+- 特权缺失/失效 → `code 1` 错误"会话控制能力已失效：请在 TUI 重跑 /web 恢复"
+- `pi:getMessages` 升级：assistant 带 thinking/toolCalls（含结果配对）+ user 消息带 userIndex
+- `pi:listCommands` 保留（前端不再使用；仅兼容）
+- `pi:listFiles`：file-lister 接线（limit 200 / maxDepth 3 默认）
+- BROADCAST_EVENT_TYPES 增加 turn_start/turn_end
+- 薄层原则：纯逻辑（fork 解析/删除校验/列表）全部在 R10.1-10.3
+
+### R11 前端 reducer 重构（气泡聚合）✅
+文件：`web/src/lib/stream.ts` + `web/src/lib/stream.test.ts`
+- 新数据模型：`bubbles: TurnBubble[]`（`{id, userIndex, userText, userFinal, turns: Turn[], streaming}`；`Turn = {text, thinking, toolCallIds, final}`）
+- actions：`history`（按 userIndex 分组构建气泡）、`message_start/update/end`（user → 新气泡；assistant → 当前/新气泡的活跃 turn）、`turn_start/turn_end`（turn_end 兜底 final 化活跃 turn）、`agent_start/end/settled`（bubble streaming 状态）、`tool_*`（全局 tools 不变）、`session_start`（清空）
+- 流式 user 消息 userIndex = history 计数续接；`currentUserIndex` 入 state
+- 保留 toggle_thinking / bridge / conn 等既有 action
+- 测试：历史回填分组、流式 user 开新气泡、多 turn 聚合、turn_end 兜底、空消息筛除、session 切换清空
+
+### R12 前端组件（气泡工具栏 / 会话工具栏 / 弹窗 / "+" 弹层）✅
+- `web/src/components/Chat.tsx`：气泡渲染（userText + turns 文本流 + 工具栏）；工具栏在轮结束（bubble 非 streaming 且有 userText）显示：fork（`pi:fork {userIndex}`）/ reasoning（弹窗全 thinking）/ tools（弹窗聚合工具卡片，复用 ToolCard 逻辑）
+- `web/src/components/SessionList.tsx`：列表项 = 点击切换 + 工具栏（删除/重命名/树/复制）；当前项高亮；顶部"新建"按钮；降级提示条（特权缺失时）
+- `web/src/components/TreeDialog.tsx`：`pi:getTree` 树渲染（节点摘要截断 + 类型图标 + label + 当前 leaf 高亮）；点击节点 → 确认 → `pi:navigateTree`
+- `web/src/components/PlusPicker.tsx`：输入框最左 "+" → Popover + 搜索框 + 分块（skills：`pi:listSkills` 点击插入 `/skill:<name>`；文件：`pi:listFiles` 分组点击插入相对路径）
+- `web/src/components/InputBar.tsx`：加 "+" 按钮 + 光标插入逻辑
+- `web/src/components/Header.tsx`：compact 按钮
+- `web/src/App.tsx`：新 RPC 接线（switchSession/newSession/fork/clone/navigateTree/deleteSession/setSessionName/getTree/listFiles/listSkills）、删除确认/重命名弹窗、toast 错误（特权失效提示）、删除/重命名后刷新会话列表
+- `web/src/lib/types.ts`：协议类型镜像更新（TurnBubble 相关 RPC 类型、SessionInfo 不变）
+- 测试：Chat.test.tsx 更新（气泡渲染 + 工具栏显隐）；新增 PlusPicker/TreeDialog 基础渲染测试（jsdom）
+
+### R13 收尾 ✅
+- 根 workspace 安装 `ignore` 依赖（pi-web dependencies）
+- `npm test` + `npm run typecheck` 全绿；`npm run build:web` → `web/dist` 提交
+- README 更新（新能力简述）
+- E2E 冒烟（RPC 模式）：`pi:switchSession`（有效 path 切换 / 特权缺失错误路径）、`pi:getTree`、`pi:listFiles`（gitignore 过滤）、`pi:deleteSession`（当前会话拒绝 / 非当前删除成功）、`pi:fork` 越界 userIndex 错误
+- commit（SPEC §1.3/§1.4/§1.5/§3.1/§4.2/§4.4/§7/§9/§10 已同步）

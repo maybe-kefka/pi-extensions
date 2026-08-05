@@ -13,29 +13,33 @@
 - 进程模型：**单进程**。web 服务器由扩展在 TUI 进程内启动；不存在独立的 pi RPC 子进程。
 - "RPC"一词在本 SPEC 中指**扩展自定义的 JSON-RPC 2.0 形态协议**（走 WebSocket），不是 pi 的 `--mode rpc`（那是独立进程的 stdin/stdout JSONL，TUI 进程内不存在）。
 
-### 1.3 v1 范围（已确认）
+### 1.3 能力矩阵（当前状态）
 
-| 能力 | 来源 | v1 |
+| 能力 | 来源 | 状态 |
 |---|---|---|
-| 发消息 / abort | `pi.sendUserMessage` / `ctx.abort` | ✅ |
-| 消息流（流式回复 / thinking / 工具执行） | `pi.on("message_*")` / `pi.on("tool_execution_*")` | ✅ |
-| 会话：**列表** | `SessionManager.list(ctx.cwd)`（静态导入，peer 依赖 pi 提供） | ✅ |
-| 会话：**切换 / 新建** | `ctx.switchSession` / `ctx.newSession` | ❌ **API 限制（见 §1.4 / §9）**：仅存在于命令上下文（`ExtensionCommandContext`），事件 ctx 与 `pi.*` 均不可达，扩展无命令派发入口 → 只能 TUI 执行 `/resume` `/new` |
+| 发消息 / abort | `pi.sendUserMessage`（**每次请求取最新 pi**，见 §3）/ `ctx.abort` | ✅ |
+| 消息流（流式回复 / thinking / 工具执行 / 轮次边界） | `pi.on("message_*")` / `pi.on("tool_execution_*")` / `pi.on("turn_*")` | ✅ |
+| 会话：**列表 / 树数据** | `SessionManager.list(ctx.cwd)`（静态导入，peer 依赖 pi 提供）/ `ctx.sessionManager.getTree()` | ✅ |
+| 会话：**切换 / 新建 / fork / clone / 树导航** | **特权 ctx 捕获链**（§3.1）：`/web` handler 捕获 `ExtensionCommandContext`，`withSession` 回调续链 | ✅（TUI 手动切换后降级，§3.1 / §9） |
+| 内置命令派发子集 | 同上（resume / new / fork / clone / tree / compact / name / model / 思考等级 / abort） | ✅ |
+| 扩展命令 / prompt 模板 / skill 命令 | ❌ 无公开执行 API（`sendUserMessage` 硬编码跳过命令处理）；**不展示不派发** | ❌（上游 feature 建议见 §9） |
 | 模型：列表 + 切换 + 思考等级 | `ctx.modelRegistry.getAvailable()` / `pi.setModel` / `pi.getThinkingLevel` / `pi.setThinkingLevel` | ✅ |
 | 状态面板（上下文占用 / token / 模型 / 会话名） | `ctx.getContextUsage()` + 事件聚合 | ✅ |
-| 扩展命令**列表展示**（不执行） | `pi.getCommands()` | ✅（仅展示） |
-| 树导航 / fork / clone | `ctx.navigateTree` / `ctx.fork` | ❌ v2（同为命令上下文限制） |
+| 删除会话 | fs unlink（非官方 API，见 §4.4 `pi:deleteSession`） | ✅（仅非当前会话） |
+| 重命名会话 | `pi.setSessionName` | ✅ |
+| 输入辅助："+" 弹层（全部 skills + 工作目录文件） | `pi.getCommands()`（`source: "skill"`）/ 后端 `pi:listFiles`（gitignore） | ✅ |
 
-### 1.4 非目标（v1 明确不做）
-- **不从 web 执行任意扩展命令**。源码核实：`pi.sendUserMessage()` 硬编码 `expandPromptTemplates: false` 调 `prompt()`，跳过命令处理；`_tryExecuteExtensionCommand` 是 AgentSession 私有路径；`pi.getCommands()` 只返回元信息（不含 handler）。公共 API 无命令派发入口。`pi:listCommands` 仅作展示；上游 feature 建议（`sendUserMessage` 增加选项或暴露 `executeCommand`）记录在 §9。
-- **不从 web 切换/新建会话**（v1 实现时新发现）：`ctx.switchSession` / `ctx.newSession` / `ctx.fork` / `ctx.navigateTree` / `ctx.waitForIdle` / `ctx.reload` 只存在于 `ExtensionCommandContext`（`runner.createCommandContext()` 附加，事件 ctx 的 `createContext()` 不含），且扩展无命令派发入口 → web 端不可达。会话列表（`SessionManager.list`）可用，web 显示列表并提示在 TUI 执行 `/resume`、`/new`。上游建议：在 `ExtensionAPI` 暴露 `switchSession`/`newSession` 或允许命令编程式派发。
-- 不重定向/转发 pi 内置命令的 picker（如内置 `/session` 的选项列表）：内置命令在 interactive mode 内联处理，绕过扩展系统（不触发 `input` 事件、不产生消息），扩展无事件携带其选项列表或选择结果。web 端的会话/模型选择器是**用公开 API 重新实现**的等价功能（会话列表可看，切换受限）。
-- 不做树导航 / fork / clone（v2；同受命令上下文限制）。
-- 不做 `--host` 局域网绑定（v1 固定 127.0.0.1，见 §5）。
-- 不引前端框架、无构建步骤 —— **v2（2025-08 重构）改为 React + Vite + Tailwind + shadcn，有构建步骤**（见 §7）。
+### 1.4 非目标（明确不做）
+- **不从 web 执行扩展命令**（含 prompt 模板与 skill 命令，均无公开执行 API）。源码核实：`pi.sendUserMessage()` 硬编码 `expandPromptTemplates: false` 调 `prompt()`，跳过命令处理；`_tryExecuteExtensionCommand` 是 AgentSession 私有路径；`pi.getCommands()` 只返回元信息（不含 handler）。RPC 模式（独立进程）的 `prompt` 默认执行命令（上游语义"命令经 prompt 管道调用"），但 pi-web 是 **TUI 进程内**扩展，摸不到 `session.prompt()`。**命令面板不展示这些命令**（用户决策 2026：无法实现的就不展示）。上游 feature 建议（`sendUserMessage` 增加 `expandPromptTemplates` 选项或暴露 `executeCommand`）记录在 §9。
+- **不从 web 派发 `/reload`、`/quit`**：`ctx.reload()` 会重载扩展 → 按 §3 关闭 web server 自身（断线）；`ctx.shutdown()` 会优雅退出整个 pi 进程。两者留 TUI。
+- **不派发 TUI-only 命令**：`/export` `/import` `/share` `/copy` `/login` `/logout` `/settings` `/trust` `/changelog` `/hotkeys` `/scoped-models` `/debug`（及彩蛋）为 TUI 选择器 / OAuth 流程 / 剪贴板 / 设置菜单专属，无公开 API，命令面板不展示。
+- **删除会话仅限非当前会话**：无官方 API（`SessionManager` 无 delete 方法，TUI 亦无删除功能），pi-web 直接 unlink session 的 jsonl 文件（`SessionManager.list` 扫目录，删除后列表自然消失）；当前会话删除按钮禁用。
+- 不重定向/转发 pi 内置命令的 picker（如内置 `/session` 的选项列表）：内置命令在 interactive mode 内联处理，绕过扩展系统（不触发 `input` 事件、不产生消息），扩展无事件携带其选项列表或选择结果。web 端的会话/模型选择器是**用公开 API 重新实现**的等价功能。
+- 不做 `--host` 局域网绑定（固定 127.0.0.1，见 §5）。
+- 前端为构建步骤工程（React + Vite + Tailwind + shadcn，见 §7），构建产物 `web/dist` 提交进 git。
 
 ### 1.5 依赖原则
-- **扩展运行时依赖仅 `ws`**（WebSocket 服务端实现，纯 JS；放 `dependencies`，分布式包运行时依赖必须在 dependencies）。
+- **扩展运行时依赖仅 `ws` + `ignore`**（WebSocket 服务端实现 + gitignore 语法解析，均纯 JS 零依赖；放 `dependencies`，分布式包运行时依赖必须在 dependencies）。
 - `@earendil-works/pi-coding-agent` 作**类型导入**（devDependency）+ `SessionManager` **值导入**（列表会话，peerDependencies 声明，由 pi 宿主经 jiti 别名提供）。
 - `@types/ws` 仅开发用（devDependency）。
 - HTTP 服务器用 Node 内置 `node:http`；静态文件用几十行 MIME 映射手工输出，不引 express。
@@ -73,6 +77,14 @@
 - 扩展工厂函数**不启动任何后台资源**（socket/server/timer）；服务启动、事件订阅绑定都在 `session_start` / `/web` handler 内完成，`session_shutdown` 中按上述规则清理。
 - 停止语义：向所有已连接客户端发 WS close 帧 → 关 `ws.Server` → 关 `node:http` server。
 
+### 3.1 会话替换与 ctx 生命周期（v-next 源码核实，2026）
+
+- **扩展工厂每次 session 创建都会重跑**（`loadExtension` → `await factory(api)`，模块级缓存只缓存模块导入，工厂函数体每次执行）：新 session → 新 `ResourceLoader` → 新共享 runtime → 新 pi 对象。pi-web 在 factory 里重绑 `state.api`，因此 **TUI 手动切换后，发消息 / 模型 / 思考等级 / 命令列表自动恢复**（WS 请求每次取最新 api）。
+- **模块级变量跨会话保留**：web server 单例、token、coalescer 存活于模块闭包 → 切换不重启服务、WS 不断线（与上表一致）。
+- **特权 ctx（`ExtensionCommandContext`）只在命令执行时创建**，`/web` handler 捕获；会话替换（`switchSession` / `newSession` / `fork`）会 dispose 旧 session → 旧捕获 ctx 的 `assertActive()` 抛错（上游错误消息明示：captured ctx 仅会话内有效，后置工作必须放 `withSession` 回调）。
+- **withSession 续链**：pi-web 发起的会话操作一律带 `withSession: async (fresh) => { state.privileged = fresh }`，切换后特权 ctx 自动指向新会话。**TUI 手动切换时 pi-web 无法重新捕获**（事件 ctx 无特权方法）→ 特权命令（resume/new/fork/clone/tree）降级：请求返回明确错误提示"在 TUI 重跑 /web 恢复"；前端侧栏常驻提示条。非特权能力不受影响。
+- **`pi` 对象与事件 ctx 的 stale 语义**：捕获的 pi / command ctx 在会话替换后抛错（错误消息含 `stale`，server 层映射为 `code 3`）；事件 ctx 每事件新建、getter 调用时动态解析，永远新鲜。WS 请求处理统一走"最新捕获"（api / 事件 ctx / 特权 ctx 三态）。
+
 ## 4. 网络协议（WebSocket，JSON-RPC 2.0 形态）
 
 ### 4.1 传输
@@ -89,6 +101,7 @@
 | `tool_execution_start` / `tool_execution_update` / `tool_execution_end` | `pi.on("tool_execution_*")` | 工具执行 |
 | `agent_start` / `agent_end` / `agent_settled` | 同上 | busy 状态 |
 | `queue_update` | 同上 | 待处理队列 |
+| `turn_start` / `turn_end` | `pi.on("turn_*")` | 轮次边界（前端气泡聚合：turn_end 携带完整 message + toolResults，用于 final 兜底） |
 | `state` | `session_start` / `session_info_changed` / `model_select` / `thinking_level_select` / `message_end` / `session_compact` 聚合 | 会话名 / 模型 / 思考等级 / 上下文占用 / isStreaming |
 | `session_before_switch` / `session_shutdown` / `session_start` | 同上 | TUI 里跑 `/new`/`/resume` 时 web 跟随切换 |
 | `notify` / `setStatus` / `setWidget` | `ctx.ui` 桥接（见 §4.3） | 各扩展的 UI 输出透传 |
@@ -107,17 +120,25 @@
 | `pi:sendMessage` | `{text, deliverAs?}` | `pi.sendUserMessage(text, {deliverAs})`；**streaming 中缺 `deliverAs` → 报错**（对齐 RPC `prompt` 语义：idle 立即发并触发 turn；忙碌必须显式 `"steer"` / `"followUp"`） |
 | `pi:abort` | — | `ctx.abort()` |
 | `pi:listSessions` | — | `SessionManager.list(ctx.cwd)`（**值导入** `SessionManager`，peer 依赖 `@earendil-works/pi-coding-agent`——由 pi 宿主经 jiti 别名提供） |
-| `pi:switchSession` | `{path}` | **不可用**：命令上下文专属 → 返回错误提示 TUI `/resume`（SPEC §9） |
-| `pi:newSession` | — | **不可用**：同上，提示 TUI `/new` |
+| `pi:switchSession` | `{path}` | **特权 ctx**：`privileged.switchSession(path, {withSession: 续链})`；无特权 → 错误提示 TUI 重跑 `/web` |
+| `pi:newSession` | — | **特权 ctx**：`privileged.newSession({withSession: 续链})` |
+| `pi:fork` | `{userIndex}` | **特权 ctx**：`getEntries()` 按顺序数 user 消息（0-based）解析 entryId → `privileged.fork(entryId, {position: "before", withSession: 续链})`（对齐 TUI `/fork`：从该 user 消息前分叉） |
+| `pi:clone` | — | **特权 ctx**：`privileged.fork(leafId, {position: "at", withSession: 续链})`（`leafId = ctx.sessionManager.getLeafId()`，对齐 TUI `/clone`） |
+| `pi:navigateTree` | `{targetId}` | **特权 ctx**：`privileged.navigateTree(targetId)` |
+| `pi:getTree` | — | `ctx.sessionManager.getTree()`（事件 ctx 即可） |
+| `pi:deleteSession` | `{path}` | fs unlink（**非官方**）：校验 path 为 `.jsonl` 且位于 session 目录内（防穿越）、**非当前会话** → `unlink`。当前会话 / 校验失败 → 业务错误 |
 | `pi:listModels` | — | `ctx.modelRegistry.getAvailable()` |
 | `pi:setModel` | `{provider, modelId}` | 从 getAvailable 找到模型 → `pi.setModel(model)`（返回 false → 报错"无 API key"） |
 | `pi:getThinkingLevel` | — | `pi.getThinkingLevel()` |
 | `pi:setThinkingLevel` | `{level}` | `pi.setThinkingLevel(level)`（clamp 交给 pi） |
-| `pi:listCommands` | — | `pi.getCommands()`（**仅展示**，不提供执行） |
-| `pi:getMessages` | — | `ctx.sessionManager.getEntries()` 过滤 message 条目 → `{messages: [{role, text}]}`（页面加载回填历史用） |
+| `pi:setSessionName` | `{name}` | `pi.setSessionName(name)`（`session_info_changed` 事件刷新列表） |
+| `pi:listSkills` | — | `pi.getCommands()` 过滤 `source === "skill"` → `[{name, description}]`（名称即 `/skill:<name>`，供"+"弹层插入） |
+| `pi:listFiles` | `{maxDepth?, limit?}` | `src/file-lister.ts`：递归扫描 `ctx.cwd`（默认 3 层 / 200 上限），gitignore 排除（`ignore` 包，含嵌套 `.gitignore`），按目录分组 → `{groups: [{dir, files: [{name, path}]}]}` |
+| `pi:getMessages` | — | `getEntries()` 过滤 message 条目 → `{messages: [{role, text, thinking, toolCalls: [{id, name, arguments, result, isError}], userIndex?}]}`：assistant 带 thinking/toolCalls（toolCallId 配对 toolResult）；**user 消息带 `userIndex`**（该会话第几条 user，0-based，供前端气泡 fork 用）；空消息（无 text/thinking/toolCalls）筛掉 |
 | `pi:getState` | — | 快照：会话文件/id/名、模型、思考等级、上下文占用、isStreaming、messageCount |
 
-- 错误：JSON-RPC error；`code` 语义自定（如 `-32602` 参数错、`1` 业务错、`2` 忙碌需 deliverAs），消息为人类可读中文。
+- 错误：JSON-RPC error；`code` 语义自定（如 `-32602` 参数错、`1` 业务错、`2` 忙碌需 deliverAs、`3` ctx stale/会话未就绪），消息为人类可读中文。
+- **特权 ctx 缺失/失效**（TUI 手动切换后）：会话类方法（switchSession/newSession/fork/clone/navigateTree）返回 `code 1` 错误"会话控制能力已失效：请在 TUI 重跑 /web 恢复"。
 
 ## 5. 安全（已确认）
 
@@ -135,18 +156,25 @@
 - **fire-and-forget**：spawn 后不阻塞 `/web` 命令（不 await 浏览器退出）。
 - 实现用 `pi.exec` 或 node `spawn`（扩展 API 有 `pi.exec`；若需 detach 用 node child_process spawn，v1 用 `pi.exec` 带超时兜底即可）。
 
-## 7. 前端（已确认，2025-08 重构为 React 栈）
+## 7. 前端（已确认，2025-08 重构为 React 栈；2026 v-next 气泡聚合）
 
 - **技术栈**：React 19 + Vite 8 + TypeScript strict + Tailwind v4（CSS-first，`@import "tailwindcss"`）+ shadcn（new-york 风格 / zinc 基色 / CSS variables 暗色主题，`<html class="dark">`）；图标 lucide-react；无路由（单页）。
 - **工程位置**：`packages/pi-web/web/` 子工作区（`pi-web-frontend`，private），独立 `package.json`/`vite.config.ts`；构建产物 `web/dist/`。
   - 构建：`npm run build:web`（根）/ `npm run build -w pi-web-frontend`；`npm publish` 时 `prepublishOnly` 先构建（`cd web && npm run build`）。
   - **`web/dist` 提交进 git**（个人仓库开箱即用）；`/web` 启动前检查 `dist/index.html` 存在，缺失则报错提示先构建。
-- **布局**：header（连接状态 / 会话名 / 模型 / 思考等级 / 上下文占用条）+ chat 流 + 侧栏（会话列表只读、模型选择、思考等级、命令列表只读、状态桥接面板）+ 输入区。
+- **布局**：header（连接状态 / 会话名 / 模型 / 思考等级 / 上下文占用条 / **compact 按钮**）+ chat 流 + 侧栏（**会话列表：可点击切换 + 顶部新建按钮 + 每项工具栏（删除/重命名/查看树/复制）**、模型选择、思考等级、状态桥接面板）+ 输入区（**最左 "+" 按钮 → 可搜索弹层**）。
+- **轮次聚合（v-next）**：聊天流按**气泡**渲染——每条 user 消息开启新气泡，到下一条 user 消息前的全部内容聚合进同一气泡（工具循环的多个 assistant turn、thinking、toolcall、toolResult 均在内）。
+  - 气泡 = `{userText, userIndex, turns: [{text, thinking, toolCallIds, final}]}`；`userIndex`（第几条 user 消息，0-based）由后端在 `pi:getMessages` 标记，流式消息由前端自增计数——**fork 即发 `pi:fork {userIndex}`**。
+  - 气泡底部**工具栏**（轮结束后出现，即无活跃 turn 且 agent 空闲）：fork（分叉该轮）、reasoning（有 thinking 时，弹窗查看全文）、tools（有 toolCall 时，弹窗查看全部工具详情：参数 + 结果）。
+  - 流式中气泡实时更新（thinking / 文本累积）；`turn_end` / `agent_settled` 驱动轮次边界与工具栏显隐。
 - **交互升级（v2 重构）**：thinking 与工具输出**可展开/收起**（工具输出折叠态截断 ~1200 字符）；**跟随滚动开关**（上翻暂停自动滚动，出现"回到底部"按钮）；输入框为多行 `Textarea`（Enter 发送 / Shift+Enter 换行）；**断线横幅** + 指数退避重连（≤10s）。
+- **"+" 弹层（v-next）**：输入框最左加号按钮 → `Popover` + 搜索框（substring 过滤）；分块展示：**全部 skills**（`pi:listSkills`，点击插入 `/skill:<name>` 到输入框光标处）与**工作目录文件**（`pi:listFiles`，按目录分组，点击插入相对路径）；点击均不自动发送。
+- **会话控制 UI（v-next）**：点击会话列表项 = `pi:switchSession`（当前项高亮）；顶部"新建"按钮 = `pi:newSession`；每项工具栏：删除（`pi:deleteSession` + 确认弹窗，当前会话禁用）、重命名（`pi:setSessionName` + 输入弹窗）、查看树（`pi:getTree` 树弹窗，点击节点 → 确认 → `pi:navigateTree`）、复制（`pi:clone`）。
+- **降级提示（v-next）**：特权操作失败（code 1 "会话控制能力已失效"）→ toast；侧栏会话区常驻提示条"会话操作需在 TUI 重跑 /web 恢复"（仅特权能力缺失时显示）。
 - **状态管理**：单 `useReducer` 根 store；WS 事件流 → reducer action（`web/src/lib/stream.ts` 纯 reducer，单测覆盖）。
-- **模块**：`web/src/lib/rpc.ts`（WS 客户端）/ `stream.ts`（reducer）/ `types.ts`（协议类型镜像）/ `components/`（Header/Chat/Sidebar/InputBar/DisconnectBanner）+ `components/ui/`（shadcn）。
-- **加载历史**：连接建立后调 `pi:getMessages` 回填 user/assistant 消息（新方法，见 §4.4）。
-- **渲染策略**：`message_*` 增量更新聊天流；`state` 事件更新侧栏/头部；无虚拟滚动（v1 限制，文档注明）。
+- **模块**：`web/src/lib/rpc.ts`（WS 客户端）/ `stream.ts`（reducer）/ `types.ts`（协议类型镜像）/ `components/`（Header/Chat/Sidebar/InputBar/DisconnectBanner/PlusPicker/TreeDialog/SessionItem）+ `components/ui/`（shadcn）。
+- **加载历史**：连接建立后调 `pi:getMessages` 回填（含 thinking / toolCalls / userIndex，刷新后详情弹窗数据完整）。
+- **渲染策略**：`message_*` 增量更新气泡；`state` 事件更新侧栏/头部；无虚拟滚动（限制，文档注明）。
 
 ## 8. 状态快照口径
 
@@ -158,26 +186,30 @@
 
 ## 9. 已知限制与上游建议
 
-- **无法从 web 执行任意扩展命令**（`pi:listCommands` 仅展示）。建议上游：`pi.sendUserMessage` 增加 `expandPromptTemplates` 选项（默认 false 不变），或暴露 `executeCommand(name, args)`。
-- **无法从 web 切换/新建会话**（v1 实现时源码核实）：`newSession` / `fork` / `navigateTree` / `switchSession` / `waitForIdle` / `reload` 仅存在于 `ExtensionCommandContext`（`runner.createCommandContext()` 定义，`createContext()` 的事件 ctx 不含）；扩展 API 无命令派发入口；`sendUserMessage` 跳过命令处理。web 端会话列表可看，切换需 TUI `/resume`、`/new`。建议上游：在 `ExtensionAPI` 增加 `switchSession`/`newSession`，或暴露命令派发。
-- **看不到内置 picker 的选项列表**（如 `/session`、`/model` 的 TUI 选择器）：内置命令绕过扩展系统；web 端等价能力为 §4.4 的 `pi:listSessions` / `pi:listModels` 重新实现（列表可看；会话切换受限见上条）。
-- 树导航 / fork / clone（v2）：`ctx.navigateTree` / `ctx.fork` 已备好，但同受命令上下文限制，且缺前端树形 UI。
-- **ctx 生命周期**：session_start 捕获的 ctx 在会话内有效（`runner.assertActive` 仅在 session dispose 时抛错）；切换间隙 `state.ctx` 置空，WS 请求返回 `code 3 会话未就绪`，客户端重试即可。
+- **无法从 web 执行扩展命令**（含 prompt 模板 / skill 命令）：`sendUserMessage` 硬编码 `expandPromptTemplates: false`（上游有意为之，防止扩展触发命令）；`_tryExecuteExtensionCommand` 私有；RPC 模式 `prompt` 默认执行命令但那是独立进程。**建议上游**：`pi.sendUserMessage` 增加 `expandPromptTemplates` 选项（默认 false 不变），或暴露 `executeCommand(name, args)`——合入后 pi-web 一行改动即可解锁扩展命令执行。当前策略：命令面板不展示不可执行的命令。
+- **TUI 手动切换会话后特权命令降级**：`/web` handler 捕获的 `ExtensionCommandContext` 在会话替换后失效（`runner.assertActive` 抛错），`withSession` 续链仅覆盖 web 端发起的切换；TUI 里跑 `/resume` `/new` 后，web 端 resume/new/fork/clone/tree 不可用，需 TUI 重跑 `/web` 恢复。非特权能力（发消息/模型/思考等级/列表/删除/重命名/树查看）经 factory 重跑自动恢复。
+- **看不到内置 picker 的选项列表**（如 `/session`、`/model` 的 TUI 选择器）：内置命令绕过扩展系统；web 端等价能力为 §4.4 重新实现（列表可看可操作）。
+- **删除会话无官方 API**：fs unlink 直删 jsonl 文件（仅非当前会话）；上游若提供 `SessionManager.deleteSession` 可替换。
+- **ctx 生命周期**：session_start 捕获的 ctx 在会话内有效；切换间隙 `state.ctx` 置空，WS 请求返回 `code 3 会话未就绪`，客户端重试即可。捕获的 pi / command ctx 在会话替换后抛错（错误含 `stale`，server 层映射 code 3）。
 - **`/reload` 或切到不同 cwd 的会话**会清空扩展模块缓存 → 模块状态丢失；`session_shutdown(reason=reload)` 已关闭服务，重跑 `/web` 即可。
+- **fork 的 entryId 对齐**：message 事件不携带 entry id，pi-web 用"user 消息序号（userIndex）→ `getEntries()` 第 N 条 user 消息"解析；若会话被外部修改（如 TUI 里手动编辑/重放）导致序号漂移，fork 可能指向不同消息——可接受（个人工具）。
 
 ## 10. 模块划分（src 纯函数层全部 TDD；index.ts 薄接线层不做单测）
 
 | 文件 | 职责 | 类型 |
 |---|---|---|
-| `src/index.ts` | 薄接线：`registerCommand("web")`、参数解析、服务启停、`pi.on` 订阅→广播（含 60ms 合并节流）、WS 方法→ctx/api 调用、ctx.ui 桥接包装、平台浏览器打开 | 薄层（无单测） |
+| `src/index.ts` | 薄接线：`registerCommand("web")`、参数解析、服务启停、`pi.on` 订阅→广播（含 60ms 合并节流）、WS 方法→ctx/api 调用、**特权 ctx 捕获链**、ctx.ui 桥接包装、平台浏览器打开 | 薄层（无单测） |
 | `src/args.ts` | `/web` 参数解析纯函数 | 纯函数（TDD） |
 | `src/protocol.ts` | JSON-RPC 编解码：请求/响应/notification 构造与解析、id 校验、错误对象 | 纯函数（TDD） |
 | `src/coalescer.ts` | 流式合并节流器（批收集、flush、flushNow、超时） | 纯函数/可注入时钟（TDD） |
 | `src/events.ts` | pi 事件 → 协议事件映射（纯：输入事件对象 + 状态采样 → 输出 notification 载荷） | 纯函数（TDD） |
 | `src/state.ts` | `pi:getState` 快照 + `state` 事件载荷构造（归一化 percent、缺省处理） | 纯函数（TDD） |
-| `src/http-util.ts` | MIME 映射 / 路径穿越防护 / token 比对与提取（纯函数，供 server 使用） | 纯函数（TDD） |
+| `src/http-util.ts` | MIME 映射 / 路径穿越防护 / token 比对与提取 / message 内容提取（纯函数，供 server 使用） | 纯函数（TDD） |
+| `src/fork-util.ts` | userIndex → entryId 解析（`getEntries()` 按序数第 N 条 user 消息）、stale 错误判定 | 纯函数（TDD） |
+| `src/session-files.ts` | 删除会话校验（路径在 session 目录内 / .jsonl / 非当前）与 unlink | 纯函数 + fs（TDD） |
+| `src/file-lister.ts` | 工作目录文件扫描：gitignore（ignore 包）/ 深度 / 上限 / 分组 | 纯函数 + fs（TDD） |
 | `src/server.ts` | node:http + ws 组装、token 校验、静态文件路由、连接管理、JSON-RPC 派发 | 薄层（可测逻辑下沉 http-util/protocol） |
-| `web/` | 前端静态文件 | — |
+| `web/` | 前端（React 工程，见 §7） | — |
 
 ### 10.1 测试策略
 - 纯函数层（args/protocol/coalescer/events/state）：vitest 单测全覆盖边界（空输入、坏 JSON、非法端口、超时 flush、token 不匹配等）。

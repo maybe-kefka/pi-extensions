@@ -36,6 +36,39 @@ export interface CommandInfo {
 export interface HistoryMessage {
   role: string;
   text: string;
+  thinking?: string;
+  toolCalls?: { id: string; name: string; arguments: unknown; result?: string; isError?: boolean }[];
+  userIndex?: number;
+}
+
+export interface SkillInfo {
+  name: string;
+  description: string | null;
+}
+
+export interface ListedFile {
+  name: string;
+  path: string;
+}
+
+export interface FileGroup {
+  dir: string;
+  files: ListedFile[];
+}
+
+/** pi:getTree 返回的树节点（镜像 SessionTreeNode） */
+export interface TreeNode {
+  entry: {
+    type: string;
+    id: string;
+    parentId: string | null;
+    timestamp: string;
+    message?: { role?: string; content?: unknown; toolName?: string };
+    [k: string]: unknown;
+  };
+  children: TreeNode[];
+  label?: string;
+  [k: string]: unknown;
 }
 
 /** pi:event notification params：{ type, ...fields } */

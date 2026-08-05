@@ -1,7 +1,8 @@
-import { PanelLeftClose, PanelLeftOpen, SlidersHorizontal } from "lucide-react";
+import { PanelLeftClose, PanelLeftOpen, SlidersHorizontal, Squircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { StreamState } from "@/lib/stream";
 
 function fmt(n: number | null): string {
@@ -14,12 +15,14 @@ export function Header({
   sidebarCollapsed,
   onToggleSidebar,
   onOpenDrawer,
+  onCompact,
 }: {
   conn: StreamState["conn"];
   state: StreamState;
   sidebarCollapsed: boolean;
   onToggleSidebar: () => void;
   onOpenDrawer: () => void;
+  onCompact: () => void;
 }) {
   const ctx = state.context;
   const percent = ctx.percent ?? 0;
@@ -39,6 +42,21 @@ export function Header({
           <Progress value={ctx.percent == null ? 0 : percent * 100} className="h-1.5 w-16 sm:w-24" />
           <span className="tabular-nums">{label}</span>
         </span>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-8 cursor-pointer"
+              onClick={onCompact}
+              title="压缩上下文"
+              disabled={conn !== "open"}
+            >
+              <Squircle className="size-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>压缩上下文（compact）</TooltipContent>
+        </Tooltip>
         {/* 窄屏：打开抽屉 */}
         <Button variant="ghost" size="icon" className="size-8 lg:hidden" onClick={onOpenDrawer} title="面板">
           <SlidersHorizontal />

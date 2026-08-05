@@ -1,4 +1,4 @@
-// Chat 组件渲染测试（jsdom）：thinking 折叠 / avatar 对齐 / 连续消息组
+// Chat 组件渲染测试（jsdom）：气泡聚合 / 工具栏显隐 / 详情弹窗 / fork 回调
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, cleanup } from "@testing-library/react";
 import { Chat } from "./Chat";
@@ -32,110 +32,140 @@ function run(actions: StreamAction[]) {
   return actions.reduce(streamReducer, initialState);
 }
 
-describe("Chat 渲染", () => {
-  it("thinking 非空 → 渲染'思考'折叠按钮，点击展开显示内容", () => {
-    let s = run([
-      { type: "message_start", message: { role: "assistant", content: [] } },
-      { type: "message_update", event: { type: "thinking_delta", delta: "正在思考中" } },
-      { type: "message_update", event: { type: "text_delta", delta: "回答" } },
-      { type: "message_end", message: { role: "assistant", content: [{ type: "text", text: "回答" }] } },
-    ]);
-    expect(s.messages[0].thinking).toBe("正在思考中");
-    const dispatch = vi.fn();
-    const { container } = render(<Chat state={s} dispatch={dispatch} />);
-    const btn = screen.getByRole("button", { name: /思考/ });
-    expect(btn).toBeTruthy();
-    // 未展开 → 内容不可见
-    expect(screen.queryByText("正在思考中")).toBeNull();
-    fireEvent.click(btn);
-    expect(dispatch).toHaveBeenCalledWith({ type: "toggle_thinking", id: s.messages[0].id });
-  });
-
-  it("thinking 为空 → 不渲染折叠按钮", () => {
-    const s = run([{ type: "message_start", message: { role: "assistant", content: [] } }]);
-    const dispatch = vi.fn();
-    render(<Chat state={s} dispatch={dispatch} />);
-    expect(screen.queryByRole("button", { name: /思考/ })).toBeNull();
-  });
-
-  it("user 消息：气泡在右、头像在右（DOM 中 Avatar 在 Content 之前，flex-row-reverse 排到右侧）", () => {
-    const s = run([{ type: "message_start", message: { role: "user", content: "你好" } }]);
-    const dispatch = vi.fn();
-    const { container } = render(<Chat state={s} dispatch={dispatch} />);
-    const message = container.querySelector('[data-slot="message"]');
-    expect(message?.getAttribute("data-align")).toBe("end");
-    const slots = Array.from(message?.querySelectorAll("[data-slot]") ?? []).map((el) => el.getAttribute("data-slot"));
-    const contentIdx = slots.indexOf("message-content");
-    const avatarIdx = slots.indexOf("message-avatar");
-    expect(contentIdx).toBeGreaterThanOrEqual(0);
-    expect(avatarIdx).toBeGreaterThanOrEqual(0);
-    // 修复：Avatar 在 Content 之前，配合 row-reverse 视觉上头像在最右
-    expect(avatarIdx).toBeLessThan(contentIdx);
-  });
-
-  it("连续同角色消息合并为 MessageGroup", () => {
-    let s = run([
-      { type: "message_start", message: { role: "assistant", content: [] } },
-      { type: "message_update", event: { type: "text_delta", delta: "第一段" } },
-      { type: "message_end", message: { role: "assistant", content: [{ type: "text", text: "第一段" }] } },
-      { type: "message_start", message: { role: "assistant", content: [] } },
-      { type: "message_update", event: { type: "text_delta", delta: "第二段" } },
-      { type: "message_end", message: { role: "assistant", content: [{ type: "text", text: "第二段" }] } },
-    ]);
-    const dispatch = vi.fn();
-    const { container } = render(<Chat state={s} dispatch={dispatch} />);
-    expect(screen.getByText("第一段")).toBeTruthy();
-    expect(screen.getByText("第二段")).toBeTruthy();
-    // 两条连续 assistant 消息在同一 message-group 内
-    const group = container.querySelector('[data-slot="message-group"]');
-    expect(group).toBeTruthy();
-    expect(group?.querySelectorAll('[data-slot="message"]').length).toBe(2);
-  });
-
-  it("history 加载带 thinking → 显示思考按钮", () => {
+describe("Chat 气泡渲染", () => {
+  it("history 回填：user 消息 + 聚合 turns 渲染", () => {
     const s = run([
       {
         type: "history",
         messages: [
-          { role: "assistant", text: "回答", thinking: "历史思考内容" },
+          { role: "user", text: "问题一", userIndex: 0 },
+          { role: "assistant", text: "回答一", thinking: "想一" },
+          { role: "assistant", text: "补充" },
         ],
       },
     ]);
+    expect(s.bubbles).toHaveLength(1);
     const dispatch = vi.fn();
-    render(<Chat state={s} dispatch={dispatch} />);
-    expect(s.messages[0].thinking).toBe("历史思考内容");
-    expect(screen.getByRole("button", { name: /思考/ })).toBeTruthy();
+    render(<Chat state={s} dispatch={dispatch} onFork={vi.fn()} />);
+    expect(screen.getByText("问题一")).toBeTruthy();
+    expect(screen.getByText("回答一")).toBeTruthy();
+    expect(screen.getByText("补充")).toBeTruthy();
   });
 
-  it("纯工具消息（无 text 无 thinking）→ 不渲染空气泡，工具卡片穿插在消息内", () => {
+  it("user 消息气泡在右（data-align=end）", () => {
+    const s = run([{ type: "message_start", message: { role: "user", content: "你好" } }]);
+    const dispatch = vi.fn();
+    const { container } = render(<Chat state={s} dispatch={dispatch} onFork={vi.fn()} />);
+    const message = container.querySelector('[data-slot="message"]');
+    expect(message?.getAttribute("data-align")).toBe("end");
+  });
+
+  it("流式中：assistant 文本实时渲染、光标闪烁、无工具栏", () => {
     let s = run([
+      { type: "message_start", message: { role: "user", content: "q" } },
       { type: "message_start", message: { role: "assistant", content: [] } },
-      { type: "message_end", message: { role: "assistant", content: [{ type: "toolCall", id: "tool:1", name: "bash", arguments: {} }] } },
-      { type: "tool_start", toolCallId: "tool:1", toolName: "bash", args: { command: "ls" } },
-      { type: "tool_end", toolCallId: "tool:1", result: { content: "file1" }, isError: false },
+      { type: "message_update", event: { type: "text_delta", delta: "正" } },
+      { type: "message_update", event: { type: "text_delta", delta: "在" } },
     ]);
     const dispatch = vi.fn();
-    const { container } = render(<Chat state={s} dispatch={dispatch} />);
-    // 无 assistant 气泡（air bubble 隐藏）
-    expect(screen.queryByText(/助手/)).toBeNull();
-    // 工具卡片按钮存在（点击弹详情）
-    const toolBtn = screen.getByRole("button", { name: /bash/ });
-    expect(toolBtn).toBeTruthy();
-    // 卡片位于消息组内（穿插）
-    const group = container.querySelector('[data-slot="message-group"]');
-    expect(group?.textContent).toContain("bash");
-    // 点击 → Dialog 详情
-    fireEvent.click(toolBtn);
-    expect(screen.getByText("输出")).toBeTruthy();
-    // 预览与弹窗内都有输出文本
-    expect(screen.getAllByText("file1").length).toBeGreaterThanOrEqual(1);
+    render(<Chat state={s} dispatch={dispatch} onFork={vi.fn()} />);
+    expect(screen.getByText(/正在/)).toBeTruthy();
+    // turn 未 final + agent 忙碌 → 无工具栏
+    expect(screen.queryByRole("button", { name: /fork/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /reasoning/ })).toBeNull();
+  });
+});
+
+describe("Chat 工具栏", () => {
+  function doneBubble(thinking: string, withTools: boolean): StreamAction[] {
+    const actions: StreamAction[] = [
+      { type: "message_start", message: { role: "user", content: "q" } },
+      { type: "message_start", message: { role: "assistant", content: [] } },
+      { type: "message_update", event: { type: "thinking_delta", delta: thinking, partial: { thinking } } },
+    ];
+    if (withTools) {
+      actions.push(
+        { type: "tool_start", toolCallId: "t1", toolName: "bash", args: { command: "ls" } },
+        { type: "tool_end", toolCallId: "t1", result: { content: [{ type: "text", text: "out" }] }, isError: false },
+        {
+          type: "message_end",
+          message: {
+            role: "assistant",
+            content: [{ type: "toolCall", id: "t1", name: "bash", arguments: {} }, { type: "text", text: "答" }],
+          },
+        },
+      );
+    } else {
+      actions.push({ type: "message_end", message: { role: "assistant", content: [{ type: "text", text: "答" }] } });
+    }
+    actions.push({ type: "agent_settled" });
+    return actions;
+  }
+
+  it("轮结束后：fork + reasoning + tools 按钮显示，点击 fork 触发 onFork(userIndex)", () => {
+    const s = run(doneBubble("思考过程", true));
+    const dispatch = vi.fn();
+    const onFork = vi.fn();
+    render(<Chat state={s} dispatch={dispatch} onFork={onFork} />);
+    expect(screen.getByRole("button", { name: /fork/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /reasoning/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /tools/ })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /fork/ }));
+    expect(onFork).toHaveBeenCalledWith(0);
   });
 
-  it("streaming 且无 text → 仍渲染气泡（不闪烁）", () => {
-    const s = run([{ type: "message_start", message: { role: "assistant", content: [] } }]);
-    expect(s.messages[0].streaming).toBe(true);
+  it("无 thinking 时不显示 reasoning 按钮；无工具时不显示 tools 按钮", () => {
+    const s = run(doneBubble("", false));
     const dispatch = vi.fn();
-    render(<Chat state={s} dispatch={dispatch} />);
-    expect(screen.getByText(/助手/)).toBeTruthy();
+    render(<Chat state={s} dispatch={dispatch} onFork={vi.fn()} />);
+    expect(screen.getByRole("button", { name: /fork/ })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /reasoning/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /tools/ })).toBeNull();
+  });
+
+  it("reasoning 弹窗：点击显示完整思考内容", () => {
+    const s = run(doneBubble("思考过程全文", false));
+    const dispatch = vi.fn();
+    render(<Chat state={s} dispatch={dispatch} onFork={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: /reasoning/ }));
+    expect(screen.getByText("思考过程全文")).toBeTruthy();
+  });
+
+  it("tools 弹窗：点击显示工具卡片与输出", () => {
+    const s = run(doneBubble("x", true));
+    const dispatch = vi.fn();
+    render(<Chat state={s} dispatch={dispatch} onFork={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: /tools/ }));
+    expect(screen.getByText(/工具调用/)).toBeTruthy();
+    expect(screen.getByText("bash")).toBeTruthy();
+    expect(screen.getByText("out")).toBeTruthy();
+  });
+
+  it("agent 忙碌（下一轮进行中）→ 不显示工具栏", () => {
+    const s = run([...doneBubble("x", false), { type: "agent_start" }]);
+    const dispatch = vi.fn();
+    render(<Chat state={s} dispatch={dispatch} onFork={vi.fn()} />);
+    expect(screen.queryByRole("button", { name: /fork/ })).toBeNull();
+  });
+
+  it("孤儿气泡（无 user 消息）→ 不显示工具栏（无 fork 目标）", () => {
+    const s = run([
+      { type: "message_start", message: { role: "assistant", content: [] } },
+      { type: "message_end", message: { role: "assistant", content: [{ type: "text", text: "孤儿" }] } },
+      { type: "agent_settled" },
+    ]);
+    expect(s.bubbles[0].userIndex).toBe(-1);
+    const dispatch = vi.fn();
+    render(<Chat state={s} dispatch={dispatch} onFork={vi.fn()} />);
+    expect(screen.getByText("孤儿")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /fork/ })).toBeNull();
+  });
+});
+
+describe("Chat 空状态", () => {
+  it("无消息 → 空状态提示", () => {
+    const dispatch = vi.fn();
+    render(<Chat state={initialState} dispatch={dispatch} onFork={vi.fn()} />);
+    expect(screen.getByText("暂无消息")).toBeTruthy();
   });
 });

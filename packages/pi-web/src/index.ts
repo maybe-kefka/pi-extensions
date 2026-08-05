@@ -1,25 +1,32 @@
 /**
  * pi-web 薄接线层（无单测）。
  *
- * 生命周期要点（源码核实）：
- * - new/resume/fork 切换会话时，扩展模块**不重新求值**（factory 缓存），模块级 state 存活；
- *   factory 会以全新 api 重跑 → 在此重绑 state.api。
- * - reload/quit 时模块重新求值，旧 server 句柄必然丢失 → session_shutdown(reload|quit) 关闭服务。
- * - ctx 只在 session dispose 时失效（runner.assertActive），session_start 捕获的 ctx 在会话内一直有效；
- *   切换间隙 state.ctx 置空，WS 请求返回"会话切换中"。
- * - 扩展 API 无命令派发入口（sendUserMessage 硬编码跳过命令处理）→ 不提供执行任意命令；
- *   会话控制（switchSession/newSession）仅存在于命令上下文 → web 端不可用，见 handleRequest。
+ * 生命周期要点（源码核实，SPEC §3.1）：
+ * - new/resume/fork 切换会话时，扩展工厂会以全新 api 重跑（模块缓存只缓存导入，工厂体每次执行）→ 在此重绑 state.api/state.ctx；
+ *   reload/quit 时模块重新求值，旧 server 句柄必然丢失 → session_shutdown(reload|quit) 关闭服务。
+ * - 捕获的 pi/command ctx 在会话替换后失效（错误含 "stale"）→ 特权 ctx 捕获链：/web handler 捕获
+ *   ExtensionCommandContext，web 发起的会话操作带 withSession 回调续链；TUI 手动切换后特权能力降级（code 1 错误提示重跑 /web）。
+ * - 事件 ctx 每事件新建、getter 动态解析 → session_start 捕获的 ctx 在会话内一直有效；切换间隙 state.ctx 置空。
+ * - 扩展 API 无命令派发入口（sendUserMessage 硬编码跳过命令处理）→ 不展示不派发扩展命令（SPEC §1.4 / §9）。
  */
 
 import { randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { SessionManager, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
+import {
+  SessionManager,
+  type ExtensionAPI,
+  type ExtensionCommandContext,
+  type ExtensionContext,
+} from "@earendil-works/pi-coding-agent";
 import { parseArgs, USAGE, type WebArgs } from "./args.js";
 import { createCoalescer, type Coalescer } from "./coalescer.js";
 import { mapEvent, requiresStateRefresh } from "./events.js";
+import { listFiles } from "./file-lister.js";
+import { isStaleError, resolveUserEntryId } from "./fork-util.js";
 import { makeEvent, serialize } from "./protocol.js";
+import { deleteSessionFile } from "./session-files.js";
 import { startWebServer, WebServerError, type WebServerHandle } from "./server.js";
 import { buildState } from "./state.js";
 import { messageTextOf, messageThinkingOf, messageToolCalls } from "./http-util.js";
@@ -36,6 +43,8 @@ const BROADCAST_EVENT_TYPES = [
   "tool_execution_start",
   "tool_execution_update",
   "tool_execution_end",
+  "turn_start",
+  "turn_end",
   "agent_start",
   "agent_end",
   "agent_settled",
@@ -52,10 +61,12 @@ const BROADCAST_EVENT_TYPES = [
 interface ServerState {
   server: WebServerHandle | null;
   token: string;
-  /** 当前会话 api（factory 每次重跑时重绑） */
+  /** 当前会话 api（factory 每次重跑时重绑；会话替换后自动新鲜） */
   api: ExtensionAPI | null;
   /** 当前会话 ctx（session_start 捕获；切换间隙为 null） */
   ctx: ExtensionContext | null;
+  /** 特权 ctx（/web handler 捕获；withSession 续链；TUI 手动切换后 stale） */
+  privileged: ExtensionCommandContext | null;
   coalescer: Coalescer<Record<string, unknown>> | null;
   flushTimer: ReturnType<typeof setInterval> | null;
 }
@@ -65,6 +76,7 @@ const state: ServerState = {
   token: "",
   api: null,
   ctx: null,
+  privileged: null,
   coalescer: null,
   flushTimer: null,
 };
@@ -105,6 +117,8 @@ export default function (pi: ExtensionAPI): void {
   pi.registerCommand("web", {
     description: "启动/显示本地 web 控制台（--port <n> | --open | --stop）",
     handler: async (args, ctx) => {
+      // 特权 ctx 捕获链：命令执行时拿到完整 ExtensionCommandContext（含 switchSession/newSession/fork/navigateTree）
+      state.privileged = ctx;
       const parsed = parseArgs(args);
       if (!parsed.ok) {
         ctx.ui.notify(parsed.error, "error");
@@ -157,6 +171,45 @@ export default function (pi: ExtensionAPI): void {
       if (opts.open) await openBrowser(server.url);
     },
   });
+}
+
+// ---------------------------------------------------------------------------
+// 特权 ctx（会话控制）
+// ---------------------------------------------------------------------------
+
+/** withSession 续链：会话替换后特权 ctx 自动指向新会话（SPEC §3.1） */
+function withPrivilegedRefresh<T extends object>(
+  options: T,
+): T & { withSession: (c: ExtensionCommandContext) => Promise<void> } {
+  return {
+    ...options,
+    withSession: async (fresh: ExtensionCommandContext) => {
+      state.privileged = fresh;
+      state.ctx = fresh;
+      wrapUiBridge(fresh);
+      await (options as { withSession?: (c: ExtensionCommandContext) => Promise<void> }).withSession?.(fresh);
+    },
+  };
+}
+
+function requirePrivileged(): ExtensionCommandContext {
+  if (!state.privileged) {
+    throw new WebServerError(1, "会话控制能力未就绪：请在 TUI 重跑 /web");
+  }
+  return state.privileged;
+}
+
+/** 调用特权操作；stale（TUI 手动切换后）→ 明确降级错误 */
+async function privilegedCall<T>(fn: (priv: ExtensionCommandContext) => Promise<T>): Promise<T> {
+  const priv = requirePrivileged();
+  try {
+    return await fn(priv);
+  } catch (err) {
+    if (isStaleError(err)) {
+      throw new WebServerError(1, "会话控制能力已失效：请在 TUI 重跑 /web 恢复");
+    }
+    throw err;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -287,6 +340,11 @@ async function handleRequest(id: string | number, method: string, params: Record
       return null;
     }
 
+    case "pi:compact": {
+      requireCtx().compact();
+      return null;
+    }
+
     case "pi:listSessions": {
       const ctx = requireCtx();
       const sessions = await SessionManager.list(ctx.cwd);
@@ -300,14 +358,110 @@ async function handleRequest(id: string | number, method: string, params: Record
       }));
     }
 
-    case "pi:switchSession":
-    case "pi:newSession":
-      // 已知限制（SPEC §9）：会话控制仅存在于命令上下文（ExtensionCommandContext），
-      // 扩展 API 无命令派发入口，web 端无法编程式切换会话。
-      throw new WebServerError(
-        1,
-        "会话切换仅支持在 TUI 中执行（/resume、/new）；扩展 API 未暴露程序化会话控制（上游 feature 建议见 SPEC §9）",
+    case "pi:switchSession": {
+      const path = params.path;
+      if (typeof path !== "string" || path.trim() === "") {
+        throw new WebServerError(-32602, "需要 path");
+      }
+      const result = await privilegedCall((priv) =>
+        priv.switchSession(path, withPrivilegedRefresh({})),
       );
+      return { cancelled: result.cancelled };
+    }
+
+    case "pi:newSession": {
+      const result = await privilegedCall((priv) =>
+        priv.newSession(withPrivilegedRefresh({})),
+      );
+      return { cancelled: result.cancelled };
+    }
+
+    case "pi:fork": {
+      const userIndex = params.userIndex;
+      if (typeof userIndex !== "number" || !Number.isInteger(userIndex) || userIndex < 0) {
+        throw new WebServerError(-32602, "userIndex 必须是非负整数");
+      }
+      const ctx = requireCtx();
+      const entryId = resolveUserEntryId(
+        ctx.sessionManager.getEntries() as { type?: string; message?: { role?: string } | null; id?: string }[],
+        userIndex,
+      );
+      if (!entryId) {
+        throw new WebServerError(1, `找不到第 ${userIndex} 条用户消息（序号越界？）`);
+      }
+      const result = await privilegedCall((priv) =>
+        priv.fork(entryId, withPrivilegedRefresh({ position: "before" as const })),
+      );
+      return { cancelled: result.cancelled };
+    }
+
+    case "pi:clone": {
+      const ctx = requireCtx();
+      const leafId = ctx.sessionManager.getLeafId();
+      if (!leafId) {
+        throw new WebServerError(1, "当前会话没有可克隆的条目");
+      }
+      const result = await privilegedCall((priv) =>
+        priv.fork(leafId, withPrivilegedRefresh({ position: "at" as const })),
+      );
+      return { cancelled: result.cancelled };
+    }
+
+    case "pi:navigateTree": {
+      const targetId = params.targetId;
+      if (typeof targetId !== "string" || targetId.trim() === "") {
+        throw new WebServerError(-32602, "需要 targetId");
+      }
+      const result = await privilegedCall((priv) => priv.navigateTree(targetId));
+      return { cancelled: result.cancelled };
+    }
+
+    case "pi:getTree": {
+      const ctx = requireCtx();
+      return { tree: ctx.sessionManager.getTree(), leafId: ctx.sessionManager.getLeafId() ?? null };
+    }
+
+    case "pi:deleteSession": {
+      const path = params.path;
+      if (typeof path !== "string" || path.trim() === "") {
+        throw new WebServerError(-32602, "需要 path");
+      }
+      const ctx = requireCtx();
+      const result = await deleteSessionFile(
+        ctx.sessionManager.getSessionDir(),
+        path,
+        ctx.sessionManager.getSessionFile() ?? null,
+      );
+      if (!result.ok) {
+        throw new WebServerError(1, result.error ?? "删除失败");
+      }
+      return null;
+    }
+
+    case "pi:setSessionName": {
+      const name = params.name;
+      if (typeof name !== "string") {
+        throw new WebServerError(-32602, "需要 name");
+      }
+      if (!state.api) throw new WebServerError(3, "扩展未就绪");
+      state.api.setSessionName(name.trim());
+      return null;
+    }
+
+    case "pi:listSkills": {
+      if (!state.api) throw new WebServerError(3, "扩展未就绪");
+      return state.api
+        .getCommands()
+        .filter((c) => c.source === "skill")
+        .map((c) => ({ name: c.name, description: c.description ?? null }));
+    }
+
+    case "pi:listFiles": {
+      const ctx = requireCtx();
+      const maxDepth = typeof params.maxDepth === "number" ? params.maxDepth : 3;
+      const limit = typeof params.limit === "number" ? params.limit : 200;
+      return listFiles(ctx.cwd, { maxDepth, limit });
+    }
 
     case "pi:listModels": {
       const ctx = requireCtx();
@@ -366,13 +520,15 @@ async function handleRequest(id: string | number, method: string, params: Record
         if (e?.type !== "message" || !m || m.role !== "toolResult" || m.toolCallId == null) continue;
         resultById.set(String(m.toolCallId), { result: messageTextOf(m.content), isError: m.isError === true });
       }
-      // 第二遍：组装消息（assistant 带 toolCalls；空消息筛掉）
+      // 第二遍：组装消息（assistant 带 toolCalls；user 带 userIndex；空消息筛掉）
       const messages: {
         role: string;
         text: string;
         thinking: string;
         toolCalls: { id: string; name: string; arguments: unknown; result: string; isError: boolean }[];
+        userIndex?: number;
       }[] = [];
+      let userIndex = -1;
       for (const e of entries) {
         const m = e?.message;
         if (e?.type !== "message" || !m) continue;
@@ -388,7 +544,8 @@ async function handleRequest(id: string | number, method: string, params: Record
           if (!text && !thinking && toolCalls.length === 0) continue; // 空消息直接筛掉
           messages.push({ role, text, thinking, toolCalls });
         } else {
-          messages.push({ role, text: messageTextOf(m.content), thinking: "", toolCalls: [] });
+          userIndex += 1;
+          messages.push({ role, text: messageTextOf(m.content), thinking: "", toolCalls: [], userIndex });
         }
       }
       return { messages };
