@@ -53,7 +53,11 @@ export function InputBar(props: {
     resetMention();
   }, [onSend, resetMention]);
 
-  /** 删除触发字符（光标前的 " /" 或 " @"），返回删除后光标位置是否就绪 */
+  /**
+   * 删除"触发字符 + 过滤词"（光标前最近出现的 " /" 或 " @" 之后的所有内容）。
+   * 触发后继续输入的过滤词（如 /cod 的 cod）会残留在文本里，必须一并删除。
+   * 返回是否删除了触发序列（未找到 → false，触发字符保留）。
+   */
   const stripTriggerChars = useCallback((el: HTMLElement): boolean => {
     const sel = window.getSelection();
     if (!sel || sel.rangeCount === 0) return false;
@@ -63,12 +67,18 @@ export function InputBar(props: {
     const offset = r.startOffset;
     if (node.nodeType !== Node.TEXT_NODE) return false;
     const text = node.textContent ?? "";
-    if (offset < 2) return false;
-    const tail = text.slice(offset - 2, offset);
-    if (tail !== " /" && tail !== " @") return false;
-    node.textContent = text.slice(0, offset - 2) + text.slice(offset);
+    // 从光标往前找最近出现的触发序列；contenteditable 中空格可能被浏览器存为 nbsp（ ）
+    const head = text.slice(0, offset);
+    const idx = Math.max(
+      head.lastIndexOf(" /"),
+      head.lastIndexOf("\u00a0/"),
+      head.lastIndexOf(" @"),
+      head.lastIndexOf("\u00a0@"),
+    );
+    if (idx < 0) return false;
+    node.textContent = text.slice(0, idx) + text.slice(offset);
     const nr = document.createRange();
-    nr.setStart(node, offset - 2);
+    nr.setStart(node, idx);
     nr.collapse(true);
     sel.removeAllRanges();
     sel.addRange(nr);
@@ -95,19 +105,21 @@ export function InputBar(props: {
     }
     if (range) {
       range.deleteContents();
-      range.insertNode(span);
-      range.insertNode(space);
-      range.setStartAfter(space);
-      range.setEndAfter(space);
+      // 用 DocumentFragment 一次插入 chip + 尾随空格（两次 insertNode 会让 range 漂移）
+      const frag = document.createDocumentFragment();
+      frag.appendChild(span);
+      frag.appendChild(space);
+      range.insertNode(frag);
     } else {
       el.appendChild(span);
       el.appendChild(space);
-      range = document.createRange();
-      range.setStartAfter(space);
-      range.setEndAfter(space);
     }
+    // 独立 range 显式放置光标：chip 尾随空格之后（插入节点的 range 内部边界不可靠）
+    const caret = document.createRange();
+    caret.setStartAfter(space);
+    caret.collapse(true);
     sel?.removeAllRanges();
-    sel?.addRange(range);
+    sel?.addRange(caret);
     el.focus();
     setHasInput(true);
   }, []);
@@ -233,7 +245,7 @@ export function InputBar(props: {
         mentionRef.current = next;
         setMentionTick((t) => t + 1);
         setActiveIndex(0);
-        // 首次激活时懒加载候选数据（skills/commands/files）
+        // 懒加载兜底（连接建立时已预拉，这里用于刷新）
         if (next.active && !wasActive) onPickerOpen();
       }
     },

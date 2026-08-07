@@ -155,6 +155,12 @@ export default function App() {
       .finally(() => setPickerLoading(false));
   }, [conn]);
 
+  // 连接建立后预拉上拉框数据（skills/commands/files）：
+  // 避免首次 space+/ 或 space+@ 触发时 conn 未就绪（refreshPicker 内 return）导致空面板
+  useEffect(() => {
+    if (conn === "open") refreshPicker();
+  }, [conn, refreshPicker]);
+
   const send = useCallback((text: string) => {
     const c = rpcRef.current;
     if (!c) return;

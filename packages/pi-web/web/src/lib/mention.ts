@@ -51,9 +51,13 @@ export interface MentionItem {
   label: string;
 }
 
-/** 前缀过滤（大小写不敏感）；空 query 返回全部 */
+/**
+ * 候选过滤（大小写不敏感）：包含匹配 label（R17 后 skills 显示 `skill:<name>`，
+ * 用户输入 `cod` 需匹配 `skill:code-review`——前缀匹配只认 "skill" 开头，故用包含）；
+ * 空 query 返回全部。
+ */
 export function filterMentionItems<T extends MentionItem>(items: T[], query: string): T[] {
   const q = query.trim().toLowerCase();
   if (!q) return items;
-  return items.filter((i) => i.label.toLowerCase().startsWith(q));
+  return items.filter((i) => i.label.toLowerCase().includes(q));
 }

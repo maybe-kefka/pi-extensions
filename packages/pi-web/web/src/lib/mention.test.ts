@@ -116,18 +116,16 @@ describe("激活后行为", () => {
 });
 
 describe("过滤函数", () => {
-  it("filterMentionItems：前缀匹配（大小写不敏感）", async () => {
+  it("filterMentionItems：包含匹配（大小写不敏感）", async () => {
     const { filterMentionItems } = await import("./mention");
     const items = [
-      { id: "code-review", label: "code-review" },
-      { id: "agent-browser", label: "agent-browser" },
-      { id: "compact", label: "compact" },
+      { id: "code-review", label: "skill:code-review" },
+      { id: "agent-browser", label: "skill:agent-browser" },
+      { id: "compact", label: "/compact" },
     ];
-    expect(filterMentionItems(items, "co")).toEqual([
-      { id: "code-review", label: "code-review" },
-      { id: "compact", label: "compact" },
-    ]);
-    expect(filterMentionItems(items, "CODE")).toEqual([{ id: "code-review", label: "code-review" }]);
+    expect(filterMentionItems(items, "cod")).toEqual([{ id: "code-review", label: "skill:code-review" }]);
+    expect(filterMentionItems(items, "CODE")).toEqual([{ id: "code-review", label: "skill:code-review" }]);
+    expect(filterMentionItems(items, "compact")).toEqual([{ id: "compact", label: "/compact" }]);
     expect(filterMentionItems(items, "")).toEqual(items);
     expect(filterMentionItems(items, "zz")).toEqual([]);
   });
@@ -144,7 +142,7 @@ describe("R17 上拉框修订", () => {
     ];
     expect(filterMentionItems(items, "skill:code")).toEqual([items[0]]);
     expect(filterMentionItems(items, "/compact")).toEqual([items[1]]);
-    // 显示与插入分离：label 前缀匹配的是显示名
-    expect(filterMentionItems(items, "code-review")).toEqual([]);
+    // 显示与插入分离：label 匹配的是显示名（skill:code-review 含 code-review）
+    expect(filterMentionItems(items, "code-review")).toEqual([items[0]]);
   });
 });
