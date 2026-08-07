@@ -6,4 +6,5 @@ dist/
 .pi/npm/
 .pi/extensions/
 .pi/git/
+.pi-subagents
 session.json
