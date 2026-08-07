@@ -60,7 +60,7 @@ export function ContextPanel({
   const retry = useCallback(() => setReloadKey((k) => k + 1), []);
 
   return (
-    <div className="flex w-72 flex-col gap-3">
+    <div className="flex w-full flex-col gap-3">
       {loading ? (
         <div className="text-muted-foreground py-6 text-center text-xs">计算中…</div>
       ) : error ? (
@@ -92,7 +92,7 @@ export function ContextPanel({
               return (
                 <div key={c.key} className="flex items-center gap-2">
                   <span className="w-16 shrink-0 truncate text-xs">{c.label}</span>
-                  <Progress value={ratio * 100} className="h-1 min-w-0 flex-1" />
+                  <Progress value={ratio * 100} className="h-1.5 min-w-0 flex-1" />
                   <span className="shrink-0 text-right text-xs tabular-nums">{fmt(c.tokens)}</span>
                   <span className="text-muted-foreground w-10 shrink-0 text-right text-xs tabular-nums">
                     {pct(ratio)}
@@ -110,7 +110,7 @@ export function ContextPanel({
               return (
                 <div key={key} className="flex items-center gap-2 pl-6">
                   <span className="text-muted-foreground w-16 shrink-0 truncate text-xs">{label}</span>
-                  <Progress value={ratio * 100} className="bg-foreground/5 h-1 min-w-0 flex-1" />
+                  <Progress value={ratio * 100} className="bg-foreground/10 h-1.5 min-w-0 flex-1" />
                   <span className="text-muted-foreground shrink-0 text-right text-xs tabular-nums">
                     {fmt(tokens)}
                   </span>

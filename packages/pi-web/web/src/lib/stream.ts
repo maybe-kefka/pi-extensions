@@ -8,6 +8,10 @@ export interface Turn {
   /** 本 turn content 声明的 toolCall 列表（对应全局 tools 列表） */
   toolCallIds: string[];
   final: boolean;
+  /** turn 开始时间戳（message_start 记录；history 回填无） */
+  startedAt?: number;
+  /** turn 结束时间戳（message_end / turn_end 记录） */
+  endedAt?: number;
 }
 
 export interface TurnBubble {
@@ -185,6 +189,21 @@ export function bubbleToolCallIds(bubble: TurnBubble): string[] {
   return out;
 }
 
+/** turn 思考时长秒数（endedAt - startedAt，向下取整）；缺时间戳 → null（history 回填/未结束） */
+export function thinkingSeconds(turn: Pick<Turn, "startedAt" | "endedAt">): number | null {
+  if (turn.startedAt === undefined || turn.endedAt === undefined) return null;
+  return Math.max(0, Math.floor((turn.endedAt - turn.startedAt) / 1000));
+}
+
+/** 最后一个活跃（非 final）turn 的 thinking（"Thinking…" 流式指示用）；无活跃 turn → null */
+export function bubbleActiveThinking(bubble: TurnBubble): string | null {
+  for (let i = bubble.turns.length - 1; i >= 0; i--) {
+    const t = bubble.turns[i];
+    if (!t.final) return t.thinking;
+  }
+  return null;
+}
+
 function updateBubble(state: StreamState, id: string, patch: Partial<TurnBubble>): StreamState {
   return { ...state, bubbles: state.bubbles.map((b) => (b.id === id ? { ...b, ...patch } : b)) };
 }
@@ -284,6 +303,7 @@ export function streamReducer(state: StreamState, action: StreamAction): StreamS
         thinking: "",
         toolCallIds: toolCallIdsOf(action.message.content),
         final: false,
+        startedAt: Date.now(),
       };
       const withTurn: TurnBubble = { ...bubble, turns: [...bubble.turns, turn] };
       return {
@@ -360,6 +380,8 @@ export function streamReducer(state: StreamState, action: StreamAction): StreamS
             thinking: thinking || turn.thinking,
             toolCallIds: ids.length > 0 ? ids : turn.toolCallIds,
             final: true,
+            startedAt: turn.startedAt,
+            endedAt: Date.now(),
           },
         ],
       });
@@ -415,7 +437,7 @@ export function streamReducer(state: StreamState, action: StreamAction): StreamS
       const turn = bubble.turns[bubble.turns.length - 1];
       if (!turn || turn.final) return state;
       return updateBubble(state, bubble.id, {
-        turns: [...bubble.turns.slice(0, -1), { ...turn, final: true }],
+        turns: [...bubble.turns.slice(0, -1), { ...turn, final: true, endedAt: Date.now() }],
       });
     }
 

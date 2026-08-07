@@ -1,0 +1,59 @@
+/**
+ * 上拉框触发状态机（纯函数，TDD，SPEC §7 R16）：
+ * - space 后紧跟 "/" → 激活 skill/命令面板；space 后紧跟 "@" → 激活文件面板
+ * - 激活后普通字符（含空格）累积进 query；Backspace 删 query，query 空再删 → 取消
+ * - Escape 取消（触发字符保留在文本中）；Enter/ArrowUp/ArrowDown 不改变状态（组件层处理）
+ */
+
+export type MentionKind = "skill" | "file";
+
+export interface MentionState {
+  active: boolean;
+  kind: MentionKind | null;
+  /** 触发后继续输入的过滤词（不含触发字符本身） */
+  query: string;
+  /** 上一个键是否为空格（触发记忆） */
+  prevWasSpace: boolean;
+}
+
+export const mentionInitial: MentionState = {
+  active: false,
+  kind: null,
+  query: "",
+  prevWasSpace: false,
+};
+
+const NAV_KEYS = new Set(["Enter", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Shift", "Control", "Alt", "Meta"]);
+
+export function mentionKey(state: MentionState, key: string): MentionState {
+  // 面板激活中：只处理字符累积 / Backspace / Escape；导航键原样返回
+  if (state.active) {
+    if (key === "Escape") return { ...mentionInitial };
+    if (key === "Backspace") {
+      if (state.query.length > 0) return { ...state, query: state.query.slice(0, -1) };
+      return { ...mentionInitial };
+    }
+    if (NAV_KEYS.has(key)) return state;
+    // 普通字符（含空格）进 query
+    if (key.length === 1) return { ...state, query: state.query + key };
+    return state;
+  }
+
+  // 非激活：检测触发序列
+  if (key === " ") return { ...state, prevWasSpace: true };
+  if (state.prevWasSpace && key === "/") return { active: true, kind: "skill", query: "", prevWasSpace: false };
+  if (state.prevWasSpace && key === "@") return { active: true, kind: "file", query: "", prevWasSpace: false };
+  return { ...state, prevWasSpace: false };
+}
+
+export interface MentionItem {
+  id: string;
+  label: string;
+}
+
+/** 前缀过滤（大小写不敏感）；空 query 返回全部 */
+export function filterMentionItems<T extends MentionItem>(items: T[], query: string): T[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return items;
+  return items.filter((i) => i.label.toLowerCase().startsWith(q));
+}

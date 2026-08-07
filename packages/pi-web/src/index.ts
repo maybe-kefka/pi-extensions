@@ -458,6 +458,20 @@ async function handleRequest(id: string | number, method: string, params: Record
       return state.api
         .getCommands()
         .filter((c) => c.source === "skill")
+        .map((c) => ({
+          // pi 对 skill 命令返回的 name 带 "skill:" 前缀（如 skill:code-review），
+          // 前端展示/插入需要裸名字（/code-review → /skill:code-review）
+          name: c.name.replace(/^skill:/, ""),
+          description: c.description ?? null,
+        }));
+    }
+
+    case "pi:listCommands": {
+      // "/" 上拉框非 skill 命令列表（选中插纯文本，不执行，见 SPEC §1.4）
+      if (!state.api) throw new WebServerError(3, "扩展未就绪");
+      return state.api
+        .getCommands()
+        .filter((c) => c.source !== "skill")
         .map((c) => ({ name: c.name, description: c.description ?? null }));
     }
 

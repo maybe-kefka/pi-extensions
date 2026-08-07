@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  bubbleActiveThinking,
   bubbleStreaming,
   bubbleThinking,
   bubbleToolCallIds,
@@ -7,6 +8,7 @@ import {
   streamReducer,
   textOfContent,
   thinkingOfContent,
+  thinkingSeconds,
   toolCallIdsOf,
   type StreamAction,
   type StreamState,
@@ -40,6 +42,41 @@ describe("辅助函数", () => {
     expect(bubbleStreaming(b)).toBe(true);
     expect(bubbleThinking(b)).toBe("想1\n\n想2");
     expect(bubbleToolCallIds(b)).toEqual(["t1", "t2"]);
+  });
+
+  it("thinkingSeconds：时间戳差取秒，缺时间戳返回 null", () => {
+    expect(thinkingSeconds({ startedAt: 1000, endedAt: 4500 })).toBe(3);
+    expect(thinkingSeconds({ startedAt: 1000, endedAt: 1000 })).toBe(0);
+    expect(thinkingSeconds({ startedAt: 1000 })).toBeNull();
+    expect(thinkingSeconds({ endedAt: 4500 })).toBeNull();
+    expect(thinkingSeconds({})).toBeNull();
+    // 流式中无 endedAt
+    expect(thinkingSeconds({ startedAt: 5000 })).toBeNull();
+  });
+
+  it("bubbleActiveThinking：最后一个活跃（非 final）turn 的 thinking", () => {
+    const b = {
+      id: "b1",
+      userIndex: 0,
+      userText: "q",
+      userFinal: true,
+      turns: [
+        { text: "a", thinking: "想1", toolCallIds: [], final: true },
+        { text: "b", thinking: "想2", toolCallIds: [], final: false },
+      ],
+    };
+    expect(bubbleActiveThinking(b)).toBe("想2");
+    // 全部 final → null
+    const done = { ...b, turns: b.turns.map((t) => ({ ...t, final: true })) };
+    expect(bubbleActiveThinking(done)).toBeNull();
+    // 无 thinking 的活跃 turn → 空串
+    const noThink = {
+      ...b,
+      turns: [{ text: "b", thinking: "", toolCallIds: [], final: false }],
+    };
+    expect(bubbleActiveThinking(noThink)).toBe("");
+    // 空 turns
+    expect(bubbleActiveThinking({ id: "x", userIndex: -1, userText: "", userFinal: true, turns: [] })).toBeNull();
   });
 });
 

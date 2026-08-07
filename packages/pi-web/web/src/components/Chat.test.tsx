@@ -1,4 +1,4 @@
-// Chat 组件渲染测试（jsdom）：气泡聚合 / 工具栏显隐 / 详情弹窗 / fork 回调
+// Chat 组件渲染测试（jsdom）：气泡聚合 / 思考块 / 内联工具卡片 / 工具栏（fork+progress）/ 时间线弹窗
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, cleanup } from "@testing-library/react";
 import { Chat } from "./Chat";
@@ -72,7 +72,49 @@ describe("Chat 气泡渲染", () => {
     expect(screen.getByText(/正在/)).toBeTruthy();
     // turn 未 final + agent 忙碌 → 无工具栏
     expect(screen.queryByRole("button", { name: /fork/ })).toBeNull();
-    expect(screen.queryByRole("button", { name: /reasoning/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /progress/ })).toBeNull();
+  });
+
+  it("流式中活跃 thinking → 显示 Thinking… 思考块，点击展开实时内容", () => {
+    const s = run([
+      { type: "message_start", message: { role: "user", content: "q" } },
+      { type: "message_start", message: { role: "assistant", content: [] } },
+      { type: "message_update", event: { type: "thinking_delta", delta: "正在想", partial: { thinking: "正在想" } } },
+    ]);
+    const dispatch = vi.fn();
+    render(<Chat state={s} dispatch={dispatch} onFork={vi.fn()} />);
+    // 折叠态：显示 Thinking… 指示，内容未展开
+    expect(screen.getByText(/Thinking/)).toBeTruthy();
+    expect(screen.queryByText("正在想")).toBeNull();
+    fireEvent.click(screen.getByText(/Thinking/));
+    expect(screen.getByText("正在想")).toBeTruthy();
+  });
+
+  it("结束的 turn：思考块显示 Thought + 时长，点击展开全文；无 thinking 不渲染", () => {
+    const s = run([
+      { type: "message_start", message: { role: "user", content: "q" } },
+      { type: "message_start", message: { role: "assistant", content: [] } },
+      { type: "message_update", event: { type: "thinking_delta", delta: "思考全文", partial: { thinking: "思考全文" } } },
+      { type: "message_end", message: { role: "assistant", content: [{ type: "text", text: "答" }] } },
+      { type: "agent_settled" },
+    ]);
+    const dispatch = vi.fn();
+    const { container } = render(<Chat state={s} dispatch={dispatch} onFork={vi.fn()} />);
+    expect(screen.getByText(/Thought/)).toBeTruthy();
+    expect(screen.queryByText("思考全文")).toBeNull();
+    fireEvent.click(screen.getByText(/Thought/));
+    expect(screen.getByText("思考全文")).toBeTruthy();
+    // 无 thinking 的 turn 不渲染思考块
+    const s2 = run([
+      { type: "message_start", message: { role: "user", content: "q" } },
+      { type: "message_start", message: { role: "assistant", content: [] } },
+      { type: "message_end", message: { role: "assistant", content: [{ type: "text", text: "答" }] } },
+      { type: "agent_settled" },
+    ]);
+    cleanup();
+    const { container: c2 } = render(<Chat state={s2} dispatch={dispatch} onFork={vi.fn()} />);
+    expect(screen.queryByText(/Thought/)).toBeNull();
+    expect(c2.querySelectorAll("[data-slot='thinking-block']")).toHaveLength(0);
   });
 });
 
@@ -102,43 +144,36 @@ describe("Chat 工具栏", () => {
     return actions;
   }
 
-  it("轮结束后：fork + reasoning + tools 按钮显示，点击 fork 触发 onFork(userIndex)", () => {
+  it("轮结束后：fork + progress 按钮（无 reasoning/tools），点击 fork 触发 onFork(userIndex)", () => {
     const s = run(doneBubble("思考过程", true));
     const dispatch = vi.fn();
     const onFork = vi.fn();
     render(<Chat state={s} dispatch={dispatch} onFork={onFork} />);
     expect(screen.getByRole("button", { name: /fork/ })).toBeTruthy();
-    expect(screen.getByRole("button", { name: /reasoning/ })).toBeTruthy();
-    expect(screen.getByRole("button", { name: /tools/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /progress/ })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /reasoning/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /tools/ })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: /fork/ }));
     expect(onFork).toHaveBeenCalledWith(0);
   });
 
-  it("无 thinking 时不显示 reasoning 按钮；无工具时不显示 tools 按钮", () => {
-    const s = run(doneBubble("", false));
-    const dispatch = vi.fn();
-    render(<Chat state={s} dispatch={dispatch} onFork={vi.fn()} />);
-    expect(screen.getByRole("button", { name: /fork/ })).toBeTruthy();
-    expect(screen.queryByRole("button", { name: /reasoning/ })).toBeNull();
-    expect(screen.queryByRole("button", { name: /tools/ })).toBeNull();
-  });
-
-  it("reasoning 弹窗：点击显示完整思考内容", () => {
-    const s = run(doneBubble("思考过程全文", false));
-    const dispatch = vi.fn();
-    render(<Chat state={s} dispatch={dispatch} onFork={vi.fn()} />);
-    fireEvent.click(screen.getByRole("button", { name: /reasoning/ }));
-    expect(screen.getByText("思考过程全文")).toBeTruthy();
-  });
-
-  it("tools 弹窗：点击显示工具卡片与输出", () => {
+  it("有工具时：工具卡片内联在气泡中（工具名 + 输出摘要）", () => {
     const s = run(doneBubble("x", true));
     const dispatch = vi.fn();
     render(<Chat state={s} dispatch={dispatch} onFork={vi.fn()} />);
-    fireEvent.click(screen.getByRole("button", { name: /tools/ }));
-    expect(screen.getByText(/工具调用/)).toBeTruthy();
     expect(screen.getByText("bash")).toBeTruthy();
     expect(screen.getByText("out")).toBeTruthy();
+  });
+
+  it("时间线弹窗：点击 progress 显示思考全文 + 工具名（交错内容）", () => {
+    const s = run(doneBubble("思考过程全文", true));
+    const dispatch = vi.fn();
+    render(<Chat state={s} dispatch={dispatch} onFork={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: /progress/ }));
+    expect(screen.getByText("思考过程全文")).toBeTruthy();
+    // 气泡内联卡片 + 弹窗内卡片各一个 bash
+    expect(screen.getAllByText(/bash/).length).toBeGreaterThanOrEqual(2);
+    expect(screen.getByText(/执行流程/)).toBeTruthy();
   });
 
   it("agent 忙碌（下一轮进行中）→ 不显示工具栏", () => {

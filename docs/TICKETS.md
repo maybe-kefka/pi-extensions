@@ -198,3 +198,46 @@
 - R15.3 面板内容：总览（total / window / percent）+ 五类行（进度条比例相对 total，/status 口径）+ 对话细分 4 行（比例相对 conversation.total）+ 底部 compact 通栏按钮；每次展开重新拉取，失败显示错误 + 重试
 - R15.4 header 移除原 compact 图标按钮；compact 移入面板
 - E2E：RPC 模式实测 pi:getContextBreakdown 结构正确（无会话时五类为 0 属预期）
+
+## R16 交互大改（2026-08，用户决策：照抄网页版 ChatGPT；grilling 对齐后全按推荐）
+
+> 决策记录（2026-08 grilling 逐题对齐）：
+> - 气泡：思考块可折叠内联（"Thinking…"/"Thought"）+ 工具卡片内联交错 + 正文；reasoning/tools 两按钮删除 → 一个 progress 按钮（流式中转圈/结束后对勾，点击 → 时间线弹窗：thinking 全文 + 工具卡片按 turn 交错）
+> - 输入框：左侧 "+" 删除；space+/ 触发上拉框（skills + 命令）、space+@ 触发文件上拉框；选中时触发字符（空格+/ 或 空格+@）被替换为 chip/文本；上下键 + 回车 + Esc；继续输入过滤
+> - 发送/abort 融合：单一圆形按钮，空闲 ↑、运行中 ■；busy 行（忙碌+队列+deliverAs）删除，steer 移除；LLM 运行时回车 = followUp 入队，输入区上方轻提示"已排队 ×N"；消息流队列 marker 删除
+> - 输入框必须 block 布局（非 flex）：Chrome caret 导航无法跨过 flex 容器内 contenteditable=false 原子 chip（实测）
+
+### R16.1 stream.ts：turn 时间戳 + 纯函数（TDD）✅
+- Turn 增加 `startedAt` / `endedAt`（message_start 记 startedAt；message_end / turn_end 记 endedAt；history 回填无时间戳 → null）
+- 新纯函数 `thinkingSeconds(turn)`：endedAt-startedAt 秒数（无时间戳 → null）；`bubbleActiveThinking(bubble)`：最后一个活跃（非 final）turn 的 thinking（Thinking… 指示用）
+- 测试：+6（时间戳记录/回填 null/thinkingSeconds 边界/bubbleActiveThinking）
+
+### R16.2 Chat.tsx：气泡 ChatGPT 式渲染 + 时间线弹窗 ✅
+- 思考块：`ThinkingBlock` 组件——有 thinking 的 turn 渲染折叠块（流式中 "Thinking…" + Loader 旋转；结束 "Thought" + 时长）；点击内联展开 thinking 全文（流式中实时更新）；无 thinking 不渲染
+- 工具卡片内联：turn 的 toolCallIds → 匹配 tools 行，卡片（工具名 + StatusIcon + 输出摘要 truncate，点击 → 复用 ToolCard 二级弹窗）在 turn 之间交错渲染
+- 工具栏：fork + progress 按钮（流式中 Loader2 旋转"进行中"；结束 CircleCheck"完成"；点击 → 时间线弹窗）；reasoning/tools 按钮删除
+- 时间线弹窗 `TimelineDialog`：按 turns 交错——thinking 全文块（pre） + 工具卡片；无二级弹窗嵌套问题（ToolCard 复用）
+- 测试：Chat.test.tsx 更新（思考块显隐/展开、progress 按钮、时间线弹窗渲染）
+
+### R16.3 后端：pi:listCommands + pi:listSkills 前缀修复 ✅
+- `pi:listSkills`：name 去除 `skill:` 前缀（pi 返回 `skill:code-review` → `code-review`）
+- 新 RPC `pi:listCommands`：`getCommands()` 过滤 `source !== "skill"` → `[{name, description}]`
+- 薄层接线（index.ts），无单测；E2E 冒烟验证
+
+### R16.4 输入框上拉框（space+/ 与 space+@）✅
+- 删除左侧 "+" 按钮与 PlusPicker
+- 新 `web/src/components/MentionMenu.tsx`：上拉浮层（输入框上方弹出）——skills+命令（/ 触发）/ 文件分组（@ 触发）；上下键/回车/Esc/点击；继续输入前缀过滤（当前输入框中触发字符后的文本）
+- 触发检测：`web/src/lib/mention.ts` 纯函数（TDD）：`detectMention(key, state)` 状态机——space 后紧跟 `/` 或 `@` 触发；触发后字符进过滤词；Esc 取消保留触发字符；回车选中
+- 选中替换：删除"空格+触发符"文本节点，光标处插入 chip（skill/file）/纯文本（command）；skill chip `data-insert=/skill:name`、file chip `data-insert=path`、command 纯文本 `/name`
+- 测试：mention.test.ts（触发序列/取消/过滤词累积）；InputBar 渲染测试更新
+
+### R16.5 发送/abort 融合 + 队列提示 ✅
+- 输入区右侧单一圆形按钮：空闲 `↑`（ArrowUp 图标，发送，禁用态不变）；streaming 中 `■`（Square 图标，点击 `pi:abort`）
+- busy 提示行（agent 忙碌 + 队列 + deliverAs 选择器 + abort）删除；steer 从 StreamState/发送逻辑移除（`pi:sendMessage` 不再带 deliverAs 参数）
+- 队列轻提示：queue.followUp.length > 0 时输入区上方提示条"已排队 ×N"（ChatGPT 式）；Chat.tsx 队列 marker 删除
+- 测试：InputBar.test.tsx（按钮切换/队列提示）；stream.test.ts 移除 steer 相关断言
+
+### R16.6 收尾 ✅
+- `npm run build:web` → web/dist 提交；`npm test` + `npm run typecheck` 全绿
+- E2E 冒烟（RPC 模式）：pi:listCommands / pi:listSkills 前缀
+- SPEC §1.3/§1.4/§4.4/§7 已同步；README 更新（输入方式变更）；commit

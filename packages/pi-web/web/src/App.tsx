@@ -74,6 +74,7 @@ export default function App() {
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [skills, setSkills] = useState<SkillInfo[]>([]);
+  const [commands, setCommands] = useState<CommandInfo[]>([]);
   const [files, setFiles] = useState<FileGroup[]>([]);
   const [pickerLoading, setPickerLoading] = useState(false);
   const [treeOpen, setTreeOpen] = useState(false);
@@ -136,26 +137,28 @@ export default function App() {
     c.request<ModelInfo[]>("pi:listModels").then(setModels).catch(() => undefined);
   }, [conn, refreshSessions]);
 
-  // "+" 弹层数据（懒加载：打开时刷新）
+  // 上拉框数据（懒加载：面板首次触发时刷新）
   const refreshPicker = useCallback(() => {
     const c = rpcRef.current;
     if (!c || conn !== "open") return;
     setPickerLoading(true);
     Promise.all([
       c.request<SkillInfo[]>("pi:listSkills").catch(() => [] as SkillInfo[]),
+      c.request<CommandInfo[]>("pi:listCommands").catch(() => [] as CommandInfo[]),
       c.request<FileGroup[]>("pi:listFiles").catch(() => [] as FileGroup[]),
     ])
-      .then(([sk, fl]) => {
+      .then(([sk, cm, fl]) => {
         setSkills(sk);
+        setCommands(cm);
         setFiles(fl);
       })
       .finally(() => setPickerLoading(false));
   }, [conn]);
 
-  const send = useCallback((text: string, deliverAs?: "steer" | "followUp") => {
+  const send = useCallback((text: string) => {
     const c = rpcRef.current;
     if (!c) return;
-    c.request("pi:sendMessage", { text, ...(deliverAs ? { deliverAs } : {}) }).catch((e) => {
+    c.request("pi:sendMessage", { text }).catch((e) => {
       toast.error(`发送失败: ${e.message}`);
     });
   }, []);
@@ -334,6 +337,7 @@ export default function App() {
         queue={state.queue}
         conn={conn}
         skills={skills}
+        commands={commands}
         files={files}
         pickerLoading={pickerLoading}
         onSend={send}

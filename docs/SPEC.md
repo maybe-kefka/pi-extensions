@@ -1,6 +1,6 @@
 # SPEC — @kefka/pi-web
 
-> 状态：已确认（2025-08-03 与用户逐题对齐）
+> 状态：已确认（2025-08-03 与用户逐题对齐；2026-08 R16 交互大改：气泡 ChatGPT 式渲染 / 上拉框 / 发送-abort 融合）
 > 仓库：`~/projects/pi-extensions`（npm workspaces monorepo，包名模式 `@kefka/pi-*`）
 
 ## 1. 概述
@@ -28,9 +28,11 @@
 | 删除会话 | fs unlink（非官方 API，见 §4.4 `pi:deleteSession`） | ✅（仅非当前会话） |
 | 重命名会话 | `pi.setSessionName` | ✅ |
 | 输入辅助："+" 弹层（全部 skills + 工作目录文件） | `pi.getCommands()`（`source: "skill"`）/ 后端 `pi:listFiles`（gitignore） | ✅ |
+| 输入辅助：**space+/**（skills + 命令上拉框）与 **space+@**（文件上拉框） | `pi:listSkills` / `pi:listCommands` / `pi:listFiles` | ✅（R16） |
+| 命令元信息列表 | `pi:listCommands`（非 skill 命令，`/` 上拉框用） | ✅（R16） |
 
 ### 1.4 非目标（明确不做）
-- **不从 web 执行扩展命令**（含 prompt 模板与 skill 命令，均无公开执行 API）。源码核实：`pi.sendUserMessage()` 硬编码 `expandPromptTemplates: false` 调 `prompt()`，跳过命令处理；`_tryExecuteExtensionCommand` 是 AgentSession 私有路径；`pi.getCommands()` 只返回元信息（不含 handler）。RPC 模式（独立进程）的 `prompt` 默认执行命令（上游语义"命令经 prompt 管道调用"），但 pi-web 是 **TUI 进程内**扩展，摸不到 `session.prompt()`。**命令面板不展示这些命令**（用户决策 2026：无法实现的就不展示）。上游 feature 建议（`sendUserMessage` 增加 `expandPromptTemplates` 选项或暴露 `executeCommand`）记录在 §9。
+- **不从 web 执行扩展命令**（含 prompt 模板与 skill 命令，均无公开执行 API）。源码核实：`pi.sendUserMessage()` 硬编码 `expandPromptTemplates: false` 调 `prompt()`，跳过命令处理；`_tryExecuteExtensionCommand` 是 AgentSession 私有路径；`pi.getCommands()` 只返回元信息（不含 handler）。**R16 决策更新：`/` 上拉框展示 skills + 命令，但选中后一律以纯文本插入输入框**（`/skill:name`、`/compact` 等原样发送，pi 收到后按普通消息处理——web 端无法执行命令的现状不变）。上游 feature 建议（`sendUserMessage` 增加 `expandPromptTemplates` 选项或暴露 `executeCommand`）记录在 §9。
 - **不从 web 派发 `/reload`、`/quit`**：`ctx.reload()` 会重载扩展 → 按 §3 关闭 web server 自身（断线）；`ctx.shutdown()` 会优雅退出整个 pi 进程。两者留 TUI。
 - **不派发 TUI-only 命令**：`/export` `/import` `/share` `/copy` `/login` `/logout` `/settings` `/trust` `/changelog` `/hotkeys` `/scoped-models` `/debug`（及彩蛋）为 TUI 选择器 / OAuth 流程 / 剪贴板 / 设置菜单专属，无公开 API，命令面板不展示。
 - **删除会话仅限非当前会话**：无官方 API（`SessionManager` 无 delete 方法，TUI 亦无删除功能），pi-web 直接 unlink session 的 jsonl 文件（`SessionManager.list` 扫目录，删除后列表自然消失）；当前会话删除按钮禁用。
@@ -132,7 +134,8 @@
 | `pi:getThinkingLevel` | — | `pi.getThinkingLevel()` |
 | `pi:setThinkingLevel` | `{level}` | `pi.setThinkingLevel(level)`（clamp 交给 pi） |
 | `pi:setSessionName` | `{name}` | `pi.setSessionName(name)`（`session_info_changed` 事件刷新列表） |
-| `pi:listSkills` | — | `pi.getCommands()` 过滤 `source === "skill"` → `[{name, description}]`（名称即 `/skill:<name>`，供"+"弹层插入） |
+| `pi:listSkills` | — | `pi.getCommands()` 过滤 `source === "skill"` → `[{name, description}]`；**name 去除 `skill:` 前缀**（pi 返回 `skill:code-review`，前端展示/插入需裸名） |
+| `pi:listCommands` | — | `pi.getCommands()` 过滤 `source !== "skill"` → `[{name, description}]`（`/` 上拉框非 skill 命令，选中插纯文本；**不执行**，见 §1.4） |
 | `pi:listFiles` | `{maxDepth?, limit?}` | `src/file-lister.ts`：递归扫描 `ctx.cwd`（默认 3 层 / 200 上限），gitignore 排除（`ignore` 包，含嵌套 `.gitignore`），按目录分组 → `{groups: [{dir, files: [{name, path}]}]}` |
 | `pi:getMessages` | — | `getEntries()` 过滤 message 条目 → `{messages: [{role, text, thinking, toolCalls: [{id, name, arguments, result, isError}], userIndex?}]}`：assistant 带 thinking/toolCalls（toolCallId 配对 toolResult）；**user 消息带 `userIndex`**（该会话第几条 user，0-based，供前端气泡 fork 用）；空消息（无 text/thinking/toolCalls）筛掉 |
 | `pi:getState` | — | 快照：会话文件/id/名、模型、思考等级、上下文占用、isStreaming、messageCount |
@@ -163,14 +166,26 @@
 - **工程位置**：`packages/pi-web/web/` 子工作区（`pi-web-frontend`，private），独立 `package.json`/`vite.config.ts`；构建产物 `web/dist/`。
   - 构建：`npm run build:web`（根）/ `npm run build -w pi-web-frontend`；`npm publish` 时 `prepublishOnly` 先构建（`cd web && npm run build`）。
   - **`web/dist` 提交进 git**（个人仓库开箱即用）；`/web` 启动前检查 `dist/index.html` 存在，缺失则报错提示先构建。
-- **布局**：header（连接状态 / 会话名 / 模型 / 思考等级 / **上下文占用条（可点击 → Popover 上下文占用面板，含 compact 按钮）**）+ chat 流 + 侧栏（**会话列表：可点击切换 + 顶部新建按钮 + 每项工具栏（删除/重命名/查看树/复制）**、模型选择、思考等级、状态桥接面板）+ 输入区（**最左 "+" 按钮 → 可搜索弹层**）。
+- **布局**：header（连接状态 / 会话名 / 模型 / 思考等级 / **上下文占用条（可点击 → Popover 上下文占用面板，含 compact 按钮）**）+ chat 流 + 侧栏（**会话列表：可点击切换 + 顶部新建按钮 + 每项工具栏（删除/重命名/查看树/复制）**、模型选择、思考等级、状态桥接面板）+ 输入区（**无左侧 "+" 按钮**）。
+- **气泡渲染（R16，ChatGPT 式）**：每轮 assistant turn 内**思考块 + 工具卡片 + 正文**交错呈现（think → tool → think → tool → 最终文本）：
+  - **思考块**：turn 有 thinking 时渲染为可折叠块——流式中标题 "Thinking…"（旋转图标）、结束后 "Thought"（含思考时长秒数，turn 有 startedAt/endedAt 时）；点击**内联展开/收起** thinking 全文（流式中实时滚动更新）
+  - **工具卡片内联**：turn 的 toolCallIds 匹配全局 tools 行，卡片显示工具名 + 状态图标（运行中旋转/完成对勾/失败叉）+ 输出摘要（截断），点击 → 二级弹窗（参数 + 输出全文，复用 ToolCard）
+  - **正文**：流式逐字 + 光标，stop 后最终值渲染 Markdown（现状不变）
+  - **工具栏**（轮结束出现）：fork + **progress 按钮**（流式中 Loader 旋转 "进行中"，结束 CircleCheck "完成"，点击 → 时间线弹窗）；**reasoning / tools 两按钮删除**
+  - **时间线弹窗（R16）**：按 turn 顺序交错展示全部 thinking 全文 + 工具卡片（thinking 直接全文块，工具卡片可点开二级详情）；不含最终正文
+- **输入区（R16，ChatGPT 式上拉框）**：contenteditable 容器（现状保留）：
+  - **space+/** 触发上拉框**：候选 = skills（插入 chip `/skill:name`）+ 命令（`pi:listCommands`，插入纯文本 `/name`）；**space+@** 触发上拉框**：候选 = 工作目录文件（`pi:listFiles` 分组，插入 chip 路径）
+  - 触发字符（空格+斜杠/空格+@）在选中时被**替换**为插入内容；Esc 取消则字符原样保留
+  - 键盘：上下键切换、回车选中（面板打开时回车不发送）、Esc 取消、继续输入过滤列表（前缀匹配）、鼠标点击可选中；面板从输入框上方弹出
+  - **发送/abort 融合**：输入区右侧单一圆形 icon 按钮——空闲 `↑`（发送）、LLM 运行中 `■`（abort，点击直接停止）；busy 时的"agent 忙碌 + 队列 + deliverAs 选择器"行**删除**（steer 能力移除）
+  - **队列**：LLM 运行时回车 = followUp 入队；输入区上方轻提示条"已排队 ×N"；消息流中的队列 marker 删除
 - **轮次聚合（v-next）**：聊天流按**气泡**渲染——每条 user 消息开启新气泡，到下一条 user 消息前的全部内容聚合进同一气泡（工具循环的多个 assistant turn、thinking、toolcall、toolResult 均在内）。
-  - 气泡 = `{userText, userIndex, turns: [{text, thinking, toolCallIds, final}]}`；`userIndex`（第几条 user 消息，0-based）由后端在 `pi:getMessages` 标记，流式消息由前端自增计数——**fork 即发 `pi:fork {userIndex}`**。
-  - 气泡底部**工具栏**（轮结束后出现，即无活跃 turn 且 agent 空闲）：fork（分叉该轮）、reasoning（有 thinking 时，弹窗查看全文）、tools（有 toolCall 时，弹窗查看全部工具详情：参数 + 结果）。
+  - 气泡 = `{userText, userIndex, turns: [{text, thinking, toolCallIds, final, startedAt?, endedAt?}]}`；`userIndex`（第几条 user 消息，0-based）由后端在 `pi:getMessages` 标记，流式消息由前端自增计数——**fork 即发 `pi:fork {userIndex}`**。
+  - 气泡底部**工具栏**（轮结束后出现，即无活跃 turn 且 agent 空闲）：fork（分叉该轮）+ **progress**（点击 → 时间线弹窗：全部 thinking + Action 交错流程）。
   - 流式中气泡实时更新（thinking / 文本累积）；`turn_end` / `agent_settled` 驱动轮次边界与工具栏显隐。
 - **交互升级（v2 重构）**：thinking 与工具输出**可展开/收起**（工具输出折叠态截断 ~1200 字符）；**跟随滚动开关**（上翻暂停自动滚动，出现"回到底部"按钮）；输入框为多行 `Textarea`（Enter 发送 / Shift+Enter 换行）；**断线横幅** + 指数退避重连（≤10s）。
 - **上下文占用面板（v-next）**：点击 header 占用条 → `Popover`（`@radix-ui/react-popover`），每次展开重新拉取 `pi:getContextBreakdown`：总览（估算 total / contextWindow / 实时 percent）+ 五类行（标签 + 细进度条 + tokens + 百分比，比例相对面板内部 total，与 /status 口径一致）+ 对话细分（user/assistant/toolResult/other，比例相对 conversation.total）+ **底部 compact 通栏按钮**（原 header 图标按钮移除）。数据源非特权，无降级问题；失败显示错误 + 重试。
-- **输入框标签化（v2 打磨）**：输入区为 contenteditable 容器；"+" 弹层插入的内容渲染为原子 chip（`contenteditable=false` span，`data-insert` 存插入文本；skill ✨ 紫 / file 📄 蓝），无 × 按钮，Backspace/Delete 整块删除（浏览器原生）；Enter 发送 / Shift+Enter 换行 / 中文组词回车不发送（`nativeEvent.isComposing`）/ 粘贴转纯文本；发送时按 DOM 顺序序列化（`web/src/lib/chip-serialize.ts`：chip 还原为插入文本、`<br>` 为 `\n`）。
+- **输入框标签化（v2 打磨）**：输入区为 contenteditable 容器；"+" 弹层插入的内容渲染为原子 chip（`contenteditable=false` span，`data-insert` 存插入文本；skill ✨ 紫 / file 📄 蓝），无 × 按钮，Backspace/Delete 整块删除（浏览器原生）；Enter 发送 / Shift+Enter 换行 / 中文组词回车不发送（`nativeEvent.isComposing`）/ 粘贴转纯文本；发送时按 DOM 顺序序列化（`web/src/lib/chip-serialize.ts`：chip 还原为插入文本、`<br>` 为 `\n`）。**R16：输入框必须为 block 布局（非 flex）**——Chrome caret 导航在 flex 容器内无法跨过 contenteditable=false 的原子 chip（2026-08 实测），chip 才能被光标跨过/自由组合。
 - **会话控制 UI（v-next）**：点击会话列表项 = `pi:switchSession`（当前项高亮）；顶部"新建"按钮 = `pi:newSession`；每项工具栏：删除（`pi:deleteSession` + 确认弹窗，当前会话禁用）、重命名（`pi:setSessionName` + 输入弹窗）、查看树（`pi:getTree` 树弹窗，点击节点 → 确认 → `pi:navigateTree`）、复制（`pi:clone`）。
 - **降级提示（v-next）**：特权操作失败（code 1 "会话控制能力已失效"）→ toast；侧栏会话区常驻提示条"会话操作需在 TUI 重跑 /web 恢复"（仅特权能力缺失时显示）。
 - **状态管理**：单 `useReducer` 根 store；WS 事件流 → reducer action（`web/src/lib/stream.ts` 纯 reducer，单测覆盖）。
