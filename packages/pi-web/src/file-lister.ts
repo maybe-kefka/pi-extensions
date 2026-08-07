@@ -10,6 +10,8 @@ import ignore, { type Ignore } from "ignore";
 export interface ListedFile {
   name: string;
   path: string;
+  /** 是否目录条目（R17：@ 面板文件/文件夹平级展示） */
+  isDir: boolean;
 }
 
 export interface FileGroup {
@@ -49,10 +51,14 @@ export function listFiles(cwd: string, opts: ListFilesOptions = {}): FileGroup[]
   const rootIg = readGitignore(cwd);
   const layers: IgLayer[] = rootIg ? [{ ig: rootIg, baseDir: cwd }] : [];
 
-  function isIgnored(abs: string, myLayers: IgLayer[]): boolean {
+  function isIgnored(abs: string, myLayers: IgLayer[], isDir: boolean): boolean {
     for (const layer of myLayers) {
       const rel = relative(layer.baseDir, abs);
-      if (rel !== "" && !rel.startsWith(`..${sep}`) && layer.ig.ignores(rel)) return true;
+      if (rel !== "" && !rel.startsWith(`..${sep}`)) {
+        // ignore 包的目录规则（dist/）需要尾斜杠才能匹配目录本身
+        const target = isDir ? `${rel}/` : rel;
+        if (layer.ig.ignores(target)) return true;
+      }
     }
     return false;
   }
@@ -73,12 +79,17 @@ export function listFiles(cwd: string, opts: ListFilesOptions = {}): FileGroup[]
       if (truncated) return;
       if (e.name === ".git" || e.name === "node_modules") continue;
       const abs = join(dir, e.name);
-      if (isIgnored(abs, myLayers)) continue;
+      if (isIgnored(abs, myLayers, e.isDirectory())) continue;
+      const list = groups.get(relDir) ?? [];
       if (e.isDirectory()) {
-        if (depth + 1 <= maxDepth) walk(abs, depth + 1, myLayers);
+        // 目录条目（平级可选中）+ 递归下钻
+        list.push({ name: e.name, path: relative(cwd, abs), isDir: true });
+        groups.set(relDir, list);
+        count += 1;
+        if (count >= limit) truncated = true;
+        if (!truncated && depth + 1 <= maxDepth) walk(abs, depth + 1, myLayers);
       } else if (e.isFile()) {
-        const list = groups.get(relDir) ?? [];
-        list.push({ name: e.name, path: relative(cwd, abs) });
+        list.push({ name: e.name, path: relative(cwd, abs), isDir: false });
         groups.set(relDir, list);
         count += 1;
         if (count >= limit) truncated = true;

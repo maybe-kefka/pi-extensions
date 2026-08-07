@@ -153,13 +153,20 @@ export function InputBar(props: {
       const items: MentionItem[] = [];
       for (const g of files) {
         for (const f of g.files) {
-          items.push({ id: `file:${f.path}`, label: f.path, insert: f.path, chip: true, group: g.dir === "." ? "根目录" : g.dir });
+          items.push({
+            id: `file:${f.path}`,
+            label: f.path,
+            insert: f.path,
+            chip: true,
+            group: g.dir === "." ? "根目录" : g.dir,
+            isDir: f.isDir,
+          });
         }
       }
       return filterMentionItems(items, mention.query);
     }
     const items: MentionItem[] = [
-      ...skills.map((s) => ({ id: `skill:${s.name}`, label: `/${s.name}`, insert: `/skill:${s.name}`, chip: true, group: "Skills" })),
+      ...skills.map((s) => ({ id: `skill:${s.name}`, label: `skill:${s.name}`, insert: `/skill:${s.name}`, chip: true, group: "Skills" })),
       ...commands.map((c) => ({ id: `cmd:${c.name}`, label: `/${c.name}`, insert: `/${c.name}`, chip: false, group: "命令" })),
     ];
     return filterMentionItems(items, mention.query);

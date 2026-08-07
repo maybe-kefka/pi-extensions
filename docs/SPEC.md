@@ -136,7 +136,7 @@
 | `pi:setSessionName` | `{name}` | `pi.setSessionName(name)`（`session_info_changed` 事件刷新列表） |
 | `pi:listSkills` | — | `pi.getCommands()` 过滤 `source === "skill"` → `[{name, description}]`；**name 去除 `skill:` 前缀**（pi 返回 `skill:code-review`，前端展示/插入需裸名） |
 | `pi:listCommands` | — | `pi.getCommands()` 过滤 `source !== "skill"` → `[{name, description}]`（`/` 上拉框非 skill 命令，选中插纯文本；**不执行**，见 §1.4） |
-| `pi:listFiles` | `{maxDepth?, limit?}` | `src/file-lister.ts`：递归扫描 `ctx.cwd`（默认 3 层 / 200 上限），gitignore 排除（`ignore` 包，含嵌套 `.gitignore`），按目录分组 → `{groups: [{dir, files: [{name, path}]}]}` |
+| `pi:listFiles` | `{maxDepth?, limit?}` | `src/file-lister.ts`：递归扫描 `ctx.cwd`（默认 3 层 / 200 上限），gitignore 排除（`ignore` 包，含嵌套 `.gitignore`），按目录分组 → `{groups: [{dir, entries: [{name, path, isDir}]}]}`（**含目录条目**，`isDir` 区分，R17） |
 | `pi:getMessages` | — | `getEntries()` 过滤 message 条目 → `{messages: [{role, text, thinking, toolCalls: [{id, name, arguments, result, isError}], userIndex?}]}`：assistant 带 thinking/toolCalls（toolCallId 配对 toolResult）；**user 消息带 `userIndex`**（该会话第几条 user，0-based，供前端气泡 fork 用）；空消息（无 text/thinking/toolCalls）筛掉 |
 | `pi:getState` | — | 快照：会话文件/id/名、模型、思考等级、上下文占用、isStreaming、messageCount |
 | `pi:getContextBreakdown` | — | 上下文占用分类估算（与 pi-status 同款 chars/4 逻辑，`src/context-breakdown.ts`）：`ctx.getSystemPromptOptions()`（customPrompt/promptGuidelines/appendSystemPrompt/contextFiles/skills/toolSnippets，运行时普通会话 ctx 提供，类型仅在 command ctx 声明——index.ts 内交叉类型断言）+ `ctx.sessionManager.buildContextEntries()` → 五类（系统提示词/上下文文件/技能/工具定义/对话消息）+ 对话细分（user/assistant/toolResult/other）+ total；`usage` = getContextUsage（percent 归一化 0-1）。**非特权数据源，TUI 手动切会话后依然可用** |
@@ -167,16 +167,17 @@
   - 构建：`npm run build:web`（根）/ `npm run build -w pi-web-frontend`；`npm publish` 时 `prepublishOnly` 先构建（`cd web && npm run build`）。
   - **`web/dist` 提交进 git**（个人仓库开箱即用）；`/web` 启动前检查 `dist/index.html` 存在，缺失则报错提示先构建。
 - **布局**：header（连接状态 / 会话名 / 模型 / 思考等级 / **上下文占用条（可点击 → Popover 上下文占用面板，含 compact 按钮）**）+ chat 流 + 侧栏（**会话列表：可点击切换 + 顶部新建按钮 + 每项工具栏（删除/重命名/查看树/复制）**、模型选择、思考等级、状态桥接面板）+ 输入区（**无左侧 "+" 按钮**）。
-- **气泡渲染（R16，ChatGPT 式）**：每轮 assistant turn 内**思考块 + 工具卡片 + 正文**交错呈现（think → tool → think → tool → 最终文本）：
-  - **思考块**：turn 有 thinking 时渲染为可折叠块——流式中标题 "Thinking…"（旋转图标）、结束后 "Thought"（含思考时长秒数，turn 有 startedAt/endedAt 时）；点击**内联展开/收起** thinking 全文（流式中实时滚动更新）
-  - **工具卡片内联**：turn 的 toolCallIds 匹配全局 tools 行，卡片显示工具名 + 状态图标（运行中旋转/完成对勾/失败叉）+ 输出摘要（截断），点击 → 二级弹窗（参数 + 输出全文，复用 ToolCard）
-  - **正文**：流式逐字 + 光标，stop 后最终值渲染 Markdown（现状不变）
-  - **工具栏**（轮结束出现）：fork + **progress 按钮**（流式中 Loader 旋转 "进行中"，结束 CircleCheck "完成"，点击 → 时间线弹窗）；**reasoning / tools 两按钮删除**
+- **气泡渲染（R16，ChatGPT 式；R17 修订）**：**气泡最终只显示最终 response 文本**（final 后思考/工具过程显示全部消失）；多轮循环（r→a→r→a→f）中，**过程信息只在流式期间临时显示**：
+  - **流式中（本轮未 final）**：思考中显示一条 "Thinking…" 行（旋转图标，**不展开**）；工具调用显示**工具名行**（状态图标 + 工具名，无详情卡片，不展开）；输出文本流式逐字 + 光标
+  - **轮结束（final）**：该轮 thinking/工具行消失；最终文本渲染 Markdown（纯文本轮 turn 的文本为空则不渲染）
+  - **progress 按钮 + 时间线弹窗保留**：完整 reasoning + Action 记录仍可回看（数据层 Turn.thinking/toolCallIds 不丢，仅渲染层隐藏）
+  - **工具栏**（轮结束出现）：fork + **progress**（流式中 Loader 旋转 "进行中"，结束 CircleCheck "完成"，点击 → 时间线弹窗）；reasoning / tools 两按钮删除
   - **时间线弹窗（R16）**：按 turn 顺序交错展示全部 thinking 全文 + 工具卡片（thinking 直接全文块，工具卡片可点开二级详情）；不含最终正文
-- **输入区（R16，ChatGPT 式上拉框）**：contenteditable 容器（现状保留）：
-  - **space+/** 触发上拉框**：候选 = skills（插入 chip `/skill:name`）+ 命令（`pi:listCommands`，插入纯文本 `/name`）；**space+@** 触发上拉框**：候选 = 工作目录文件（`pi:listFiles` 分组，插入 chip 路径）
+- **输入区（R16，ChatGPT 式上拉框；R17 修订）**：contenteditable 容器（现状保留）：
+  - **space+/** 触发上拉框**：候选 = skills（**显示 `skill:<name>`**，插入 chip `/skill:<name>`）+ 命令（`pi:listCommands`，插入纯文本 `/name`）；**space+@** 触发上拉框**：候选 = 工作目录文件**与文件夹**（`pi:listFiles` 含目录条目 `isDir`，目录/文件平级混列，插入 chip 路径）
   - 触发字符（空格+斜杠/空格+@）在选中时被**替换**为插入内容；Esc 取消则字符原样保留
   - 键盘：上下键切换、回车选中（面板打开时回车不发送）、Esc 取消、继续输入过滤列表（前缀匹配）、鼠标点击可选中；面板从输入框上方弹出
+  - **可见窗口 8 行**：选项超过 8 个时列表滚动，上下键导航高亮行自动滚入视野（scrollIntoView block:nearest）
   - **发送/abort 融合**：输入区右侧单一圆形 icon 按钮——空闲 `↑`（发送）、LLM 运行中 `■`（abort，点击直接停止）；busy 时的"agent 忙碌 + 队列 + deliverAs 选择器"行**删除**（steer 能力移除）
   - **队列**：LLM 运行时回车 = followUp 入队；输入区上方轻提示条"已排队 ×N"；消息流中的队列 marker 删除
 - **轮次聚合（v-next）**：聊天流按**气泡**渲染——每条 user 消息开启新气泡，到下一条 user 消息前的全部内容聚合进同一气泡（工具循环的多个 assistant turn、thinking、toolcall、toolResult 均在内）。

@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import type * as React from "react";
-import { Bot, ChevronDown, ChevronRight, CircleCheck, CircleX, GitFork, Loader2, User, Wrench } from "lucide-react";
+import { Bot, CircleCheck, CircleX, GitFork, Loader2, User, Wrench } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -20,10 +20,8 @@ import {
 } from "@/components/ui/message-scroller";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
-  bubbleActiveThinking,
   bubbleStreaming,
   bubbleToolCallIds,
-  thinkingSeconds,
   type StreamAction,
   type StreamState,
   type Turn,
@@ -119,62 +117,35 @@ function ToolCard({ row }: { row: StreamState["tools"][number] }) {
 }
 
 /**
- * 思考块（ChatGPT 式）：流式中 "Thinking…"（旋转图标），结束后 "Thought" + 时长；
- * 点击内联展开/收起 thinking 全文（流式中实时更新）。
+ * 流式过程行（R17 极简）：本轮未 final 时——Thinking… 行（不展开）+ 工具名行（状态图标 + 工具名）。
+ * final 后不渲染（气泡只留最终文本，完整记录在时间线弹窗）。
  */
-function ThinkingBlock({
-  thinking,
-  streaming,
-  startedAt,
-  endedAt,
-}: {
-  thinking: string;
-  streaming: boolean;
-  startedAt?: number;
-  endedAt?: number;
-}) {
-  const [open, setOpen] = useState(false);
-  const secs = streaming ? null : thinkingSeconds({ startedAt, endedAt });
-  return (
-    <div data-slot="thinking-block" className="flex flex-col gap-1">
-      <button
-        className="text-muted-foreground hover:text-foreground flex w-fit cursor-pointer items-center gap-1 rounded-md px-1 py-0.5 text-xs transition-colors"
-        onClick={() => setOpen((o) => !o)}
-      >
-        {open ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
-        {streaming ? (
-          <>
-            <Loader2 className="size-3 animate-spin" /> Thinking…
-          </>
-        ) : (
-          <>Thought{secs !== null ? ` · ${secs}s` : ""}</>
-        )}
-      </button>
-      {open && (
-        <div className="text-muted-foreground border-border bg-muted/40 max-h-64 overflow-y-auto rounded-md border p-2 text-xs whitespace-pre-wrap [overflow-wrap:anywhere]">
-          {thinking || "…"}
-        </div>
-      )}
-    </div>
-  );
-}
-
-/** 工具卡片内联行：turn 的 toolCallIds 匹配全局 tools 行 */
-function TurnTools({
+function StreamingProgress({
   turn,
   tools,
 }: {
   turn: Turn;
   tools: StreamState["tools"];
 }) {
-  const rows = turn.toolCallIds
-    .map((id) => tools.find((t) => t.toolCallId === id))
-    .filter((t): t is StreamState["tools"][number] => t !== undefined);
-  if (rows.length === 0) return null;
+  // turn 已声明的工具 + 全局正在执行（未 final）的工具行（toolCallIds 流式中为空，靠 tool_start 事件补全）
+  const rows: StreamState["tools"][number][] = [
+    ...turn.toolCallIds
+      .map((id) => tools.find((t) => t.toolCallId === id))
+      .filter((t): t is StreamState["tools"][number] => t !== undefined),
+    ...tools.filter((t) => !t.final && !turn.toolCallIds.includes(t.toolCallId)),
+  ];
   return (
-    <div className="flex flex-col gap-1">
+    <div className="flex flex-col gap-1" data-slot="streaming-progress">
+      {turn.thinking.trim().length > 0 && (
+        <div className="text-muted-foreground flex items-center gap-1.5 text-xs">
+          <Loader2 className="size-3 animate-spin" /> Thinking…
+        </div>
+      )}
       {rows.map((row) => (
-        <ToolCard key={row.toolCallId} row={row} />
+        <div key={row.toolCallId} className="text-muted-foreground flex items-center gap-1.5 text-xs">
+          <StatusIcon status={toolStatus(row)} />
+          <span className="truncate font-medium">{row.toolName}</span>
+        </div>
       ))}
     </div>
   );
@@ -253,7 +224,6 @@ function TurnBubbleView({
 }) {
   const [timelineOpen, setTimelineOpen] = useState(false);
   const hasUser = bubble.userIndex >= 0;
-  const activeThinking = bubbleActiveThinking(bubble);
   const streaming = bubbleStreaming(bubble);
   // 工具栏：轮结束后出现（气泡内无活跃 turn 且 agent 空闲、有 user 消息）
   const showToolbar = hasUser && !streaming && !agentStreaming;
@@ -291,20 +261,13 @@ function TurnBubbleView({
               {bubble.turns.map((turn, i) => {
                 const isLast = i === bubble.turns.length - 1;
                 // 空 turn（无正文且非流式中）不渲染——纯工具/纯 thinking turn 的正文为空，避免"只有分隔线的空白行"
-                const hasVisible = turn.text.trim().length > 0 || (isLast && !turn.final) || turn.thinking.trim().length > 0 || turn.toolCallIds.length > 0;
+                const hasVisible = turn.text.trim().length > 0 || (isLast && !turn.final);
                 if (!hasVisible) return null;
                 return (
                   <div key={i} className={i > 0 ? "mt-2 border-t pt-2" : ""}>
                     <div className="flex flex-col gap-1.5">
-                      {turn.thinking.trim() && (
-                        <ThinkingBlock
-                          thinking={turn.thinking}
-                          streaming={!turn.final}
-                          startedAt={turn.startedAt}
-                          endedAt={turn.endedAt}
-                        />
-                      )}
-                      <TurnTools turn={turn} tools={tools} />
+                      {/* R17：过程信息（Thinking…/工具名行）只在流式中显示，final 后消失 */}
+                      {!turn.final && <StreamingProgress turn={turn} tools={tools} />}
                       {turn.text.trim() ? (
                         isLast && !turn.final ? (
                           <span className="wrap-break-word whitespace-pre-wrap">
@@ -321,8 +284,7 @@ function TurnBubbleView({
                   </div>
                 );
               })}
-              {/* 流式中活跃 thinking 但 turn 尚未有内容（thinking 空）时不重复渲染；Thinking… 由 ThinkingBlock 负责 */}
-              {streaming && activeThinking === null && (
+              {streaming && bubble.turns.length === 0 && (
                 <div className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
                   <Loader2 className="size-3 animate-spin" /> Thinking…
                 </div>

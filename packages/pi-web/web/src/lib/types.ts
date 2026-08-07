@@ -49,6 +49,8 @@ export interface SkillInfo {
 export interface ListedFile {
   name: string;
   path: string;
+  /** 是否目录条目（R17：@ 面板文件/文件夹平级展示） */
+  isDir?: boolean;
 }
 
 export interface FileGroup {

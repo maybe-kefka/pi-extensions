@@ -134,3 +134,17 @@ describe("过滤函数", () => {
 });
 
 export type { MentionState };
+
+describe("R17 上拉框修订", () => {
+  it("skills 显示 skill:<name> 与插入 /skill:<name> 分离（InputBar 组装层约定）", async () => {
+    const { filterMentionItems } = await import("./mention");
+    const items = [
+      { id: "skill:code-review", label: "skill:code-review", insert: "/skill:code-review" },
+      { id: "cmd:compact", label: "/compact", insert: "/compact" },
+    ];
+    expect(filterMentionItems(items, "skill:code")).toEqual([items[0]]);
+    expect(filterMentionItems(items, "/compact")).toEqual([items[1]]);
+    // 显示与插入分离：label 前缀匹配的是显示名
+    expect(filterMentionItems(items, "code-review")).toEqual([]);
+  });
+});

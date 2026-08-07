@@ -241,3 +241,34 @@
 - `npm run build:web` → web/dist 提交；`npm test` + `npm run typecheck` 全绿
 - E2E 冒烟（RPC 模式）：pi:listCommands / pi:listSkills 前缀
 - SPEC §1.3/§1.4/§4.4/§7 已同步；README 更新（输入方式变更）；commit
+
+## R17 气泡极简 + 上拉框修订（2026-08，grilling 对齐后全按推荐）
+
+> 决策记录（2026-08 grilling 逐题对齐）：
+> - 气泡 final 后**只显示最终 response**（Q1-a）；thinking/工具过程显示只在流式期间临时存在；progress + 时间线弹窗保留（完整记录可回看）
+> - 流式中显示形态（Q2-b）：Thinking… 行（不展开）+ 工具名行（状态图标+工具名，无详情卡片）；轮 final 后消失
+> - skills 显示 `skill:<name>`，插入仍 `/skill:<name>`（Q3-a）
+> - @ 面板文件+文件夹平级混列、都可选中插路径 chip（Q4-a）；file-lister 输出目录条目（isDir）
+> - 上拉框可见窗口 8 行，导航时高亮行滚动跟随（Q5）
+
+### R17.1 file-lister.ts：输出目录条目（TDD）✅
+- `ListedFile` → `{name, path, isDir}`（条目化）；`FileGroup.files` → `entries`
+- 目录条目输出：遍历时 `e.isDirectory()` 也加入当前组（path 为相对 cwd），同时继续递归（目录可导航也可选中）
+- 深度/上限语义不变（目录计入 limit）；gitignore 排除不变
+- 测试：+4（目录条目输出/根目录组/深层目录/limit 含目录）
+
+### R17.2 气泡渲染修订（ChatGPT 极简，TDD）✅
+- Chat.tsx：删除 ThinkingBlock 折叠块与 TurnTools 卡片内联——改为：
+  - 流式中（turn 未 final）：thinking 非空 → "Thinking…" 行（Loader 旋转，不展开）；toolCallIds → 工具名行（StatusIcon + 工具名，运行中/完成/失败）
+  - final 后：thinking/工具行全部不渲染，只留文本（Markdown/流式）
+- 时间线弹窗（TimelineDialog）不变（数据层 Turn 不动）
+- 测试：Chat.test.tsx 重写（流式中 Thinking…/工具名行可见；final 后消失只留文本；progress 按钮/弹窗仍可用）
+
+### R17.3 上拉框修订（TDD）✅
+- MentionMenu：可见窗口 8 行（max-h 固定 8 行高，overflow-y-auto），高亮项 scrollIntoView block:nearest；skills 显示 `skill:<name>`（label 改，insert 不变 `/skill:<name>`）；文件面板目录条目（📁 图标 + isDir）
+- InputBar：MentionMenu 的 activeIndex 变化驱动滚动（useEffect ref）
+- 测试：mention.test.ts +2（label 与 insert 分离）；MentionMenu 渲染测试（8 行窗口/目录图标）
+
+### R17.4 收尾 ✅
+- 构建 web/dist；`npm test` + `npm run typecheck` 全绿；E2E 冒烟 pi:listFiles 含目录
+- SPEC §4.4/§7 已同步；commit

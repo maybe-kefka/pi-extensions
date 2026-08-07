@@ -15,7 +15,8 @@ function makeTree(spec: Record<string, string>): string {
 }
 
 function flat(list: ReturnType<typeof listFiles>): string[] {
-  return list.flatMap((g) => g.files.map((f) => f.path));
+  // 文件视角（旧断言）：只取非目录条目；目录条目由专门测试显式断言
+  return list.flatMap((g) => g.files.filter((f) => !f.isDir).map((f) => f.path));
 }
 
 describe("listFiles — 基础", () => {
@@ -30,17 +31,82 @@ describe("listFiles — 基础", () => {
       const r = listFiles(root, { maxDepth: 3 });
       expect(flat(r)).toEqual(["a.ts", "b.ts", "src/c.ts", "src/deep/d.ts"]);
       const src = r.find((g) => g.dir === "src");
-      expect(src?.files).toEqual([{ name: "c.ts", path: "src/c.ts" }]);
+      // src 组：文件 c.ts + 子目录 deep（目录条目）
+      expect(src?.files).toEqual([
+        { name: "c.ts", path: "src/c.ts", isDir: false },
+        { name: "deep", path: "src/deep", isDir: true },
+      ]);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
   });
 
-  it("空目录 / 无文件 → 空数组", () => {
+  it("目录条目：文件夹与文件平级输出（isDir=true，计入分组）", () => {
+    const root = makeTree({
+      "a.ts": "",
+      "src/c.ts": "",
+      "src/sub/deep.ts": "",
+      "empty-dir/.keep": "",
+    });
+    try {
+      const r = listFiles(root, { maxDepth: 2 });
+      const rootGroup = r.find((g) => g.dir === ".");
+      // 根目录：文件 a.ts + 目录 src（目录条目；empty-dir 也有 .keep → 目录条目存在）
+      // readdir 字母序：a.ts → empty-dir → src
+      expect(rootGroup?.files).toEqual([
+        { name: "a.ts", path: "a.ts", isDir: false },
+        { name: "empty-dir", path: "empty-dir", isDir: true },
+        { name: "src", path: "src", isDir: true },
+      ]);
+      const srcGroup = r.find((g) => g.dir === "src");
+      expect(srcGroup?.files).toContainEqual({ name: "sub", path: "src/sub", isDir: true });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("目录条目：gitignore 排除的目录不输出（dist/ 被忽略）", () => {
+    const root = makeTree({
+      ".gitignore": "dist/\n",
+      "dist/bundle.js": "",
+      "src/a.ts": "",
+    });
+    try {
+      const r = listFiles(root, { maxDepth: 2 });
+      expect(flat(r)).toEqual([".gitignore", "src/a.ts"]);
+      const rootGroup = r.find((g) => g.dir === ".");
+      // dist 被忽略 → 不出现目录条目（.gitignore 文件本身在列）
+      expect(rootGroup?.files.map((f) => f.name)).toEqual([".gitignore", "src"]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("limit 计入目录条目", () => {
+    const root = makeTree({
+      "a.ts": "",
+      "src/c.ts": "",
+      "src/deep/d.ts": "",
+      "lib/e.ts": "",
+    });
+    try {
+      const r = listFiles(root, { maxDepth: 3, limit: 4 });
+      // 目录条目：根=src,lib（2）+ 文件 a.ts（1）= 3 个 root 条目；src 组 2 个
+      const total = r.reduce((n, g) => n + g.files.length, 0);
+      expect(total).toBeLessThanOrEqual(4);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("无任何内容 → 空数组；空目录 → 目录条目可见", () => {
     const root = mkdtempSync(join(tmpdir(), "piweb-files-"));
     try {
-      mkdirSync(join(root, "empty"), { recursive: true });
+      // 完全为空 → 无输出
       expect(listFiles(root)).toEqual([]);
+      // 空目录 → 目录条目（@ 面板可选择）
+      mkdirSync(join(root, "empty"), { recursive: true });
+      expect(listFiles(root)).toEqual([{ dir: ".", files: [{ name: "empty", path: "empty", isDir: true }] }]);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
