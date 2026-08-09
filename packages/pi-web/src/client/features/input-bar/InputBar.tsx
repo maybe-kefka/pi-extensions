@@ -162,31 +162,38 @@ export function InputBar(props: {
     setHasInput(true);
   }, []);
 
-  /** 上拉框候选（按 mention.kind 组装 + 前缀过滤） */
-  const mentionItems = useMemo<MentionItem[]>(() => {
-    if (!mention.active) return [];
-    if (mention.kind === "file") {
-      const items: MentionItem[] = [];
-      for (const g of files) {
-        for (const f of g.files) {
-          items.push({
-            id: `file:${f.path}`,
-            label: f.path,
-            insert: f.path,
-            chip: true,
-            group: g.dir === "." ? "根目录" : g.dir,
-            isDir: f.isDir,
-          });
-        }
+  /** R23 F4：base items 按数据源引用缓存（skills/commands/files 引用未变不重建扁平化）；
+   * query 每键击变化只跑 filter */
+  const baseFileItems = useMemo<MentionItem[]>(() => {
+    const items: MentionItem[] = [];
+    for (const g of files) {
+      for (const f of g.files) {
+        items.push({
+          id: `file:${f.path}`,
+          label: f.path,
+          insert: f.path,
+          chip: true,
+          group: g.dir === "." ? "根目录" : g.dir,
+          isDir: f.isDir,
+        });
       }
-      return filterMentionItems(items, mention.query);
     }
-    const items: MentionItem[] = [
+    return items;
+  }, [files]);
+
+  const baseSkillCommandItems = useMemo<MentionItem[]>(() => {
+    return [
       ...skills.map((s) => ({ id: `skill:${s.name}`, label: `skill:${s.name}`, insert: `/skill:${s.name}`, chip: true, group: "Skills" })),
       ...commands.map((c) => ({ id: `cmd:${c.name}`, label: `/${c.name}`, insert: `/${c.name}`, chip: false, group: "命令" })),
     ];
-    return filterMentionItems(items, mention.query);
-  }, [mention.active, mention.kind, mention.query, skills, commands, files]);
+  }, [skills, commands]);
+
+  /** 上拉框候选（按 mention.kind 选 base + query 过滤） */
+  const mentionItems = useMemo<MentionItem[]>(() => {
+    if (!mention.active) return [];
+    if (mention.kind === "file") return filterMentionItems(baseFileItems, mention.query);
+    return filterMentionItems(baseSkillCommandItems, mention.query);
+  }, [mention.active, mention.kind, mention.query, baseFileItems, baseSkillCommandItems]);
 
   /** R21：上拉框空态文案——文件面板区分“目录无文件”/“过滤无匹配” */
   const mentionEmptyLabel = useMemo(() => {
