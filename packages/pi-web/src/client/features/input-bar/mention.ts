@@ -1,7 +1,7 @@
 /**
  * 上拉框触发状态机（纯函数，TDD，SPEC §7 R16）：
  * - space 后紧跟 "/" → 激活 skill/命令面板；space 后紧跟 "@" → 激活文件面板
- * - 激活后普通字符（含空格）累积进 query；Backspace 删 query，query 空再删 → 取消
+ * - 激活后普通字符累积进 query；空格 = 放弃命令输入（关闭面板）；Backspace 删 query，query 空再删 → 取消
  * - Escape 取消（触发字符保留在文本中）；Enter/ArrowUp/ArrowDown 不改变状态（组件层处理）
  */
 
@@ -34,7 +34,10 @@ export function mentionKey(state: MentionState, key: string): MentionState {
       return { ...mentionInitial };
     }
     if (NAV_KEYS.has(key)) return state;
-    // 普通字符（含空格）进 query
+    // R25：激活态按空格 = 放弃命令输入（`/abc ` 只想输入纯文本）→ 关闭面板；
+    // 触发字符与文本保留在输入框（组件层不动编辑器内容），prevWasSpace 一并清
+    if (key === " ") return { ...mentionInitial };
+    // 普通字符（不含空格）进 query
     if (key.length === 1) return { ...state, query: state.query + key };
     return state;
   }

@@ -71,20 +71,22 @@ describe("触发检测", () => {
     expect(s.kind).toBe("skill");
   });
 
-  it("激活后再次 space+/ 不重复触发（保持原 kind）", () => {
+  it("激活后空格关闭，再 space+/ 重新触发（R25 新行为）", () => {
     let s = mentionInitial;
     s = mentionKey(s, " ");
     s = mentionKey(s, "@");
     expect(s.kind).toBe("file");
     s = mentionKey(s, " ");
+    expect(s.active).toBe(false); // R25：空格放弃当前面板
+    s = mentionKey(s, " ");
     s = mentionKey(s, "/");
-    expect(s.kind).toBe("file");
-    expect(s.query).toBe(" /");
+    expect(s.kind).toBe("skill");
+    expect(s.query).toBe("");
   });
 });
 
 describe("激活后行为", () => {
-  it("普通字符累积进 query（含空格）", () => {
+  it("普通字符累积进 query；R25：激活态空格关闭面板（不再进 query）", () => {
     let s = mentionInitial;
     s = mentionKey(s, " ");
     s = mentionKey(s, "/");
@@ -92,7 +94,8 @@ describe("激活后行为", () => {
     s = mentionKey(s, "o");
     expect(s.query).toBe("co");
     s = mentionKey(s, " ");
-    expect(s.query).toBe("co ");
+    expect(s.active).toBe(false);
+    expect(s.query).toBe("");
   });
 
   it("Backspace 删 query 末位；query 空时 Backspace 取消面板", () => {
@@ -233,5 +236,31 @@ describe("R18：行首触发与 query 反推", () => {
     expect(deriveQueryFromHead("abc/def")).toBeNull();
     expect(deriveQueryFromHead("path@x")).toBeNull();
     expect(deriveQueryFromHead("")).toBeNull();
+  });
+});
+
+describe("R25 激活态空格关闭", () => {
+  const active: MentionState = { active: true, kind: "skill", query: "abc", prevWasSpace: false };
+
+  it("激活态按空格 → 关闭面板（query 清空、prevWasSpace 清、active=false）", () => {
+    const next = mentionKey(active, " ");
+    expect(next.active).toBe(false);
+    expect(next.kind).toBeNull();
+    expect(next.query).toBe("");
+    expect(next.prevWasSpace).toBe(false);
+  });
+
+  it("关闭后再次空格+斜杠可重新触发", () => {
+    const closed = mentionKey(active, " ");
+    expect(closed.prevWasSpace).toBe(false);
+    const re = mentionKey(mentionKey(closed, " "), "/");
+    expect(re.active).toBe(true);
+    expect(re.kind).toBe("skill");
+  });
+
+  it("非激活空格仍只记忆 prevWasSpace（不受影响）", () => {
+    const next = mentionKey({ ...mentionInitial, prevWasSpace: false }, " ");
+    expect(next.prevWasSpace).toBe(true);
+    expect(next.active).toBe(false);
   });
 });
