@@ -412,15 +412,17 @@ describe("R20 compact 展示", () => {
 });
 
 describe("R22 turn_start 气泡时机", () => {
-  it("turn_start 后 assistant 气泡出现（空 turn + ▍）", () => {
+  it("turn_start 后 assistant 气泡出现（R25：窗口期指示器替代 ▍）", () => {
     const dispatch = vi.fn();
     const state = reduce([
       { type: "message_start", message: { role: "user", content: "q" } },
       { type: "turn_start" },
     ]);
     render(<Chat state={state} dispatch={dispatch} onFork={vi.fn()} onAnswerAsk={vi.fn()} />);
+    // R25：窗口期指示器替代 ▍（空 turn 等待由 spinner 表达）
     const caret = document.querySelector("[data-slot=working-caret]");
-    expect(caret).toBeTruthy();
+    expect(caret).toBeNull();
+    expect(document.querySelector("[data-slot=tool-processing]")?.textContent).toContain("thinking......");
     expect(document.querySelector("[data-slot=streaming-steps]")).toBeTruthy();
   });
 });
@@ -556,11 +558,11 @@ describe("R24 工具结果窗口期渲染", () => {
     expect(ind).toBeTruthy();
     expect(ind?.textContent).toContain("thinking......");
     expect(ind?.querySelector("svg")).toBeTruthy(); // spinner
-    // 窗口期 thinking 块隐藏（避免重复显示）
-    expect(container.querySelector("[data-slot=step-thinking]")).toBeNull();
+    // R25：thinking 块窗口期正常显示（滚动区可见——不再被关进指示器）
+    expect(container.querySelector("[data-slot=step-thinking]")).toBeTruthy();
   });
 
-  it("thinking 到达后指示器文本替换；text_delta 后指示器消失", () => {
+  it("R25：指示器文本恒定占位（thinking_delta 不更新）；text_delta 后指示器消失", () => {
     const base = run([
       { type: "message_start", message: { role: "user", content: "q" } },
       { type: "message_start", message: { role: "assistant", content: [{ type: "toolCall", id: "t1", name: "bash", arguments: {} }] } },
@@ -573,7 +575,9 @@ describe("R24 工具结果窗口期渲染", () => {
       event: { type: "thinking_delta", contentIndex: 0, delta: "分析工具输出", partial: { thinking: "分析工具输出" } },
     });
     const { container, rerender } = render(<Chat state={withThinking} dispatch={vi.fn()} onFork={vi.fn()} onAnswerAsk={vi.fn()} />);
-    expect(container.querySelector("[data-slot=tool-processing]")?.textContent).toContain("分析工具输出");
+    // 恒定占位（thinking 全文在 step-thinking 滚动区）
+    expect(container.querySelector("[data-slot=tool-processing]")?.textContent).toContain("thinking......");
+    expect(container.querySelector("[data-slot=step-thinking]")?.textContent).toContain("分析工具输出");
     // text_delta → 指示器消失
     const withText = streamReducer(withThinking, {
       type: "message_update",

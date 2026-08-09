@@ -623,9 +623,19 @@ describe("R24 工具结果窗口期（processingToolResult）", () => {
     expect(toolState.processingToolResult).toBe("");
   });
 
-  it("thinking_delta（窗口期内）更新 processingToolResult 为 thinking 内容", () => {
+  it("R25：thinking_delta 不再更新 processingToolResult（指示器恒定占位，thinking 由 step-thinking 块显示）", () => {
     const s = streamReducer(toolState, { type: "message_update", event: { type: "thinking_delta", contentIndex: 0, delta: "正在分析", partial: { thinking: "正在分析" } } });
-    expect(s.processingToolResult).toBe("正在分析");
+    expect(s.processingToolResult).toBe("");
+  });
+
+  it("R25：turn_start（processing 为 null）开始窗口期（首轮指示器）", () => {
+    const s = streamReducer(initialState, { type: "turn_start" });
+    expect(s.processingToolResult).toBe("");
+  });
+
+  it("R25：工具轮后 turn_start 不覆盖已有窗口期", () => {
+    const s = streamReducer(toolState, { type: "turn_start" });
+    expect(s.processingToolResult).toBe("");
   });
 
   it("text_delta 清除窗口期", () => {

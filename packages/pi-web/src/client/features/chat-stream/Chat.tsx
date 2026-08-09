@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type * as React from "react";
 import { Bot, ChevronDown, ChevronRight, CircleCheck, CircleX, GitFork, Loader2, User, Wrench } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/shared/ui/avatar";
@@ -220,6 +220,27 @@ function WebAskCard({
  * thinking 块灰色小字全文、text 块 Markdown 流式 + ▍、tool 块 ToolNode 卡片。
  * R20：active=false 时（过渡期显示上一轮 / 终态工具轮）不渲染 ▍ 光标。
  */
+/** R25：thinking 块（4 行窗口 + 流式自动滚动到底；终态不打扰用户查看） */
+function ThinkingBlock({ text, active }: { text: string; active: boolean }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const prev = useRef(text);
+  useEffect(() => {
+    if (active && ref.current && prev.current !== text) {
+      ref.current.scrollTop = ref.current.scrollHeight;
+    }
+    prev.current = text;
+  }, [text, active]);
+  return (
+    <div
+      ref={ref}
+      data-slot="step-thinking"
+      className="text-muted-foreground scrollbar-thin max-h-16 overflow-y-auto text-xs"
+    >
+      {text}
+    </div>
+  );
+}
+
 function StreamingSteps({
   turn,
   tools,
@@ -230,7 +251,7 @@ function StreamingSteps({
   turn: Turn;
   tools: StreamState["tools"];
   active?: boolean;
-  /** R24：工具结果窗口期——thinking 块由顶部指示器显示（避免重复） */
+  /** R25：工具结果/首轮窗口期——空 turn ▍ 由顶部指示器表达（避免重复等待指示） */
   processing?: boolean;
   /** R25：web 提问工具回答回调 */
   onAnswer: (toolCallId: string, answer: unknown) => void;
@@ -244,21 +265,13 @@ function StreamingSteps({
       {steps.length === 0 && turn.text.trim() && (
         <span className="wrap-break-word whitespace-pre-wrap">{turn.text}</span>
       )}
-      {/* R22：turn_start 空 turn（LLM 工作中）→ ▍ 光标 */}
-      {steps.length === 0 && !turn.text.trim() && active && (
+      {/* R22：turn_start 空 turn（LLM 工作中）→ ▍ 光标；R25：窗口期指示器已表达等待 → 隐藏 */}
+      {steps.length === 0 && !turn.text.trim() && active && !processing && (
         <span data-slot="working-caret" className="animate-pulse">▍</span>
       )}
       {steps.map((st, i) => {
         if (st.type === "thinking") {
-          return st.text.trim() && !processing ? (
-            <div
-              key={i}
-              data-slot="step-thinking"
-              className="text-muted-foreground scrollbar-thin max-h-16 overflow-y-auto text-xs"
-            >
-              {st.text}
-            </div>
-          ) : null;
+          return st.text.trim() ? <ThinkingBlock key={i} text={st.text} active={active} /> : null;
         }
         if (st.type === "tool") {
           const row = rows.get(st.toolCallId);

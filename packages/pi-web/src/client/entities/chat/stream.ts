@@ -481,9 +481,6 @@ export function streamReducer(state: StreamState, action: StreamAction): StreamS
       }
       if (evt.type === "thinking_delta") {
         const partialThinking = evt.partial?.thinking;
-        // R24：窗口期内（工具结果处理中）→ thinking 内容同步到指示器
-        const nextProcessing =
-          state.processingToolResult !== null ? (partialThinking ?? (evt.delta ?? "")) : state.processingToolResult;
         let steps = turn.steps;
         if (idx !== undefined && steps[idx] && steps[idx].type === "thinking") {
           const text = partialThinking ?? (steps[idx] as { type: "thinking"; text: string }).text + (evt.delta ?? "");
@@ -491,15 +488,12 @@ export function streamReducer(state: StreamState, action: StreamAction): StreamS
         } else if (idx !== undefined) {
           steps = upsertStep(steps, idx, () => ({ type: "thinking", text: partialThinking ?? (evt.delta ?? "") }));
         }
-        return {
-          ...updateBubble(state, bubble.id, {
-            turns: [
-              ...bubble.turns.slice(0, -1),
-              { ...turn, thinking: partialThinking ?? turn.thinking + (evt.delta ?? ""), steps },
-            ],
-          }),
-          processingToolResult: nextProcessing,
-        };
+        return updateBubble(state, bubble.id, {
+          turns: [
+            ...bubble.turns.slice(0, -1),
+            { ...turn, thinking: partialThinking ?? turn.thinking + (evt.delta ?? ""), steps },
+          ],
+        });
       }
       return state;
     }
@@ -636,6 +630,9 @@ export function streamReducer(state: StreamState, action: StreamAction): StreamS
       const lastTurn = bubble.turns[bubble.turns.length - 1];
       const sameAgent = bubble.agentId === state.agentId;
       const active = lastTurn ? !lastTurn.final : bubble.userFinal === false;
+      // R25：首轮窗口期（用户消息后 → LLM 首轮输出前）——spinner + thinking......；
+      // 工具轮后的 turn_start 不覆盖（tool_end 已设置）
+      const firstTurnWindow = state.processingToolResult === null ? "" : state.processingToolResult;
       const emptyTurn: Turn = {
         text: "",
         thinking: "",
@@ -653,6 +650,7 @@ export function streamReducer(state: StreamState, action: StreamAction): StreamS
               ? state.bubbles.map((b) => (b.id === bubble.id ? withTurn : b))
               : [...state.bubbles, withTurn],
           currentBubbleId: bubble.id,
+          processingToolResult: firstTurnWindow,
         };
       }
       // 跨 agent（新消息占位）：创建独立气泡，等待 message_start:user 接管
@@ -668,6 +666,7 @@ export function streamReducer(state: StreamState, action: StreamAction): StreamS
         ...state,
         bubbles: [...state.bubbles, orphan],
         currentBubbleId: orphan.id,
+        processingToolResult: firstTurnWindow,
       };
     }
 
