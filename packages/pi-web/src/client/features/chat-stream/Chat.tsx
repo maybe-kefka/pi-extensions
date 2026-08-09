@@ -6,6 +6,7 @@ import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
 import { Bubble, BubbleContent } from "@/shared/ui/bubble";
 import { Markdown } from "@/shared/ui/markdown";
+import { UserContentChip } from "@/features/chat-stream/user-content";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/shared/ui/dialog";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/shared/ui/empty";
 import { Message, MessageAvatar, MessageContent, MessageGroup, MessageHeader } from "@/shared/ui/message";
@@ -295,10 +296,10 @@ function TurnBubbleView({
             <Bubble variant="default" align="end">
               <BubbleContent>
                 {bubble.userFinal && bubble.userText.trim() ? (
-                  <span className="wrap-break-word whitespace-pre-wrap">{bubble.userText}</span>
+                  <UserContentChip text={bubble.userText} />
                 ) : (
                   <>
-                    <span className="wrap-break-word whitespace-pre-wrap">{bubble.userText}</span>
+                    <UserContentChip text={bubble.userText} />
                     {!bubble.userText && <span className="animate-pulse">▍</span>}
                   </>
                 )}
