@@ -468,3 +468,31 @@ describe("R23 F1 流式纯文本渲染", () => {
     expect(stepText?.textContent).not.toContain("▍");
   });
 });
+
+describe("R23 F3 ToolCard 惰性序列化", () => {
+  it("大 args 折叠态不渲染完整 JSON（preview 截断），展开后完整", () => {
+    const bigArgs = { data: "x".repeat(5000) };
+    const s = run([
+      { type: "message_start", message: { role: "user", content: "q" } },
+      {
+        type: "message_start",
+        message: {
+          role: "assistant",
+          content: [{ type: "toolCall", id: "t1", name: "bash", arguments: bigArgs }],
+        },
+      },
+      { type: "tool_start", toolCallId: "t1", toolName: "bash", args: bigArgs },
+    ]);
+    const dispatch = vi.fn();
+    const { container } = render(<Chat state={s} dispatch={dispatch} onFork={vi.fn()} />);
+    // 折叠态：卡片按钮内不出现完整 JSON 体（preview 有截断，无展开区）
+    const btn = container.querySelector("[data-slot=tool-toggle]");
+    expect(btn?.textContent).not.toContain("xxxxx".repeat(1000));
+    expect(container.querySelectorAll("pre")).toHaveLength(0);
+    // 展开后：完整 JSON（含缩进）出现
+    fireEvent.click(btn!);
+    const pres = container.querySelectorAll("pre");
+    expect(pres.length).toBeGreaterThan(0);
+    expect([...pres].some((p) => p.textContent?.includes("\"data\""))).toBeTruthy();
+  });
+});

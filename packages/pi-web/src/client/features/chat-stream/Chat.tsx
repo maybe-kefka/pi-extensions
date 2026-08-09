@@ -71,8 +71,19 @@ function StatusIcon({ status }: { status: ToolStatus }) {
 function ToolCard({ row }: { row: StreamState["tools"][number] }) {
   const [open, setOpen] = useState(false);
   const status = toolStatus(row);
+  // R23 F3：args 序列化按 row.args 引用 memo（工具流式 output 每 delta 更新时 row 引用变，但 args 未变 → 不重算）
+  const argsJson = useMemo(
+    () => (row.args === null || row.args === undefined ? "" : JSON.stringify(row.args)),
+    [row.args],
+  );
+  const argsJsonPretty = useMemo(
+    () => (row.args === null || row.args === undefined ? "" : JSON.stringify(row.args, null, 2)),
+    [row.args],
+  );
+  // R23 F3：折叠态 preview 截断（不渲染完整 args JSON 到 DOM）；展开区完整 JSON 惰性（仅 open）
   const preview =
-    row.output.trim() || (row.args === null || row.args === undefined ? "" : JSON.stringify(row.args));
+    row.output.trim() ||
+    (argsJson ? (argsJson.length > 120 ? argsJson.slice(0, 120) + "…" : argsJson) : "");
   return (
     <div className="flex flex-col gap-1" data-slot="step-tool">
       <button
@@ -92,7 +103,7 @@ function ToolCard({ row }: { row: StreamState["tools"][number] }) {
             <div className="min-w-0">
               <div className="text-muted-foreground mb-0.5 text-[11px]">参数</div>
               <pre className="text-muted-foreground border-border rounded-md border p-2 text-xs whitespace-pre-wrap [overflow-wrap:anywhere]">
-                {JSON.stringify(row.args, null, 2)}
+                {argsJsonPretty}
               </pre>
             </div>
           )}
