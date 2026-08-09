@@ -186,6 +186,14 @@ export function InputBar(props: {
     return filterMentionItems(items, mention.query);
   }, [mention.active, mention.kind, mention.query, skills, commands, files]);
 
+  /** R21：上拉框空态文案——文件面板区分“目录无文件”/“过滤无匹配” */
+  const mentionEmptyLabel = useMemo(() => {
+    if (mention.kind === "file") {
+      return files.length === 0 ? "当前目录无文件可引用" : "无匹配文件";
+    }
+    return "无匹配项";
+  }, [mention.kind, files.length]);
+
   const selectMention = useCallback(
     (item: MentionItem) => {
       const el = editorRef.current;
@@ -343,6 +351,7 @@ export function InputBar(props: {
           items={mentionItems}
           activeIndex={activeIndex}
           loading={pickerLoading}
+          emptyLabel={mentionEmptyLabel}
           onSelect={selectMention}
           onHover={setActiveIndex}
         />

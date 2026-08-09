@@ -1,10 +1,13 @@
 // @vitest-environment jsdom
 // InputBar 组件测试（jsdom）：发送/abort 按钮融合 + 队列提示 + 上拉框触发
 import { describe, expect, it, vi, afterEach } from "vitest";
-import { render, screen, cleanup } from "@testing-library/react";
+import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 import { InputBar } from "./InputBar";
 
 afterEach(cleanup);
+
+// jsdom 无 scrollIntoView：MentionMenu 高亮滚动跟随需要
+HTMLElement.prototype.scrollIntoView = vi.fn();
 
 const base = {
   busy: false,
@@ -49,5 +52,43 @@ describe("InputBar 发送/abort 融合", () => {
   it("无队列：不显示提示条", () => {
     render(<InputBar {...base} />);
     expect(screen.queryByText(/已排队/)).toBeNull();
+  });
+});
+
+describe("R21 @ 触发与空态", () => {
+  function fireKeys(el: HTMLElement, keys: string[]) {
+    for (const k of keys) fireEvent.keyDown(el, { key: k, bubbles: true });
+  }
+
+  it("space → Shift → @ 触发文件面板；files 为空 → 提示当前目录无文件", () => {
+    render(<InputBar {...base} files={[]} />);
+    const el = screen.getByRole("textbox") as HTMLElement;
+    fireKeys(el, [" ", "Shift", "@"]);
+    expect(document.querySelector("[data-slot=mention-menu]")).toBeTruthy();
+    expect(screen.getByText("当前目录无文件可引用")).toBeTruthy();
+  });
+
+  it("files 非空但过滤无匹配 → 提示无匹配文件", () => {
+    render(
+      <InputBar
+        {...base}
+        files={[{ dir: ".", files: [{ name: "a.ts", path: "src/a.ts", isDir: false }] }]}
+      />,
+    );
+    const el = screen.getByRole("textbox") as HTMLElement;
+    fireKeys(el, [" ", "Shift", "@", "x"]);
+    expect(screen.getByText("无匹配文件")).toBeTruthy();
+  });
+
+  it("files 非空且匹配 → 显示文件候选", () => {
+    render(
+      <InputBar
+        {...base}
+        files={[{ dir: ".", files: [{ name: "a.ts", path: "src/a.ts", isDir: false }] }]}
+      />,
+    );
+    const el = screen.getByRole("textbox") as HTMLElement;
+    fireKeys(el, [" ", "Shift", "@"]);
+    expect(screen.getByText("src/a.ts")).toBeTruthy();
   });
 });

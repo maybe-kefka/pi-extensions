@@ -40,6 +40,8 @@ export function mentionKey(state: MentionState, key: string): MentionState {
   }
 
   // 非激活：检测触发序列
+  // R21：修饰/导航键（含 Shift——@ 需 Shift+2）不打断触发序列（不重置 prevWasSpace）
+  if (NAV_KEYS.has(key)) return state;
   if (key === " ") return { ...state, prevWasSpace: true };
   if (state.prevWasSpace && key === "/") return { active: true, kind: "skill", query: "", prevWasSpace: false };
   if (state.prevWasSpace && key === "@") return { active: true, kind: "file", query: "", prevWasSpace: false };

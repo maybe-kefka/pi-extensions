@@ -30,6 +30,27 @@ describe("触发检测", () => {
     expect(s.active).toBe(false);
   });
 
+  it("R21 回归：space 后按 Shift（@ 是 Shift+2）不打断触发序列", () => {
+    let s = mentionInitial;
+    s = mentionKey(s, " ");
+    expect(s.prevWasSpace).toBe(true);
+    s = mentionKey(s, "Shift");
+    expect(s.prevWasSpace).toBe(true); // 修饰键不得重置 space 记忆
+    s = mentionKey(s, "@");
+    expect(s.active).toBe(true);
+    expect(s.kind).toBe("file");
+  });
+
+  it("R21 回归：space 后按 Control/Alt/Meta 同样不打断", () => {
+    let s = mentionInitial;
+    s = mentionKey(s, " ");
+    for (const k of ["Control", "Alt", "Meta"]) s = mentionKey(s, k);
+    expect(s.prevWasSpace).toBe(true);
+    s = mentionKey(s, "/");
+    expect(s.active).toBe(true);
+    expect(s.kind).toBe("skill");
+  });
+
   it("space 后跟其他字符不触发（且清掉 space 记忆）", () => {
     let s = mentionInitial;
     s = mentionKey(s, " ");

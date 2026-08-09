@@ -29,6 +29,7 @@ export function MentionMenu({
   items,
   activeIndex,
   loading,
+  emptyLabel,
   onSelect,
   onHover,
 }: {
@@ -37,6 +38,8 @@ export function MentionMenu({
   items: MentionItem[];
   activeIndex: number;
   loading: boolean;
+  /** R21：空态文案（区分“当前目录无文件可引用”/“无匹配文件”/“无匹配项”） */
+  emptyLabel: string;
   onSelect: (item: MentionItem) => void;
   onHover: (index: number) => void;
 }) {
@@ -68,9 +71,7 @@ export function MentionMenu({
           <Loader2 className="size-3 animate-spin" /> 加载中…
         </div>
       ) : items.length === 0 ? (
-        <div className="text-muted-foreground px-2 py-2 text-xs">
-          {kind === "file" ? "无匹配文件" : "无匹配项"}
-        </div>
+        <div className="text-muted-foreground px-2 py-2 text-xs">{emptyLabel}</div>
       ) : (
         groups.map((g) => (
           <div key={g.group}>
