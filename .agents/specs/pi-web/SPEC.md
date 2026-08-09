@@ -1,3 +1,8 @@
+> **系统基线 SPEC（v1 归档）**：本文件为 pi-web 的历史系统级规格（协议/安全/状态口径等技术基线）。
+> 自 R19 起不再追加新内容——每次迭代的规格独立落盘到 `.agents/specs/R<迭代>/SPEC.md`（见 `.agents/templates/spec.md` 模板），
+> 需引用本基线时写"基线 SPEC §X"。迭代工作草稿在 `.scratch/<迭代>/`（gitignore），完成后归档。
+
+---
 # SPEC — @kefka/pi-web
 
 > 状态：已确认（2025-08-03 与用户逐题对齐；2026-08 R16 交互大改：气泡 ChatGPT 式渲染 / 上拉框 / 发送-abort 融合）
