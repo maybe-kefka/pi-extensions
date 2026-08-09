@@ -188,8 +188,9 @@ function ProgressDialog({
     bubble.turns.forEach((turn, ti) => {
       const isLastTurn = ti === bubble.turns.length - 1;
       turn.steps.forEach((st, si) => {
-        // 最终回复（最后 turn 的最后 text 块）不在弹窗
-        if (isLastTurn && si === turn.steps.length - 1 && st.type === "text") return;
+        // 仅终态（最后 turn 已 final）跳过最后 text 块（最终回复在气泡里）；
+        // 流式中实时展示完整流程（R20）
+        if (isLastTurn && turn.final && si === turn.steps.length - 1 && st.type === "text") return;
         out.push({ turnIndex: ti, step: st });
       });
     });
@@ -255,12 +256,10 @@ function ProgressDialog({
 function TurnBubbleView({
   bubble,
   tools,
-  agentStreaming,
   onFork,
 }: {
   bubble: TurnBubble;
   tools: StreamState["tools"];
-  agentStreaming: boolean;
   onFork: (userIndex: number) => void;
 }) {
   const [timelineOpen, setTimelineOpen] = useState(false);
@@ -268,8 +267,10 @@ function TurnBubbleView({
   const streaming = bubbleStreaming(bubble);
   const activeTurn = streaming ? bubble.turns[bubble.turns.length - 1] : null;
   const finalTurn = !streaming ? bubble.turns[bubble.turns.length - 1] : null;
-  // 工具栏：终态后出现（无活跃 turn 且 agent 空闲、有 user 消息）
-  const showToolbar = hasUser && !streaming && !agentStreaming;
+  // R20：工具栏 per-bubble 独立——已完成气泡 fork+progress 常驻；
+  // 活跃气泡只显示 progress（实时看当前大 Turn 流程），fork 仅完成态出现。
+  const showFullToolbar = hasUser && !streaming;
+  const showProgressOnly = hasUser && streaming;
 
   return (
     <>
@@ -308,7 +309,7 @@ function TurnBubbleView({
                 <Markdown text={finalTurn.text} />
               ) : null}
             </Bubble>
-            {showToolbar && (
+            {showFullToolbar && (
               <div className="flex items-center gap-1 pt-1">
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -324,6 +325,24 @@ function TurnBubbleView({
                   </TooltipTrigger>
                   <TooltipContent>从此轮分叉新会话</TooltipContent>
                 </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-muted-foreground h-6 cursor-pointer px-2 text-[11px]"
+                      onClick={() => setTimelineOpen(true)}
+                    >
+                      <Wrench data-icon="inline-start" className="size-3" />
+                      progress
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>查看完整 reasoning + Action 流程</TooltipContent>
+                </Tooltip>
+              </div>
+            )}
+            {showProgressOnly && (
+              <div className="flex items-center gap-1 pt-1">
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button
@@ -384,12 +403,7 @@ export function Chat({
                       scrollAnchor={b.userIndex >= 0}
                     >
                       <MessageGroup>
-                        <TurnBubbleView
-                          bubble={b}
-                          tools={state.tools}
-                          agentStreaming={state.streaming}
-                          onFork={onFork}
-                        />
+                        <TurnBubbleView bubble={b} tools={state.tools} onFork={onFork} />
                       </MessageGroup>
                     </MessageScrollerItem>
                   ))}

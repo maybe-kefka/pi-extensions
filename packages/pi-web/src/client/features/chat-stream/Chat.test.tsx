@@ -89,8 +89,9 @@ describe("Chat 气泡渲染（R18 langgraph 流式模型）", () => {
     expect(screen.queryByText(/Thinking/)).toBeNull();
     // content 流式文本（精确匹配，避免命中 thinking 的"正在思考"）
     expect(screen.getByText("正在")).toBeTruthy();
+    // R20：活跃气泡 progress 可见（实时看流程）、fork 不可见
     expect(screen.queryByRole("button", { name: /fork/ })).toBeNull();
-    expect(screen.queryByRole("button", { name: /progress/ })).toBeNull();
+    expect(screen.getByRole("button", { name: /progress/ })).toBeTruthy();
   });
 
   it("流式中：ToolNode 卡片接在内容后（工具名 + 输出预览），点击就地展开 args", () => {
@@ -243,10 +244,44 @@ describe("Chat 工具栏", () => {
     expect(within(scroll as HTMLElement).getAllByText("out").length).toBeGreaterThanOrEqual(1);
   });
 
-  it("agent 忙碌（下一轮进行中）→ 不显示工具栏", () => {
+  it("R20：已完成气泡在 agent 忙碌时按钮保留（per-bubble 独立）", () => {
     const s = run([...doneBubble(), { type: "agent_start" }]);
     const dispatch = vi.fn();
     render(<Chat state={s} dispatch={dispatch} onFork={vi.fn()} />);
+    // 气泡已完成（自身不在流式）→ 即使 agent 全局忙碌也显示按钮
+    expect(screen.getByRole("button", { name: /fork/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /progress/ })).toBeTruthy();
+  });
+
+  it("R20：两个气泡——已完成气泡按钮常驻，活跃气泡只显示 progress（fork 仅完成态）", () => {
+    // 气泡 A 已完成
+    const a = run(doneBubble());
+    // 气泡 B 流式中（活跃）
+    const s = run([
+      ...doneBubble(),
+      { type: "message_start", message: { role: "user", content: "第二个任务" } },
+      { type: "message_start", message: { role: "assistant", content: [{ type: "text", text: "" }] } },
+      { type: "message_update", event: { type: "text_delta", contentIndex: 0, delta: "B 流式" } },
+    ]);
+    expect(s.bubbles).toHaveLength(2);
+    const dispatch = vi.fn();
+    render(<Chat state={s} dispatch={dispatch} onFork={vi.fn()} />);
+    // 已完成气泡 A：fork + progress 均可见
+    expect(screen.getAllByRole("button", { name: /fork/ })).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: /progress/ })).toHaveLength(2);
+    // 活跃气泡 B：progress 可见（实时看流程），fork 不可见
+    expect(screen.getByText("B 流式")).toBeTruthy();
+  });
+
+  it("R20：活跃气泡（无已完成气泡）→ progress 可见、fork 不可见", () => {
+    const s = run([
+      { type: "message_start", message: { role: "user", content: "q" } },
+      { type: "message_start", message: { role: "assistant", content: [{ type: "text", text: "" }] } },
+      { type: "message_update", event: { type: "text_delta", contentIndex: 0, delta: "流式" } },
+    ]);
+    const dispatch = vi.fn();
+    render(<Chat state={s} dispatch={dispatch} onFork={vi.fn()} />);
+    expect(screen.getByRole("button", { name: /progress/ })).toBeTruthy();
     expect(screen.queryByRole("button", { name: /fork/ })).toBeNull();
   });
 
