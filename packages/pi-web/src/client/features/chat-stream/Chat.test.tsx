@@ -496,3 +496,26 @@ describe("R23 F3 ToolCard 惰性序列化", () => {
     expect([...pres].some((p) => p.textContent?.includes("\"data\""))).toBeTruthy();
   });
 });
+
+describe("R24 UI 细节", () => {
+  it("头像上对齐（message-avatar self-start）", () => {
+    const s = run([
+      { type: "message_start", message: { role: "user", content: "q" } },
+      { type: "message_start", message: { role: "assistant", content: [{ type: "text", text: "回复" }] } },
+    ]);
+    const { container } = render(<Chat state={s} dispatch={vi.fn()} onFork={vi.fn()} />);
+    const avatars = container.querySelectorAll("[data-slot=message-avatar]");
+    expect(avatars.length).toBeGreaterThan(0);
+    for (const a of avatars) {
+      expect(a.className).toContain("self-start");
+      expect(a.className).not.toContain("self-end");
+    }
+  });
+
+  it("聊天流底部空间 25vh（pb-[25vh]）", () => {
+    const s = run([{ type: "message_start", message: { role: "user", content: "q" } }]);
+    const { container } = render(<Chat state={s} dispatch={vi.fn()} onFork={vi.fn()} />);
+    const content = container.querySelector("[data-slot=message-scroller-content]");
+    expect(content?.className).toContain("pb-[25vh]");
+  });
+});
