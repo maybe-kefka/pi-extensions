@@ -1,14 +1,20 @@
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
+import react from "@vitejs/plugin-react";
 
-// 包级 vitest 配置：prepublishOnly 的 `npm test` 在包目录运行时使用
-// （根配置的 include 路径相对仓库根，包目录内跑会 "No test files found"）。
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
 export default defineConfig({
+  plugins: [react()],
   resolve: {
-    alias: { "@": new URL("./web/src", import.meta.url).pathname },
+    alias: {
+      "@": path.resolve(__dirname, "src/client"),
+    },
   },
   test: {
     environment: "node",
-    include: ["test/*.test.ts", "web/src/**/*.test.{ts,tsx}"],
-    environmentMatchGlobs: [["web/src/components/**/*.test.tsx", "jsdom"]],
+    include: ["src/**/*.test.{ts,tsx}"],
+    environmentMatchGlobs: [["src/client/**/*.test.tsx", "jsdom"]],
   },
 });

@@ -1,5 +1,8 @@
 /**
- * pi-web 薄接线层（无单测）。
+ * pi-web 薄接线层（扩展入口，无单测）。
+ *
+ * 装配：WebConsole（application 服务编排）+ registerRpcHandler（interface RPC 派发）
+ * + 生命周期订阅（session_start / session_shutdown / 事件广播）+ /web 命令注册。
  *
  * 生命周期要点（源码核实，SPEC §3.1）：
  * - new/resume/fork 切换会话时，扩展工厂会以全新 api 重跑（模块缓存只缓存导入，工厂体每次执行）→ 在此重绑 state.api/state.ctx；
@@ -10,36 +13,10 @@
  * - 扩展 API 无命令派发入口（sendUserMessage 硬编码跳过命令处理）→ 不展示不派发扩展命令（SPEC §1.4 / §9）。
  */
 
-import { randomBytes } from "node:crypto";
-import { existsSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-import {
-  SessionManager,
-  type BuildSystemPromptOptions,
-  type ExtensionAPI,
-  type ExtensionCommandContext,
-  type ExtensionContext,
-} from "@earendil-works/pi-coding-agent";
-import { parseArgs, USAGE, type WebArgs } from "./args.js";
-import { createCoalescer, type Coalescer } from "./coalescer.js";
-import {
-  computeContextBreakdown,
-  contextMessagesFromEntries,
-} from "./context-breakdown.js";
-import { mapEvent, requiresStateRefresh } from "./events.js";
-import { listFiles } from "./file-lister.js";
-import { isStaleError, resolveUserEntryId } from "./fork-util.js";
-import { makeEvent, serialize } from "./protocol.js";
-import { deleteSessionFile } from "./session-files.js";
-import { startWebServer, WebServerError, type WebServerHandle } from "./server.js";
-import { buildState } from "./state.js";
-import { messageTextOf, messageThinkingOf, messageToolCalls } from "./http-util.js";
-
-const WEB_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "web", "dist");
-const FLUSH_INTERVAL_MS = 60;
-const MAX_CLIENTS = 16;
-const UI_BRIDGE_WRAP = Symbol("pi-web.ui-bridge-wrapped");
+import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { parseArgs, USAGE } from "./server/interface/args.js";
+import { createWebConsole } from "./server/application/web-console.js";
+import { registerRpcHandler } from "./server/interface/rpc-handler.js";
 
 const BROADCAST_EVENT_TYPES = [
   "message_start",
@@ -63,50 +40,26 @@ const BROADCAST_EVENT_TYPES = [
   "session_compact",
 ] as const;
 
-interface ServerState {
-  server: WebServerHandle | null;
-  token: string;
-  /** 当前会话 api（factory 每次重跑时重绑；会话替换后自动新鲜） */
-  api: ExtensionAPI | null;
-  /** 当前会话 ctx（session_start 捕获；切换间隙为 null） */
-  ctx: ExtensionContext | null;
-  /** 特权 ctx（/web handler 捕获；withSession 续链；TUI 手动切换后 stale） */
-  privileged: ExtensionCommandContext | null;
-  coalescer: Coalescer<Record<string, unknown>> | null;
-  flushTimer: ReturnType<typeof setInterval> | null;
-}
-
-const state: ServerState = {
-  server: null,
-  token: "",
-  api: null,
-  ctx: null,
-  privileged: null,
-  coalescer: null,
-  flushTimer: null,
-};
-
-const THINKING_LEVELS = new Set(["off", "minimal", "low", "medium", "high", "xhigh", "max"]);
-const ALL_THINKING_LEVELS = [...THINKING_LEVELS];
-
 export default function (pi: ExtensionAPI): void {
+  const console = createWebConsole();
+  registerRpcHandler(console);
+
   // 每次 factory 运行（startup / 会话切换）都重绑当前 api
-  state.api = pi;
+  console.bindApi(pi);
 
   // ---- 会话生命周期 ----
   pi.on("session_start", (_event, ctx) => {
-    state.ctx = ctx;
-    wrapUiBridge(ctx);
-    if (state.server) {
-      broadcastEvent("session_switch_ready", {});
-      pushStateEvent();
+    console.bindCtx(ctx);
+    if (console.isRunning()) {
+      broadcast(console, "session_switch_ready", {});
+      console.pushState();
     }
   });
 
   pi.on("session_shutdown", (event) => {
-    state.ctx = null;
+    console.state.ctx = null;
     if (event.reason === "reload" || event.reason === "quit") {
-      void stopServer();
+      void console.stop();
     }
   });
 
@@ -114,540 +67,54 @@ export default function (pi: ExtensionAPI): void {
   const on = pi.on as unknown as (type: string, handler: (event: Record<string, unknown>) => void) => void;
   for (const type of BROADCAST_EVENT_TYPES) {
     on(type, (event) => {
-      broadcastEvent(type, event);
+      broadcast(console, type, event);
     });
   }
 
   // ---- /web 命令 ----
   pi.registerCommand("web", {
     description: "启动/显示本地 web 控制台（--port <n> | --open | --stop）",
-    handler: async (args, ctx) => {
+    handler: async (args: string | undefined, ctx: ExtensionCommandContext) => {
       // 特权 ctx 捕获链：命令执行时拿到完整 ExtensionCommandContext（含 switchSession/newSession/fork/navigateTree）
-      state.privileged = ctx;
+      console.setPrivileged(ctx);
       const parsed = parseArgs(args);
       if (!parsed.ok) {
         ctx.ui.notify(parsed.error, "error");
         return;
       }
-      const opts: WebArgs = parsed.value;
+      const opts = parsed.value;
 
       if (opts.stop) {
-        if (!state.server) {
+        if (!console.isRunning()) {
           ctx.ui.notify("web 服务未在运行", "info");
           return;
         }
-        await stopServer();
+        await console.stop();
         ctx.ui.notify("web 服务已停止", "info");
         return;
       }
 
-      if (state.server) {
-        if (opts.port !== 0 && opts.port !== state.server.port) {
-          ctx.ui.notify(`已在 ${state.server.url} 运行；请先 /web --stop 再换端口`, "error");
+      if (console.isRunning()) {
+        if (opts.port !== 0 && opts.port !== console.port) {
+          ctx.ui.notify(`已在 ${console.url} 运行；请先 /web --stop 再换端口`, "error");
           return;
         }
-        ctx.ui.notify(state.server.url, "info");
-        if (opts.open) await openBrowser(state.server.url);
+        ctx.ui.notify(console.url ?? "", "info");
+        if (opts.open) await console.openBrowser(console.url ?? "");
         return;
       }
 
-      const token = randomBytes(24).toString("hex");
-      if (!existsSync(join(WEB_DIR, "index.html"))) {
-        ctx.ui.notify("前端未构建：请先运行 npm run build:web（构建到 web/dist）", "error");
-        return;
+      try {
+        const { url } = await console.start(opts.port, opts.open);
+        ctx.ui.notify(url, "info");
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        ctx.ui.notify(message, "error");
       }
-      const server = await startWebServer({
-        port: opts.port,
-        token,
-        webDir: WEB_DIR,
-        handleRequest,
-        maxClients: MAX_CLIENTS,
-        onClientChange: (count) => {
-          state.ctx?.ui.setStatus("pi-web", count > 0 ? `web 客户端: ${count}` : undefined);
-        },
-      });
-      state.server = server;
-      state.token = token;
-      state.coalescer = createCoalescer(FLUSH_INTERVAL_MS);
-      state.flushTimer = setInterval(() => drainCoalescer(), FLUSH_INTERVAL_MS);
-
-      ctx.ui.notify(server.url, "info");
-      pushStateEvent();
-      if (opts.open) await openBrowser(server.url);
     },
   });
 }
 
-// ---------------------------------------------------------------------------
-// 特权 ctx（会话控制）
-// ---------------------------------------------------------------------------
-
-/** withSession 续链：会话替换后特权 ctx 自动指向新会话（SPEC §3.1） */
-function withPrivilegedRefresh<T extends object>(
-  options: T,
-): T & { withSession: (c: ExtensionCommandContext) => Promise<void> } {
-  return {
-    ...options,
-    withSession: async (fresh: ExtensionCommandContext) => {
-      state.privileged = fresh;
-      state.ctx = fresh;
-      wrapUiBridge(fresh);
-      await (options as { withSession?: (c: ExtensionCommandContext) => Promise<void> }).withSession?.(fresh);
-    },
-  };
-}
-
-function requirePrivileged(): ExtensionCommandContext {
-  if (!state.privileged) {
-    throw new WebServerError(1, "会话控制能力未就绪：请在 TUI 重跑 /web");
-  }
-  return state.privileged;
-}
-
-/** 调用特权操作；stale（TUI 手动切换后）→ 明确降级错误 */
-async function privilegedCall<T>(fn: (priv: ExtensionCommandContext) => Promise<T>): Promise<T> {
-  const priv = requirePrivileged();
-  try {
-    return await fn(priv);
-  } catch (err) {
-    if (isStaleError(err)) {
-      throw new WebServerError(1, "会话控制能力已失效：请在 TUI 重跑 /web 恢复");
-    }
-    throw err;
-  }
-}
-
-// ---------------------------------------------------------------------------
-// 广播
-// ---------------------------------------------------------------------------
-
-function broadcastEvent(type: string, payload: Record<string, unknown>): void {
-  if (!state.server || !state.coalescer) return;
-  const mapped = mapEvent(type, payload);
-  if (!mapped.fields) return;
-  state.coalescer.push(makeEvent(type, mapped.fields) as unknown as Record<string, unknown>);
-  if (mapped.refreshState) pushStateEvent();
-}
-
-function pushStateEvent(): void {
-  if (!state.server || !state.coalescer || !state.ctx) return;
-  const snapshot = buildStateSnapshot();
-  if (!snapshot) return;
-  state.coalescer.push(makeEvent("state", snapshot) as unknown as Record<string, unknown>);
-}
-
-function drainCoalescer(): void {
-  if (!state.coalescer || !state.server) return;
-  const items = state.coalescer.drainDue(Date.now());
-  for (const item of items) state.server.broadcast(serialize(item));
-}
-
-function buildStateSnapshot(): Record<string, unknown> | null {
-  const { ctx, api } = state;
-  if (!ctx || !api) return null;
-  const usage = ctx.getContextUsage();
-  const model = ctx.model
-    ? {
-        provider: ctx.model.provider,
-        id: ctx.model.id,
-        name: ctx.model.name,
-        reasoning: ctx.model.reasoning,
-        thinkingLevelMap: (ctx.model as { thinkingLevelMap?: Record<string, string | null> | null }).thinkingLevelMap ?? null,
-      }
-    : null;
-  return buildState({
-    sessionFile: ctx.sessionManager.getSessionFile() ?? null,
-    sessionId: ctx.sessionManager.getSessionId() ?? null,
-    sessionName: api.getSessionName(),
-    model,
-    thinkingLevel: api.getThinkingLevel(),
-    isStreaming: !ctx.isIdle(),
-    contextUsage: usage ? { tokens: usage.tokens, contextWindow: usage.contextWindow, percent: usage.percent } : null,
-    messageCount: ctx.sessionManager.getEntries().length,
-    allThinkingLevels: ALL_THINKING_LEVELS,
-  }) as unknown as Record<string, unknown>;
-}
-
-// ---------------------------------------------------------------------------
-// ctx.ui 桥接（notify / setStatus / setWidget 透传；不阻塞原调用）
-// ---------------------------------------------------------------------------
-
-function wrapUiBridge(ctx: ExtensionContext): void {
-  const ui = ctx.ui as unknown as Record<string, unknown>;
-  if (!ui || typeof ui !== "object" || (ui as Record<symbol, unknown>)[UI_BRIDGE_WRAP]) return;
-
-  const wrap = (method: string) => {
-    const orig = ui[method];
-    if (typeof orig !== "function") return;
-    ui[method] = (...args: unknown[]) => {
-      try {
-        broadcastEvent(method, toBridgePayload(method, args));
-      } catch {
-        /* 桥接失败不影响原调用 */
-      }
-      return (orig as (...a: unknown[]) => unknown).apply(ui, args);
-    };
-  };
-
-  wrap("notify");
-  wrap("setStatus");
-  wrap("setWidget");
-  Object.defineProperty(ui, UI_BRIDGE_WRAP, { value: true, enumerable: false, configurable: false });
-}
-
-function toBridgePayload(method: string, args: unknown[]): Record<string, unknown> {
-  if (method === "notify") {
-    return { message: String(args[0] ?? ""), notifyType: String(args[1] ?? "info") };
-  }
-  if (method === "setStatus") {
-    return { statusKey: String(args[0] ?? ""), statusText: args[1] === undefined ? null : String(args[1]) };
-  }
-  if (method === "setWidget") {
-    return {
-      widgetKey: String(args[0] ?? ""),
-      widgetLines: Array.isArray(args[1]) ? (args[1] as string[]) : null,
-      widgetPlacement: String((args[2] as { placement?: string } | undefined)?.placement ?? "aboveEditor"),
-    };
-  }
-  return {};
-}
-
-// ---------------------------------------------------------------------------
-// WS 请求处理
-// ---------------------------------------------------------------------------
-
-async function handleRequest(id: string | number, method: string, params: Record<string, unknown>): Promise<unknown> {
-  switch (method) {
-    case "pi:sendMessage": {
-      const text = params.text;
-      if (typeof text !== "string" || text.trim() === "") {
-        throw new WebServerError(-32602, "text 必须是非空字符串");
-      }
-      const deliverAs = params.deliverAs;
-      if (deliverAs !== undefined && deliverAs !== "steer" && deliverAs !== "followUp") {
-        throw new WebServerError(-32602, "deliverAs 只能是 steer 或 followUp");
-      }
-      if (!state.api) throw new WebServerError(3, "扩展未就绪");
-      try {
-        state.api.sendUserMessage(text.trim(), deliverAs ? { deliverAs } : undefined);
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        if (message.includes("Agent is already processing")) {
-          throw new WebServerError(2, `agent 正在处理，请指定 deliverAs（"steer" 打断 / "followUp" 排队）`);
-        }
-        throw new WebServerError(1, message);
-      }
-      return null;
-    }
-
-    case "pi:abort": {
-      requireCtx().abort();
-      return null;
-    }
-
-    case "pi:compact": {
-      requireCtx().compact();
-      return null;
-    }
-
-    case "pi:listSessions": {
-      const ctx = requireCtx();
-      const sessions = await SessionManager.list(ctx.cwd);
-      return sessions.map((s) => ({
-        path: s.path,
-        name: s.name ?? null,
-        cwd: s.cwd,
-        messageCount: s.messageCount,
-        firstMessage: s.firstMessage,
-        modified: s.modified.toISOString(),
-      }));
-    }
-
-    case "pi:switchSession": {
-      const path = params.path;
-      if (typeof path !== "string" || path.trim() === "") {
-        throw new WebServerError(-32602, "需要 path");
-      }
-      const result = await privilegedCall((priv) =>
-        priv.switchSession(path, withPrivilegedRefresh({})),
-      );
-      return { cancelled: result.cancelled };
-    }
-
-    case "pi:newSession": {
-      const result = await privilegedCall((priv) =>
-        priv.newSession(withPrivilegedRefresh({})),
-      );
-      return { cancelled: result.cancelled };
-    }
-
-    case "pi:fork": {
-      const userIndex = params.userIndex;
-      if (typeof userIndex !== "number" || !Number.isInteger(userIndex) || userIndex < 0) {
-        throw new WebServerError(-32602, "userIndex 必须是非负整数");
-      }
-      const ctx = requireCtx();
-      const entryId = resolveUserEntryId(
-        ctx.sessionManager.getEntries() as { type?: string; message?: { role?: string } | null; id?: string }[],
-        userIndex,
-      );
-      if (!entryId) {
-        throw new WebServerError(1, `找不到第 ${userIndex} 条用户消息（序号越界？）`);
-      }
-      const result = await privilegedCall((priv) =>
-        priv.fork(entryId, withPrivilegedRefresh({ position: "before" as const })),
-      );
-      return { cancelled: result.cancelled };
-    }
-
-    case "pi:clone": {
-      const ctx = requireCtx();
-      const leafId = ctx.sessionManager.getLeafId();
-      if (!leafId) {
-        throw new WebServerError(1, "当前会话没有可克隆的条目");
-      }
-      const result = await privilegedCall((priv) =>
-        priv.fork(leafId, withPrivilegedRefresh({ position: "at" as const })),
-      );
-      return { cancelled: result.cancelled };
-    }
-
-    case "pi:navigateTree": {
-      const targetId = params.targetId;
-      if (typeof targetId !== "string" || targetId.trim() === "") {
-        throw new WebServerError(-32602, "需要 targetId");
-      }
-      const result = await privilegedCall((priv) => priv.navigateTree(targetId));
-      return { cancelled: result.cancelled };
-    }
-
-    case "pi:getTree": {
-      const ctx = requireCtx();
-      return { tree: ctx.sessionManager.getTree(), leafId: ctx.sessionManager.getLeafId() ?? null };
-    }
-
-    case "pi:deleteSession": {
-      const path = params.path;
-      if (typeof path !== "string" || path.trim() === "") {
-        throw new WebServerError(-32602, "需要 path");
-      }
-      const ctx = requireCtx();
-      const result = await deleteSessionFile(
-        ctx.sessionManager.getSessionDir(),
-        path,
-        ctx.sessionManager.getSessionFile() ?? null,
-      );
-      if (!result.ok) {
-        throw new WebServerError(1, result.error ?? "删除失败");
-      }
-      return null;
-    }
-
-    case "pi:setSessionName": {
-      const name = params.name;
-      if (typeof name !== "string") {
-        throw new WebServerError(-32602, "需要 name");
-      }
-      if (!state.api) throw new WebServerError(3, "扩展未就绪");
-      state.api.setSessionName(name.trim());
-      return null;
-    }
-
-    case "pi:listSkills": {
-      if (!state.api) throw new WebServerError(3, "扩展未就绪");
-      return state.api
-        .getCommands()
-        .filter((c) => c.source === "skill")
-        .map((c) => ({
-          // pi 对 skill 命令返回的 name 带 "skill:" 前缀（如 skill:code-review），
-          // 前端展示/插入需要裸名字（/code-review → /skill:code-review）
-          name: c.name.replace(/^skill:/, ""),
-          description: c.description ?? null,
-        }));
-    }
-
-    case "pi:listCommands": {
-      // "/" 上拉框非 skill 命令列表（选中插纯文本，不执行，见 SPEC §1.4）
-      if (!state.api) throw new WebServerError(3, "扩展未就绪");
-      return state.api
-        .getCommands()
-        .filter((c) => c.source !== "skill")
-        .map((c) => ({ name: c.name, description: c.description ?? null }));
-    }
-
-    case "pi:getContextBreakdown": {
-      // 数据源均在普通会话 ctx 上（非特权），TUI 手动切会话后依然可用；
-      // getSystemPromptOptions 类型仅 ExtensionCommandContext 声明，但运行时普通 ctx 同样提供
-      // （agent-session.js:1924 源码核实：getSystemPromptOptions: () => this._baseSystemPromptOptions）
-      const ctx = requireCtx() as ExtensionContext & {
-        getSystemPromptOptions?: () => BuildSystemPromptOptions;
-      };
-      const options = ctx.getSystemPromptOptions?.();
-      const breakdown = computeContextBreakdown({
-        customPrompt: options?.customPrompt ?? null,
-        guidelines: options?.promptGuidelines ?? [],
-        appendSystemPrompt: options?.appendSystemPrompt ?? null,
-        contextFiles: options?.contextFiles ?? [],
-        skills: options?.skills ?? [],
-        toolSnippets: options?.toolSnippets ?? {},
-        messages: contextMessagesFromEntries(ctx.sessionManager.buildContextEntries()),
-      });
-      const usage = ctx.getContextUsage();
-      return {
-        categories: breakdown.categories,
-        conversation: breakdown.conversation,
-        total: breakdown.total,
-        usage: usage
-          ? {
-              tokens: usage.tokens,
-              contextWindow: usage.contextWindow,
-              percent: usage.percent == null ? null : usage.percent / 100,
-            }
-          : null,
-      };
-    }
-
-    case "pi:listFiles": {
-      const ctx = requireCtx();
-      const maxDepth = typeof params.maxDepth === "number" ? params.maxDepth : 3;
-      const limit = typeof params.limit === "number" ? params.limit : 200;
-      return listFiles(ctx.cwd, { maxDepth, limit });
-    }
-
-    case "pi:listModels": {
-      const ctx = requireCtx();
-      return ctx.modelRegistry
-        .getAvailable()
-        .map((m) => ({ provider: m.provider, id: m.id, name: m.name ?? m.id }));
-    }
-
-    case "pi:setModel": {
-      const provider = params.provider;
-      const modelId = params.modelId;
-      if (typeof provider !== "string" || typeof modelId !== "string") {
-        throw new WebServerError(-32602, "需要 provider 与 modelId");
-      }
-      const ctx = requireCtx();
-      const model = ctx.modelRegistry.find(provider, modelId);
-      if (!model) throw new WebServerError(1, `模型不存在: ${provider}/${modelId}`);
-      if (!state.api) throw new WebServerError(3, "扩展未就绪");
-      const ok = await state.api.setModel(model);
-      if (!ok) throw new WebServerError(1, "该模型无可用 API key");
-      return { provider, modelId };
-    }
-
-    case "pi:getThinkingLevel": {
-      if (!state.api) throw new WebServerError(3, "扩展未就绪");
-      return { level: state.api.getThinkingLevel() };
-    }
-
-    case "pi:setThinkingLevel": {
-      const level = params.level;
-      if (typeof level !== "string" || !THINKING_LEVELS.has(level)) {
-        throw new WebServerError(-32602, `level 必须是 ${[...THINKING_LEVELS].join("/")} 之一`);
-      }
-      if (!state.api) throw new WebServerError(3, "扩展未就绪");
-      state.api.setThinkingLevel(level as never);
-      return null;
-    }
-
-    case "pi:listCommands": {
-      if (!state.api) throw new WebServerError(3, "扩展未就绪");
-      return state.api
-        .getCommands()
-        .map((c) => ({ name: c.name, description: c.description ?? null, source: c.source }));
-    }
-
-    case "pi:getMessages": {
-      const ctx = requireCtx();
-      const entries = ctx.sessionManager.getEntries() as {
-        type?: string;
-        message?: { role?: string; content?: unknown; toolCallId?: unknown; isError?: unknown };
-      }[];
-      // 第一遍：toolResult 结果按 toolCallId 索引
-      const resultById = new Map<string, { result: string; isError: boolean }>();
-      for (const e of entries) {
-        const m = e?.message;
-        if (e?.type !== "message" || !m || m.role !== "toolResult" || m.toolCallId == null) continue;
-        resultById.set(String(m.toolCallId), { result: messageTextOf(m.content), isError: m.isError === true });
-      }
-      // 第二遍：组装消息（assistant 带 toolCalls；user 带 userIndex；空消息筛掉）
-      const messages: {
-        role: string;
-        text: string;
-        thinking: string;
-        toolCalls: { id: string; name: string; arguments: unknown; result: string; isError: boolean }[];
-        userIndex?: number;
-      }[] = [];
-      let userIndex = -1;
-      for (const e of entries) {
-        const m = e?.message;
-        if (e?.type !== "message" || !m) continue;
-        const role = m.role ?? "unknown";
-        if (role === "toolResult") continue;
-        if (role === "assistant") {
-          const toolCalls = messageToolCalls(m.content).map((tc) => {
-            const r = resultById.get(tc.id);
-            return { ...tc, result: r?.result ?? "", isError: r?.isError ?? false };
-          });
-          const text = messageTextOf(m.content);
-          const thinking = messageThinkingOf(m.content);
-          if (!text && !thinking && toolCalls.length === 0) continue; // 空消息直接筛掉
-          messages.push({ role, text, thinking, toolCalls });
-        } else {
-          userIndex += 1;
-          messages.push({ role, text: messageTextOf(m.content), thinking: "", toolCalls: [], userIndex });
-        }
-      }
-      return { messages };
-    }
-
-    case "pi:getState": {
-      const snapshot = buildStateSnapshot();
-      if (!snapshot) throw new WebServerError(3, "会话未就绪（切换中？），请重试");
-      return snapshot;
-    }
-
-    default:
-      throw new WebServerError(-32601, `未知方法: ${method}`);
-  }
-}
-
-function requireCtx(): ExtensionContext {
-  if (!state.ctx) throw new WebServerError(3, "会话未就绪（切换中？），请重试");
-  return state.ctx;
-}
-
-// ---------------------------------------------------------------------------
-// 服务启停 / 浏览器
-// ---------------------------------------------------------------------------
-
-async function stopServer(): Promise<void> {
-  if (state.flushTimer) {
-    clearInterval(state.flushTimer);
-    state.flushTimer = null;
-  }
-  state.coalescer = null;
-  const server = state.server;
-  state.server = null;
-  state.token = "";
-  if (server) await server.stop();
-}
-
-async function openBrowser(url: string): Promise<void> {
-  const api = state.api;
-  const run = (cmd: string, args: string[]) => api?.exec(cmd, args).catch(() => undefined);
-  if (process.env.TERMUX_VERSION) {
-    await run("termux-open-url", [url]);
-    return;
-  }
-  if (process.platform === "darwin") {
-    await run("open", [url]);
-    return;
-  }
-  if (process.platform === "linux") {
-    await run("xdg-open", [url]);
-    return;
-  }
-  // 未知平台：仅打印 URL（命令输出处已 notify）
+function broadcast(console: ReturnType<typeof createWebConsole>, type: string, payload: Record<string, unknown>): void {
+  console.broadcast(type, payload);
 }
