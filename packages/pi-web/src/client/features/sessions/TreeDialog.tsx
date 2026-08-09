@@ -3,7 +3,6 @@ import { GitBranch, Loader2 } from "lucide-react";
 import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/shared/ui/dialog";
-import { ScrollArea } from "@/shared/ui/scroll-area";
 import type { TreeNode } from "@/entities/chat/types";
 
 /** 从 entry 提取展示文本（消息取文本内容截断；其他类型取类型名） */
@@ -158,7 +157,7 @@ export function TreeDialog({
             {navigable ? "点击节点上的「导航」切换到该分支位置" : "会话树只读查看"}
           </DialogDescription>
         </DialogHeader>
-        <ScrollArea className="h-[50vh]">
+        <div className="scrollbar-thin scrollbar-gutter-stable h-[50vh] overflow-y-auto">
           {loading ? (
             <div className="text-muted-foreground flex items-center gap-1.5 p-2 text-xs">
               <Loader2 className="size-3 animate-spin" /> 加载中…
@@ -179,7 +178,7 @@ export function TreeDialog({
           ) : (
             <div className="text-muted-foreground p-2 text-xs">（无树数据）</div>
           )}
-        </ScrollArea>
+        </div>
       </DialogContent>
     </Dialog>
   );

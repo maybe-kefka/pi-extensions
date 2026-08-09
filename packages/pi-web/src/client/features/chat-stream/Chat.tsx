@@ -251,7 +251,7 @@ function ProgressDialog({
           </DialogDescription>
         </DialogHeader>
         {/* 总体单 scroll：外层一个 overflow-y-auto，内部不嵌套任何二级 scroll */}
-        <div className="flex max-h-[60vh] flex-col gap-3 overflow-y-auto" data-slot="progress-scroll">
+        <div className="scrollbar-thin scrollbar-gutter-stable flex max-h-[60vh] flex-col gap-3 overflow-y-auto" data-slot="progress-scroll">
           {entries.length === 0 && <div className="text-muted-foreground p-2 text-xs">（本气泡无思考与工具记录）</div>}
           {entries.map((e, i) => {
             const st = e.step;

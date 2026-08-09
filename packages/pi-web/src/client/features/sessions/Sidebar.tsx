@@ -166,7 +166,7 @@ export function SidebarContent(props: SidebarContentProps) {
 export function Sidebar({ collapsed, ...props }: SidebarContentProps & { collapsed: boolean }) {
   if (collapsed) return null;
   return (
-    <aside className="hidden w-72 shrink-0 flex-col overflow-y-auto border-l p-3 lg:flex">
+    <aside className="scrollbar-thin scrollbar-gutter-stable hidden w-72 shrink-0 flex-col overflow-y-auto border-l p-3 lg:flex">
       <div className="flex flex-col gap-3">
         <SidebarContent {...props} />
       </div>
@@ -187,7 +187,7 @@ export function SidebarSheet({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="w-[85%] max-w-sm p-0 sm:w-80">
         <SheetTitle className="sr-only">面板</SheetTitle>
-        <div className="h-full overflow-y-auto p-3 pb-[env(safe-area-inset-bottom)]">
+        <div className="scrollbar-thin scrollbar-gutter-stable h-full overflow-y-auto p-3 pb-[env(safe-area-inset-bottom)]">
           <SidebarContent {...props} />
         </div>
       </SheetContent>

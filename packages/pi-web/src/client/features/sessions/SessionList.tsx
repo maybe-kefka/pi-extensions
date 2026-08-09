@@ -4,7 +4,6 @@ import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/shared/ui/dialog";
 import { Input } from "@/shared/ui/input";
-import { ScrollArea } from "@/shared/ui/scroll-area";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 import type { SessionInfo } from "@/entities/chat/types";
 
@@ -56,7 +55,7 @@ export function SessionList({
         </div>
       )}
 
-      <ScrollArea className="mt-2 h-40">
+      <div className="scrollbar-thin scrollbar-gutter-stable mt-2 h-40 overflow-y-auto">
         <ul className="flex flex-col gap-1">
           {sessions.map((s) => {
             const active = currentSessionFile === s.path;
@@ -115,7 +114,7 @@ export function SessionList({
           })}
           {sessions.length === 0 && <li className="text-muted-foreground text-xs">暂无会话</li>}
         </ul>
-      </ScrollArea>
+      </div>
 
       {/* 重命名弹窗 */}
       <Dialog open={renaming !== null} onOpenChange={(o) => !o && setRenaming(null)}>

@@ -62,7 +62,7 @@ export function MentionMenu({
   return (
     <div
       data-slot="mention-menu"
-      className="border-border bg-popover text-popover-foreground absolute right-0 bottom-full z-50 mb-1.5 w-full overflow-y-auto rounded-xl border p-1 shadow-md"
+      className="border-border bg-popover text-popover-foreground scrollbar-thin absolute right-0 bottom-full z-50 mb-1.5 w-full overflow-y-auto rounded-xl border p-1 shadow-md"
       style={{ maxHeight: MENU_MAX_HEIGHT }}
       role="listbox"
     >
