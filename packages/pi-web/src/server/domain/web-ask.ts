@@ -61,8 +61,24 @@ export function createAskRegistry(timeoutMs: number = ASK_TIMEOUT_MS): AskRegist
 /** 进程级单例：index.ts（registerTool execute）与 rpc-handler.ts（web-ask:answer）共用 */
 export const askRegistry: AskRegistry = createAskRegistry();
 
+/**
+ * 工具结果 → LLM/对话流文本：友好格式（用户选择后的选项直读，而非 raw JSON）。
+ * - answered：single → 「你选择了：X」；multi → 「你选择了：A、B」；text → 「你的回答：...」
+ * - timeout：超时兜底（LLM 自行决定）；cancelled：工具被中止
+ */
 export function serializeAskResult(result: AskResult): string {
-  return JSON.stringify(result, null, 2);
+  switch (result.status) {
+    case "answered": {
+      const a = result.answer;
+      const label = Array.isArray(a) ? a.map((x) => String(x)).join("、") : String(a);
+      return `✅ 用户已回答。
+你的选择：${label}`;
+    }
+    case "timeout":
+      return "⏱️ 用户未在 10 分钟内回答（web 提问超时）。请自行决定，不要再等用户。";
+    case "cancelled":
+      return "❌ web 提问被中止（工具已取消）。请停止等待并继续当前任务。";
+  }
 }
 
 /**

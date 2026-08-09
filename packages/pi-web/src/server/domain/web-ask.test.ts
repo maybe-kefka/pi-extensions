@@ -45,11 +45,14 @@ describe("R25 web-ask registry", () => {
     expect(r.answer("t1", 42)).toBe(true);
     const out = await p;
     expect(out.details).toEqual({ status: "answered", answer: 42 });
-    expect(JSON.parse(out.content[0].text)).toEqual({ status: "answered", answer: 42 });
+    // 友好文本：用户选择直读（非 raw JSON）
+    expect(out.content[0].text).toContain("你的选择：42");
   });
 
-  it("serializeAskResult 格式", () => {
-    expect(serializeAskResult({ status: "timeout" })).toBe(JSON.stringify({ status: "timeout" }, null, 2));
-    expect(serializeAskResult({ status: "cancelled" })).toContain('"cancelled"');
+  it("serializeAskResult 友好文本", () => {
+    expect(serializeAskResult({ status: "answered", answer: "先跑测试" })).toBe("✅ 用户已回答。\n你的选择：先跑测试");
+    expect(serializeAskResult({ status: "answered", answer: ["a", "b"] })).toBe("✅ 用户已回答。\n你的选择：a、b");
+    expect(serializeAskResult({ status: "timeout" })).toContain("超时");
+    expect(serializeAskResult({ status: "cancelled" })).toContain("中止");
   });
 });
