@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import type * as React from "react";
 import { Bot, ChevronDown, ChevronRight, CircleCheck, CircleX, GitFork, Loader2, User, Wrench } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/shared/ui/avatar";
@@ -7,6 +7,7 @@ import { Button } from "@/shared/ui/button";
 import { Bubble, BubbleContent } from "@/shared/ui/bubble";
 import { Markdown } from "@/shared/ui/markdown";
 import { UserContentChip } from "@/features/chat-stream/user-content";
+import { toolsForBubble } from "@/features/chat-stream/tools-for-bubble";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/shared/ui/dialog";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/shared/ui/empty";
 import { Message, MessageAvatar, MessageContent, MessageGroup, MessageHeader } from "@/shared/ui/message";
@@ -24,6 +25,7 @@ import {
   bubbleToolCallIds,
   type StreamAction,
   type StreamState,
+  type ToolRow,
   type Turn,
   type TurnBubble,
   type TurnStep,
@@ -268,14 +270,15 @@ function ProgressDialog({
   );
 }
 
-/** 轮次聚合气泡（SPEC §7）：user 消息开气泡，后续 assistant turns 聚合 */
+/** 轮次聚合气泡（SPEC §7）：user 消息开气泡，后续 assistant turns 聚合
+ * R23 F2：rows 为 per-bubble 工具行（引用稳定缓存），配合 Compiler props 比较隔离历史气泡 */
 function TurnBubbleView({
   bubble,
-  tools,
+  rows,
   onFork,
 }: {
   bubble: TurnBubble;
-  tools: StreamState["tools"];
+  rows: ToolRow[];
   onFork: (userIndex: number) => void;
 }) {
   const [timelineOpen, setTimelineOpen] = useState(false);
@@ -333,11 +336,11 @@ function TurnBubbleView({
               {/* R18：流式中显示当前活跃轮；终态只留最终回复文本。
                   R20：活跃轮无内容时延续显示上一轮（无空白）；终态工具轮（无最终文本）显示步骤内容 */}
               {activeTurn ? (
-                visibleTurn ? <StreamingSteps turn={visibleTurn} tools={tools} active={visibleTurn === activeTurn} /> : null
+                visibleTurn ? <StreamingSteps turn={visibleTurn} tools={rows} active={visibleTurn === activeTurn} /> : null
               ) : finalTurn && finalTurn.text.trim() ? (
                 <Markdown text={finalTurn.text} />
               ) : finalTurn && finalTurn.steps.length > 0 ? (
-                <StreamingSteps turn={finalTurn} tools={tools} active={false} />
+                <StreamingSteps turn={finalTurn} tools={rows} active={false} />
               ) : null}
             </Bubble>
             {showFullToolbar && (
@@ -394,7 +397,7 @@ function TurnBubbleView({
         </Message>
       )}
 
-      <ProgressDialog bubble={bubble} tools={tools} open={timelineOpen} onOpenChange={setTimelineOpen} />
+      <ProgressDialog bubble={bubble} tools={rows} open={timelineOpen} onOpenChange={setTimelineOpen} />
     </>
   );
 }
@@ -420,6 +423,8 @@ export function Chat({
 }) {
   const hasContent = state.bubbles.length > 0 || state.tools.length > 0;
   const compacting = state.compacting;
+  // R23 F2：per-bubble 工具行引用稳定缓存（toolsForBubble）——工具流式时历史气泡不重渲染
+  const rowsCacheRef = useRef(new Map<string, ToolRow[]>());
 
   return (
     <main className="relative min-w-0 flex-1">
@@ -445,7 +450,7 @@ export function Chat({
                       scrollAnchor={b.userIndex >= 0}
                     >
                       <MessageGroup>
-                        <TurnBubbleView bubble={b} tools={state.tools} onFork={onFork} />
+                        <TurnBubbleView bubble={b} rows={toolsForBubble(b, state.tools, rowsCacheRef.current)} onFork={onFork} />
                       </MessageGroup>
                     </MessageScrollerItem>
                   ))}
