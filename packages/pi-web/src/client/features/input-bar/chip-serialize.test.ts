@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
-import { isContentEmpty, serializeContent } from "./chip-serialize";
+import { isContentEmpty, serializeContent, parseChipMarks, SKILL_MARK_PREFIX, FILE_MARK_PREFIX } from "./chip-serialize";
 
 function el(): HTMLElement {
   return document.createElement("div");
@@ -77,5 +77,46 @@ describe("isContentEmpty", () => {
     const b = el();
     chip(b, "/skill:pdf", "✨ pdf");
     expect(isContentEmpty(b)).toBe(false);
+  });
+});
+
+describe("R22 chip 标记", () => {
+  it("标记常量：skill/file 前缀", () => {
+    expect(SKILL_MARK_PREFIX).toBe("\u0001skill:");
+    expect(FILE_MARK_PREFIX).toBe("\u0001file:");
+  });
+
+  it("parseChipMarks：纯文本 → 单文本段", () => {
+    expect(parseChipMarks("你好 pi")).toEqual([{ type: "text", text: "你好 pi" }]);
+  });
+
+  it("parseChipMarks：skill 标记 → chip 段", () => {
+    expect(parseChipMarks("\u0001skill:code-review\u0001")).toEqual([
+      { type: "skill", name: "code-review" },
+    ]);
+  });
+
+  it("parseChipMarks：file 标记 → chip 段", () => {
+    expect(parseChipMarks("请读 \u0001file:src/a.ts\u0001 文件")).toEqual([
+      { type: "text", text: "请读 " },
+      { type: "file", path: "src/a.ts" },
+      { type: "text", text: " 文件" },
+    ]);
+  });
+
+  it("parseChipMarks：混合多 chip 顺序保持", () => {
+    expect(parseChipMarks("\u0001skill:pdf\u0001 \u0001file:src/main.ts\u0001")).toEqual([
+      { type: "skill", name: "pdf" },
+      { type: "text", text: " " },
+      { type: "file", path: "src/main.ts" },
+    ]);
+  });
+
+  it("serializeContent：chip data-insert 标记值输出", () => {
+    const root = el();
+    chip(root, "\u0001skill:pdf\u0001", "✨ pdf");
+    root.appendChild(document.createTextNode(" "));
+    chip(root, "\u0001file:src/a.ts\u0001", "📄 src/a.ts");
+    expect(serializeContent(root)).toBe("\u0001skill:pdf\u0001 \u0001file:src/a.ts\u0001");
   });
 });

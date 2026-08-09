@@ -3,7 +3,7 @@ import type * as React from "react";
 import { ArrowUp, Square } from "lucide-react";
 import { Button } from "@/shared/ui/button";
 import { MentionMenu, type MentionItem } from "@/features/input-bar/MentionMenu";
-import { isContentEmpty, serializeContent } from "@/features/input-bar/chip-serialize";
+import { FILE_MARK_PREFIX, SKILL_MARK_PREFIX, isContentEmpty, serializeContent } from "@/features/input-bar/chip-serialize";
 import { filterMentionItems, mentionInitial, mentionKeyAt, deriveQueryFromHead } from "@/features/input-bar/mention";
 import type { CommandInfo, FileGroup, SkillInfo } from "@/entities/chat/types";
 import type { StreamState } from "@/entities/chat/stream";
@@ -94,7 +94,9 @@ export function InputBar(props: {
     const style = CHIP_STYLES[kind];
     const span = document.createElement("span");
     span.contentEditable = "false";
-    span.dataset.insert = insertText;
+    // R22：chip 值带不可见标记（区分 chip 与手打文本；服务器端只展开标记内的）
+    span.dataset.insert =
+      kind === "skill" ? `${SKILL_MARK_PREFIX}${insertText.slice("/skill:".length)}\u0001` : `${FILE_MARK_PREFIX}${insertText}\u0001`;
     span.className = `${style.cls} mx-0.5 inline-flex cursor-default items-center gap-1 rounded-md px-1.5 py-0.5 align-middle text-xs font-medium whitespace-nowrap`;
     span.textContent = `${style.icon} ${label}`.trim();
     const space = document.createTextNode(" ");
