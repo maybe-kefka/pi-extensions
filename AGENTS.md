@@ -11,13 +11,11 @@
 .agents/                          # 已沉淀知识（提交 git，长期保存）
 ├── specs/                        # 规格文档（长期）
 │   ├── <pkg>/SPEC.md             # 系统基线规格（历史/技术基线，不再增长）
-│   └── R<迭代>/SPEC.md           # 迭代规格（R19 起，独立落盘）
-├── tickets/                      # 任务票据（至少保留到完成/归档）
-│   └── <pkg>/TICKET-<pkg>-<迭代>-<序号>-<slug>.md
-└── templates/                    # spec / ticket 生成模板（新迭代照此创建）
-    ├── spec.md
-    └── ticket.md
-.scratch/                         # 迭代工作区（gitignore，不提交）：R<迭代>/SPEC.md 草稿 + issues/*.md 草稿
+│   └── <slug>/SPEC.md            # 迭代规格（slug 命名，独立落盘）
+└── tickets/                      # 任务票据（至少保留到完成/归档）
+    ├── <pkg>/TICKET-<pkg>-R<迭代>-*.md   # R25 及以前（历史，R 迭代编号）
+    └── <slug>/                   # R26 起：按迭代 slug 组织
+.scratch/                         # 迭代工作区（gitignore，不提交）：<slug>/SPEC.md 草稿 + issues/NN-slug.md 草稿
 packages/pi-status/
 packages/pi-web/
 └── src/
@@ -26,13 +24,17 @@ packages/pi-web/
     └── server/                   # 后端（DDD：domain/application/infrastructure/interface）
 ```
 
-## 迭代流程（敏捷：迭代 = 可独立验收的增量）
+## 迭代流程（敏捷：迭代 = 可独立验收的增量；slug = 短横线小写英文标识）
+
+> **规范依据三个 skill（全局 `~/.agents/skills/`，来自 mattpocock/skills）**：
+> `/skill:to-spec`（对话 → SPEC）、`/skill:to-tickets`（SPEC → 垂直切片 tickets）、`/skill:tdd`（red-green 循环）。
+> **每次迭代开始必须重新读取对应 skill 文件**（skill 可能更新，不依赖记忆、不保留本地模板）。
 
 1. **对齐**：用户提需求 → grilling 逐题对齐（设计树，直至 frontier 空）→ 达成共识
-2. **SPEC**：`.scratch/R<迭代>/SPEC.md` 起草（用 `.agents/templates/spec.md`：User Stories P1/P2/P3 + 验收场景 + FR；涉及既有系统规格引用基线 SPEC §X，不复述）
-3. **Tickets**：`.scratch/R<迭代>/issues/TICKET-<pkg>-<迭代>-<序号>-<slug>.md`（用 `.agents/templates/ticket.md`：任务 + 文件路径 + TDD 红绿）
-4. **TDD**：每 ticket 先写失败测试（红）→ 实现（绿）→ `npm test` + `npm run typecheck` 全绿 → 提交（小步，一个 ticket 一个 commit）
-5. **归档**：迭代完成 → SPEC 落盘 `.agents/specs/R<迭代>/SPEC.md`、tickets 移入 `.agents/tickets/<pkg>/`、`.scratch/R<迭代>/` 删除
+2. **SPEC**：重新读取 `/skill:to-spec` 并按其流程执行 → 综合当前对话生成 SPEC 落盘 `.scratch/<slug>/SPEC.md`（模板见 skill 内 spec-template：Problem Statement / Solution / User Stories / Implementation Decisions / Testing Decisions / Out of Scope / Further Notes；**不写具体文件路径**；涉及既有系统规格引用基线 SPEC §X，不复述）。to-spec 要求：**先 sketch 测试 seams 并与用户确认**
+3. **Tickets**：重新读取 `/skill:to-tickets` 并按其流程执行 → 垂直切片（tracer-bullet，每片窄而完整、可独立验收、单 context 窗口可完成）落盘 `.scratch/<slug>/issues/NN-slug.md`（**blockers 在前编号**，依赖顺序；模板见 skill 内 local-ticket-template：What to build / Blocked by / Acceptance criteria；**不写具体文件路径**）→ **与用户核对粒度与 blocking edges**
+4. **TDD**：重新读取 `/skill:tdd` 并按其流程执行 → 按 SPEC 阶段确认的 seams 写测试（红）→ 实现（绿）→ `npm test` + `npm run typecheck` 全绿 → 提交（小步，一个 ticket 一个 commit）。tdd 要求：seams 先行（测试只写在自己确认过的 seam 上）、垂直切片推进（禁"先写全部测试再实现"的 horizontal slicing）、anti-patterns 自查（implementation-coupled / tautological）
+5. **归档**：迭代完成 → SPEC 落盘 `.agents/specs/<slug>/SPEC.md`、tickets 移入 `.agents/tickets/<slug>/`、`.scratch/<slug>/` 删除
 6. **验收**：浏览器/冒烟实测（前端改动）；E2E 只做冒烟，不做自动化
 
 ## 开发约定（硬约束）
