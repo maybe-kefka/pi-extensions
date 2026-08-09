@@ -4,6 +4,7 @@ import {
   contextMessagesFromEntries,
   estimateMessageTokens,
   estimateTextTokens,
+  parseSystemPromptSections,
   type ChatMessageLike,
   type ContextBreakdownInput,
 } from "./context-breakdown.js";
@@ -183,5 +184,81 @@ describe("contextMessagesFromEntries", () => {
 
   it("skips summary entries without text", () => {
     expect(contextMessagesFromEntries([{ type: "compaction", summary: "" }])).toEqual([]);
+  });
+});
+
+describe("R20：parseSystemPromptSections（降级文本解析）", () => {
+  // 模拟 pi 0.84.1 buildSystemPrompt 输出结构（默认提示词 + 工具 + 文件 + 技能）
+  const SAMPLE = `You are an expert coding assistant operating inside pi, a coding agent harness. You help users by reading files, executing commands, editing code, and writing new files.
+
+Available tools:
+- read: Read file contents
+- bash: Execute bash commands
+- edit: Make precise file edits
+
+In addition to the tools above, you may have access to other custom tools depending on the project.
+
+Guidelines:
+- Be concise in your responses
+- Show file paths clearly when working with files
+
+Pi documentation (read only when the user asks about pi itself, its SDK, extensions, themes, skills, or TUI):
+- Main documentation: /path/README.md
+
+<project_context>
+
+Project-specific instructions and guidelines:
+
+<project_instructions path="/home/kefka/projects/pi-extensions/AGENTS.md">
+# AGENTS.md 项目说明
+迭代流程硬约束
+</project_instructions>
+
+<project_instructions path="/home/kefka/projects/pi-extensions/.agents/templates/spec.md">
+# spec 模板
+User Stories P1/P2/P3
+</project_instructions>
+
+</project_context>
+
+The following skills provide specialized instructions for specific tasks.
+Use the read tool to load a skill's file when the task matches its description.
+
+<available_skills>
+  <skill>
+    <name>code-review</name>
+    <description>Review the changes since a fixed point</description>
+  </skill>
+  <skill>
+    <name>effect-ts</name>
+    <description>Use this skill whenever working in a repository that uses Effect</description>
+  </skill>
+</available_skills>
+
+Current working directory: /home/kefka/projects/pi-extensions`;
+
+  it("三类明细均解析非 0（工具段/文件段/技能段）", () => {
+    const s = parseSystemPromptSections(SAMPLE);
+    expect(s.tools).toBeGreaterThan(0);
+    expect(s.contextFiles).toBeGreaterThan(0);
+    expect(s.skills).toBeGreaterThan(0);
+    // 工具段：3 行 snippet
+    expect(s.tools).toBeGreaterThanOrEqual(3);
+  });
+
+  it("无 project_instructions 段 → contextFiles = 0（不抛错）", () => {
+    const s = parseSystemPromptSections("Available tools:\n- read: x\n\nGuidelines:\n- be\n");
+    expect(s.contextFiles).toBe(0);
+    expect(s.tools).toBeGreaterThan(0);
+    expect(s.skills).toBe(0);
+  });
+
+  it("system 估算 = estimateTextTokens(全文)", () => {
+    expect(estimateTextTokens(SAMPLE)).toBe(estimateTextTokens(SAMPLE));
+    expect(estimateTextTokens(SAMPLE)).toBe(Math.ceil(SAMPLE.length / 4));
+  });
+
+  it("空字符串 → 全 0", () => {
+    expect(parseSystemPromptSections("")).toEqual({ contextFiles: 0, tools: 0, skills: 0 });
   });
 });

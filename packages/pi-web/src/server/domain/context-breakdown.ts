@@ -140,19 +140,45 @@ const CATEGORY_LABELS: Record<ContextCategory["key"], string> = {
   conversation: "对话消息",
 };
 
-/** 从原始输入计算五类上下文占用。 */
-export function computeContextBreakdown(input: ContextBreakdownInput): ContextBreakdown {
-  const systemText = [input.customPrompt ?? "", input.guidelines.join("\n"), input.appendSystemPrompt ?? ""].join("");
-  const system = estimateTextTokens(systemText);
+/**
+ * R20 降级路径：从完整系统提示词文本解析三类明细（token 估算）。
+ * 依赖 pi 提示词模板结构（0.84.1 实测稳定）；任一段缺失 → 该分类 0（优雅降级，不抛错）。
+ */
+export function parseSystemPromptSections(systemPrompt: string): {
+  contextFiles: number;
+  tools: number;
+  skills: number;
+} {
+  // contextFiles：<project_instructions path="...">...</project_instructions> 段（含 path）
+  let contextFiles = 0;
+  const fileRe = /<project_instructions\s+path="([^"]*)">([\s\S]*?)<\/project_instructions>/g;
+  let m: RegExpExecArray | null;
+  while ((m = fileRe.exec(systemPrompt)) !== null) {
+    contextFiles += estimateTextTokens(`${m[1]}\n${m[2]}`);
+  }
 
-  const contextFiles = input.contextFiles.reduce((sum, f) => sum + estimateTextTokens(`${f.path}\n${f.content}`), 0);
+  // tools：Available tools: 到 Guidelines: 之间的 "- name: snippet" 行
+  let tools = 0;
+  const toolsSection = systemPrompt.match(/Available tools:\n([\s\S]*?)\nGuidelines:/);
+  if (toolsSection) {
+    for (const line of toolsSection[1].split("\n")) {
+      const t = line.match(/^-\s*(\S+):\s*(.*)$/);
+      if (t) tools += estimateTextTokens(`${t[1]}: ${t[2]}`);
+    }
+  }
 
-  const skills = input.skills.reduce((sum, s) => sum + estimateTextTokens(`${s.name} ${s.description ?? ""}`.trim()), 0);
+  // skills：<available_skills> 段
+  let skills = 0;
+  const skillsSection = systemPrompt.match(/<available_skills>([\s\S]*?)<\/available_skills>/);
+  if (skillsSection) skills = estimateTextTokens(skillsSection[1]);
 
-  const tools = Object.values(input.toolSnippets).reduce((sum, v) => sum + estimateTextTokens(v), 0);
+  return { contextFiles, tools, skills };
+}
 
+/** 从消息列表计算对话分类 token（computeContextBreakdown 与 R20 rpc-handler 共用） */
+export function computeConversationTokens(messages: ChatMessageLike[]): ConversationTokens {
   const conversation: ConversationTokens = { user: 0, assistant: 0, toolResult: 0, other: 0, total: 0 };
-  for (const message of input.messages) {
+  for (const message of messages) {
     const tokens = estimateMessageTokens(message);
     conversation.total += tokens;
     switch (message.role) {
@@ -171,6 +197,21 @@ export function computeContextBreakdown(input: ContextBreakdownInput): ContextBr
         break;
     }
   }
+  return conversation;
+}
+
+/** 从原始输入计算五类上下文占用。 */
+export function computeContextBreakdown(input: ContextBreakdownInput): ContextBreakdown {
+  const systemText = [input.customPrompt ?? "", input.guidelines.join("\n"), input.appendSystemPrompt ?? ""].join("");
+  const system = estimateTextTokens(systemText);
+
+  const contextFiles = input.contextFiles.reduce((sum, f) => sum + estimateTextTokens(`${f.path}\n${f.content}`), 0);
+
+  const skills = input.skills.reduce((sum, s) => sum + estimateTextTokens(`${s.name} ${s.description ?? ""}`.trim()), 0);
+
+  const tools = Object.values(input.toolSnippets).reduce((sum, v) => sum + estimateTextTokens(v), 0);
+
+  const conversation = computeConversationTokens(input.messages);
 
   const categories: ContextCategory[] = [
     { key: "system", label: CATEGORY_LABELS.system, tokens: system },

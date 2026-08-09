@@ -3,9 +3,16 @@
  * pi:sendMessage / pi:listFiles 等 18 个客户端方法；校验 → 领域/应用层调用 → 返回。
  */
 
-import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { WebServerError } from "../infrastructure/server.js";
-import { computeContextBreakdown, contextMessagesFromEntries } from "../domain/context-breakdown.js";
+import {
+  computeConversationTokens,
+  contextMessagesFromEntries,
+  estimateTextTokens,
+  parseSystemPromptSections,
+  type ContextCategory,
+  type ConversationTokens,
+} from "../domain/context-breakdown.js";
 import { listFiles } from "../domain/file-lister.js";
 import { resolveUserEntryId } from "../domain/fork-util.js";
 import { deleteSessionFile } from "../infrastructure/session-files.js";
@@ -18,7 +25,7 @@ export function registerRpcHandler(console: WebConsole): void {
 
 async function handleRequest(
   console: WebConsole,
-  _id: string | number,
+  id: string | number,
   method: string,
   params: Record<string, unknown>,
 ): Promise<unknown> {
@@ -183,35 +190,48 @@ async function handleRequest(
     }
 
     case "pi:getContextBreakdown": {
-      // 数据源均在普通会话 ctx 上（非特权），TUI 手动切会话后依然可用；
-      // getSystemPromptOptions 类型仅 ExtensionCommandContext 声明，但运行时普通 ctx 同样提供
-      // （agent-session.js:1924 源码核实：getSystemPromptOptions: () => this._baseSystemPromptOptions）
-      const ctx = requireCtxOf() as ExtensionContext & {
-        getSystemPromptOptions?: () => BuildSystemPromptOptions;
-      };
-      const options = ctx.getSystemPromptOptions?.();
-      const breakdown = computeContextBreakdown({
-        customPrompt: options?.customPrompt ?? null,
-        guidelines: options?.promptGuidelines ?? [],
-        appendSystemPrompt: options?.appendSystemPrompt ?? null,
-        contextFiles: options?.contextFiles ?? [],
-        skills: options?.skills ?? [],
-        toolSnippets: options?.toolSnippets ?? {},
-        messages: contextMessagesFromEntries(ctx.sessionManager.buildContextEntries()),
-      });
-      const usage = ctx.getContextUsage();
-      return {
-        categories: breakdown.categories,
-        conversation: breakdown.conversation,
-        total: breakdown.total,
-        usage: usage
-          ? {
-              tokens: usage.tokens,
-              contextWindow: usage.contextWindow,
-              percent: usage.percent == null ? null : usage.percent / 100,
-            }
-          : null,
-      };
+      // R20 双轨：特权 ctx（完整 getSystemPrompt + getSystemPromptOptions）优先；
+      // 特权失效（TUI 手动切会话 / 未跑 /web）→ 降级事件 ctx getSystemPrompt 文本解析。
+      // 根因（源码核实）：事件 ctx（createContext()）无 getSystemPromptOptions——
+      // 仅特权命令 ctx（createCommandContext()）有——旧实现 ?.() 静默 undefined → 系统侧恒 0。
+      const ctx = requireCtxOf();
+      const messages = contextMessagesFromEntries(ctx.sessionManager.buildContextEntries());
+      const conversation = computeConversationTokens(messages);
+      try {
+        const breakdown = await console.privilegedCall(async (priv) => {
+          const systemText = priv.getSystemPrompt();
+          const system = estimateTextTokens(systemText);
+          const options = (priv as ExtensionCommandContext & { getSystemPromptOptions?: () => BuildSystemPromptOptions })
+            .getSystemPromptOptions?.();
+          const contextFiles = (options?.contextFiles ?? []).reduce(
+            (sum, f) => sum + estimateTextTokens(`${f.path}\n${f.content}`),
+            0,
+          );
+          const skills = (options?.skills ?? []).reduce(
+            (sum, s) => sum + estimateTextTokens(`${s.name} ${s.description ?? ""}`.trim()),
+            0,
+          );
+          const tools = Object.values(options?.toolSnippets ?? {}).reduce((sum, v) => sum + estimateTextTokens(v), 0);
+          return buildBreakdownResult({ system, contextFiles, skills, tools, conversation }, ctx);
+        });
+        return breakdown;
+      } catch {
+        // 降级：事件 ctx getSystemPrompt（有该方法）+ 文本段解析；
+        // 解析失败 → 明细 0 但 system 非 0（优雅降级）
+        const systemText =
+          (ctx as ExtensionContext & { getSystemPrompt?: () => string }).getSystemPrompt?.() ?? "";
+        const sections = parseSystemPromptSections(systemText);
+        return buildBreakdownResult(
+          {
+            system: estimateTextTokens(systemText),
+            contextFiles: sections.contextFiles,
+            skills: sections.skills,
+            tools: sections.tools,
+            conversation,
+          },
+          ctx,
+        );
+      }
     }
 
     case "pi:listFiles": {
@@ -318,4 +338,43 @@ async function handleRequest(
     default:
       throw new WebServerError(-32601, `未知方法: ${method}`);
   }
+}
+
+/** R20：组装 context breakdown 返回（total = system + conversation；明细不参与 total） */
+function buildBreakdownResult(
+  parts: {
+    system: number;
+    contextFiles: number;
+    skills: number;
+    tools: number;
+    conversation: ConversationTokens;
+  },
+  ctx: ExtensionContext,
+): {
+  categories: ContextCategory[];
+  conversation: ConversationTokens;
+  total: number;
+  usage: { tokens: number | null; contextWindow: number; percent: number | null } | null;
+} {
+  const categories: ContextCategory[] = [
+    { key: "system", label: "系统提示词", tokens: parts.system },
+    { key: "contextFiles", label: "上下文文件", tokens: parts.contextFiles },
+    { key: "skills", label: "技能", tokens: parts.skills },
+    { key: "tools", label: "工具定义", tokens: parts.tools },
+    { key: "conversation", label: "对话消息", tokens: parts.conversation.total },
+  ];
+  const total = parts.system + parts.conversation.total;
+  const usage = ctx.getContextUsage();
+  return {
+    categories,
+    conversation: parts.conversation,
+    total,
+    usage: usage
+      ? {
+          tokens: usage.tokens,
+          contextWindow: usage.contextWindow,
+          percent: usage.percent == null ? null : usage.percent / 100,
+        }
+      : null,
+  };
 }
