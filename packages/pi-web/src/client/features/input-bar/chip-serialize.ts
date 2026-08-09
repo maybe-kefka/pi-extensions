@@ -75,3 +75,21 @@ export function parseChipMarks(text: string): UserContentSegment[] {
   }
   return segments;
 }
+
+/**
+ * R22：Backspace 删除目标判定（纯函数）。
+ * 光标落在 chip 原子元素内（contenteditable=false，正常不可进入但删空后可能悬空）
+ * 或紧贴 chip 后无任何内容时 → 返回该 chip（InputBar 手动删除）；否则 null。
+ */
+export function backspaceAtChip(root: HTMLElement, range: Range): { chip: HTMLElement } | null {
+  const isChipEl = (n: Node | null): n is HTMLElement =>
+    n instanceof HTMLElement && n.dataset?.insert !== undefined;
+  // 光标起点在 chip 内
+  if (isChipEl(range.startContainer)) return { chip: range.startContainer };
+  // 光标在根元素上且紧贴 chip 之后（offset 指向 chip 后一位，其后无内容）
+  if (range.startContainer === root && range.collapsed) {
+    const prev = root.childNodes[range.startOffset - 1];
+    if (isChipEl(prev)) return { chip: prev };
+  }
+  return null;
+}

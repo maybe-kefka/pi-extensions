@@ -3,7 +3,7 @@ import type * as React from "react";
 import { ArrowUp, Square } from "lucide-react";
 import { Button } from "@/shared/ui/button";
 import { MentionMenu, type MentionItem } from "@/features/input-bar/MentionMenu";
-import { FILE_MARK_PREFIX, SKILL_MARK_PREFIX, isContentEmpty, serializeContent } from "@/features/input-bar/chip-serialize";
+import { FILE_MARK_PREFIX, SKILL_MARK_PREFIX, backspaceAtChip, isContentEmpty, serializeContent } from "@/features/input-bar/chip-serialize";
 import { filterMentionItems, mentionInitial, mentionKeyAt, deriveQueryFromHead } from "@/features/input-bar/mention";
 import type { CommandInfo, FileGroup, SkillInfo } from "@/entities/chat/types";
 import type { StreamState } from "@/entities/chat/stream";
@@ -242,6 +242,31 @@ export function InputBar(props: {
           e.preventDefault();
           resetMention();
           return;
+        }
+      }
+      // R22：Backspace——光标在 chip 内/悬空时手动删除 chip（浏览器原生无反应场景）
+      if (e.key === "Backspace" && !mention.active) {
+        const el = editorRef.current;
+        const sel = window.getSelection();
+        if (el && sel && sel.rangeCount > 0) {
+          const r = sel.getRangeAt(0);
+          if (el.contains(r.commonAncestorContainer)) {
+            const target = backspaceAtChip(el, r);
+            if (target) {
+              e.preventDefault();
+              const next = target.chip.previousSibling;
+              target.chip.remove();
+              if (next) {
+                const caret = document.createRange();
+                caret.setStartAfter(next);
+                caret.collapse(true);
+                sel.removeAllRanges();
+                sel.addRange(caret);
+              }
+              setHasInput(!isContentEmpty(el));
+              return;
+            }
+          }
         }
       }
       // 发送：Enter（无 shift、非 IME 组词）；上拉框激活时已被接管

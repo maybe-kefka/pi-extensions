@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
-import { isContentEmpty, serializeContent, parseChipMarks, SKILL_MARK_PREFIX, FILE_MARK_PREFIX } from "./chip-serialize";
+import { isContentEmpty, serializeContent, parseChipMarks, backspaceAtChip, SKILL_MARK_PREFIX, FILE_MARK_PREFIX } from "./chip-serialize";
 
 function el(): HTMLElement {
   return document.createElement("div");
@@ -118,5 +118,36 @@ describe("R22 chip 标记", () => {
     root.appendChild(document.createTextNode(" "));
     chip(root, "\u0001file:src/a.ts\u0001", "📄 src/a.ts");
     expect(serializeContent(root)).toBe("\u0001skill:pdf\u0001 \u0001file:src/a.ts\u0001");
+  });
+});
+
+describe("R22 backspaceAtChip", () => {
+  it("光标在 chip 内（startContainer 是 chip）→ 返回删除动作", () => {
+    const root = el();
+    const c = chip(root, "\u0001skill:pdf\u0001", "✨ pdf");
+    const range = document.createRange();
+    range.setStart(c, 0);
+    const r = backspaceAtChip(root, range);
+    expect(r).not.toBeNull();
+    expect(r?.chip).toBe(c);
+  });
+
+  it("光标在普通文本节点 → null（不干预）", () => {
+    const root = el();
+    const txt = document.createTextNode("abc");
+    root.appendChild(txt);
+    const range = document.createRange();
+    range.setStart(txt, 1);
+    expect(backspaceAtChip(root, range)).toBeNull();
+  });
+
+  it("chip 后无文本（光标悬空）→ 也返回 chip（Backspace 应删 chip）", () => {
+    const root = el();
+    const c = chip(root, "\u0001skill:pdf\u0001", "✨ pdf");
+    const range = document.createRange();
+    range.setStart(root, 1); // 光标在 chip 之后、无后续节点
+    const r = backspaceAtChip(root, range);
+    expect(r).not.toBeNull();
+    expect(r?.chip).toBe(c);
   });
 });
