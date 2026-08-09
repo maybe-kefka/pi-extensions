@@ -291,10 +291,9 @@ describe("Chat 工具栏", () => {
     expect(within(scroll as HTMLElement).getByText("过程文本")).toBeTruthy();
     // 最终回复不在弹窗（在气泡正文里）
     expect(within(scroll as HTMLElement).queryByText("最终回复")).toBeNull();
-    // reasoning 默认折叠：显示 "reasoning" 标签，全文不可见；点击展开
-    expect(within(scroll as HTMLElement).getByText(/reasoning/)).toBeTruthy();
-    expect(within(scroll as HTMLElement).queryByText("思考过程全文")).toBeNull();
-    fireEvent.click(within(scroll as HTMLElement).getByText(/reasoning/));
+    // R25：每轮小 title「第 x 轮」+ reasoning 不折叠（灰字全文直接可见）
+    expect(within(scroll as HTMLElement).getByText("第 1 轮")).toBeTruthy();
+    expect(within(scroll as HTMLElement).queryByText(/第 \d+ 轮 · /)).toBeNull(); // 旧 label 消失
     expect(within(scroll as HTMLElement).getByText("思考过程全文")).toBeTruthy();
     // tool 默认折叠：摘要行（工具名可见），args 不可见；点击展开 args/output
     expect(within(scroll as HTMLElement).getByText("bash")).toBeTruthy();

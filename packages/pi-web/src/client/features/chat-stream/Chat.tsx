@@ -215,28 +215,6 @@ function WebAskCard({
   );
 }
 
-/** 单个 reasoning 折叠块（R18：折叠显示 "reasoning" 标签，点击就地展开全文） */
-function ReasoningBlock({ text }: { text: string }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <div className="flex flex-col gap-1" data-slot="step-reasoning">
-      <button
-        type="button"
-        className="text-muted-foreground hover:bg-muted/50 flex w-fit cursor-pointer items-center gap-1 rounded-md px-1.5 py-0.5 text-xs"
-        onClick={() => setOpen((o) => !o)}
-      >
-        {open ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
-        reasoning
-      </button>
-      {open && (
-        <pre className="text-muted-foreground bg-muted/30 border-border rounded-md border p-2 text-xs whitespace-pre-wrap [overflow-wrap:anywhere]">
-          {text}
-        </pre>
-      )}
-    </div>
-  );
-}
-
 /**
  * 流式过程区（R18 langgraph 模型）：当前活跃轮（LLMNode）的 steps 按序实时渲染——
  * thinking 块灰色小字全文、text 块 Markdown 流式 + ▍、tool 块 ToolNode 卡片。
@@ -330,30 +308,25 @@ function ProgressDialog({
   open: boolean;
   onOpenChange: (o: boolean) => void;
 }) {
-  const entries = useMemo(() => {
-    const out: { turnIndex: number; step: TurnStep }[] = [];
+  // R25：按 turn 分组（每组一个小 title「第 x 轮」；reasoning 平铺灰字不折叠）
+  const groups = useMemo(() => {
+    const out: { turnIndex: number; steps: TurnStep[] }[] = [];
     bubble.turns.forEach((turn, ti) => {
       const isLastTurn = ti === bubble.turns.length - 1;
+      const steps: TurnStep[] = [];
       turn.steps.forEach((st, si) => {
         // 仅终态（最后 turn 已 final）跳过最后 text 块（最终回复在气泡里）；
         // 流式中实时展示完整流程（R20）
         if (isLastTurn && turn.final && si === turn.steps.length - 1 && st.type === "text") return;
-        out.push({ turnIndex: ti, step: st });
+        steps.push(st);
       });
+      if (steps.length > 0) out.push({ turnIndex: ti, steps });
     });
     return out;
   }, [bubble]);
   const rows = new Map<string, StreamState["tools"][number]>();
   for (const t of tools) rows.set(t.toolCallId, t);
   const toolCount = bubbleToolCallIds(bubble).length;
-  const [openReasoning, setOpenReasoning] = useState<Set<number>>(new Set());
-  const [openTools, setOpenTools] = useState<Set<number>>(new Set());
-  const toggle = (set: Set<number>, i: number, on: boolean) => {
-    const next = new Set(set);
-    if (on) next.add(i);
-    else next.delete(i);
-    return next;
-  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -366,33 +339,40 @@ function ProgressDialog({
         </DialogHeader>
         {/* 总体单 scroll：外层一个 overflow-y-auto，内部不嵌套任何二级 scroll */}
         <div className="scrollbar-thin scrollbar-gutter-stable flex max-h-[60vh] flex-col gap-3 overflow-y-auto" data-slot="progress-scroll">
-          {entries.length === 0 && <div className="text-muted-foreground p-2 text-xs">（本气泡无思考与工具记录）</div>}
-          {entries.map((e, i) => {
-            const st = e.step;
-            if (st.type === "text") {
-              return (
-                <div key={i} data-slot="progress-content" className="flex flex-col gap-0.5">
-                  <span className="text-muted-foreground text-[11px]">第 {e.turnIndex + 1} 轮 · 内容</span>
-                  <Markdown text={st.text} />
-                </div>
-              );
-            }
-            if (st.type === "thinking") {
-              return (
-                <div key={i} data-slot="progress-reasoning">
-                  <span className="text-muted-foreground text-[11px]">第 {e.turnIndex + 1} 轮 · 思考</span>
-                  <ReasoningBlock text={st.text} />
-                </div>
-              );
-            }
-            const row = rows.get(st.toolCallId);
-            return (
-              <div key={i} data-slot="progress-tool">
-                <span className="text-muted-foreground text-[11px]">第 {e.turnIndex + 1} 轮 · 工具</span>
-                {row ? <ToolCard row={row} /> : <div className="text-muted-foreground text-xs">{st.toolCallId}</div>}
+          {groups.length === 0 && <div className="text-muted-foreground p-2 text-xs">（本气泡无思考与工具记录）</div>}
+          {groups.map((g) => (
+            <div key={g.turnIndex} className="flex flex-col gap-1.5">
+              <div data-slot="progress-turn-title" className="text-muted-foreground border-border border-b pb-0.5 text-[11px]">
+                第 {g.turnIndex + 1} 轮
               </div>
-            );
-          })}
+              {g.steps.map((st, i) => {
+                if (st.type === "text") {
+                  return (
+                    <div key={i} data-slot="progress-content" className="flex flex-col gap-0.5">
+                      <Markdown text={st.text} />
+                    </div>
+                  );
+                }
+                if (st.type === "thinking") {
+                  return (
+                    <pre
+                      key={i}
+                      data-slot="progress-reasoning"
+                      className="text-muted-foreground bg-muted/30 border-border rounded-md border p-2 text-xs whitespace-pre-wrap [overflow-wrap:anywhere]"
+                    >
+                      {st.text}
+                    </pre>
+                  );
+                }
+                const row = rows.get(st.toolCallId);
+                return (
+                  <div key={i} data-slot="progress-tool">
+                    {row ? <ToolCard row={row} /> : <div className="text-muted-foreground text-xs">{st.toolCallId}</div>}
+                  </div>
+                );
+              })}
+            </div>
+          ))}
         </div>
       </DialogContent>
     </Dialog>
