@@ -378,16 +378,18 @@ describe("R20 compact 展示", () => {
     ]);
   }
 
-  it("before：显示压缩中横幅（含原因）", () => {
+  it("before：聊天流显示压缩中记录（转圈 + 原因，无顶部横幅）", () => {
     const dispatch = vi.fn();
     render(<Chat state={compactBannerState("before", "threshold", true)} dispatch={dispatch} onFork={vi.fn()} />);
-    const banner = document.querySelector("[data-slot=compact-banner]");
-    expect(banner).toBeTruthy();
-    expect(banner?.textContent).toContain("正在压缩上下文");
-    expect(banner?.textContent).toContain("阈值");
+    expect(document.querySelector("[data-slot=compact-banner]")).toBeNull();
+    const record = document.querySelector("[data-slot=compact-record]");
+    expect(record).toBeTruthy();
+    expect(record?.textContent).toContain("正在压缩上下文");
+    expect(record?.textContent).toContain("阈值");
+    expect(record?.querySelector("[data-slot=compact-spinner]")).toBeTruthy();
   });
 
-  it("done：横幅消失，系统记录气泡出现（willRetry 提示）", () => {
+  it("done：记录气泡完成态（willRetry 提示）", () => {
     const dispatch = vi.fn();
     render(<Chat state={compactBannerState("done", "manual", true)} dispatch={dispatch} onFork={vi.fn()} />);
     expect(document.querySelector("[data-slot=compact-banner]")).toBeNull();
@@ -395,9 +397,10 @@ describe("R20 compact 展示", () => {
     expect(record).toBeTruthy();
     expect(record?.textContent).toContain("上下文已压缩");
     expect(record?.textContent).toContain("将重试上一条消息");
+    expect(record?.querySelector("[data-slot=compact-spinner]")).toBeNull();
   });
 
-  it("无 compact 状态：无横幅无记录", () => {
+  it("无 compact 状态：无记录气泡", () => {
     const dispatch = vi.fn();
     render(<Chat state={run([{ type: "message_start", message: { role: "user", content: "q" } }])} dispatch={dispatch} onFork={vi.fn()} />);
     expect(document.querySelector("[data-slot=compact-banner]")).toBeNull();

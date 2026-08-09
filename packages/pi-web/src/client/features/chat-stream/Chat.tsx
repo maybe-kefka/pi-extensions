@@ -407,16 +407,6 @@ export function Chat({
 
   return (
     <main className="relative min-w-0 flex-1">
-      {/* R20：compact 进行中横幅（不随滚动，完成后消失） */}
-      {compacting?.phase === "before" && (
-        <div
-          data-slot="compact-banner"
-          className="bg-muted/60 text-muted-foreground z-10 flex items-center justify-center gap-2 border-b py-1.5 text-xs"
-        >
-          <Loader2 className="size-3.5 animate-spin" />
-          正在压缩上下文…（{reasonLabel(compacting.reason)}）
-        </div>
-      )}
       <MessageScrollerProvider autoScroll>
         <MessageScroller className="min-h-0 flex-1">
           <MessageScrollerViewport>
@@ -443,15 +433,24 @@ export function Chat({
                       </MessageGroup>
                     </MessageScrollerItem>
                   ))}
-                  {/* R20：compact 完成系统记录（居中灰字小卡片，非对话单元，不持久） */}
-                  {compacting?.phase === "done" && (
+                  {/* R21：compact 系统记录（聊天流末尾；before 转圈 / done 完成文案，不持久） */}
+                  {compacting && (compacting.phase === "before" || compacting.phase === "done") && (
                     <div
                       data-slot="compact-record"
                       className="text-muted-foreground flex justify-center py-1"
                     >
                       <span className="bg-muted/40 border-border rounded-full border px-3 py-1 text-[11px]">
-                        上下文已压缩（{reasonLabel(compacting.reason)}）
-                        {compacting.willRetry && " · 将重试上一条消息"}
+                        {compacting.phase === "before" ? (
+                          <span className="flex items-center gap-1.5">
+                            <Loader2 data-slot="compact-spinner" className="size-3 animate-spin" />
+                            正在压缩上下文…（{reasonLabel(compacting.reason)}）
+                          </span>
+                        ) : (
+                          <>
+                            上下文已压缩（{reasonLabel(compacting.reason)}）
+                            {compacting.willRetry && " · 将重试上一条消息"}
+                          </>
+                        )}
                       </span>
                     </div>
                   )}
