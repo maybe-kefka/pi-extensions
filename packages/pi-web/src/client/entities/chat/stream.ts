@@ -290,11 +290,6 @@ function finalizeActiveTurns(state: StreamState): StreamState {
 }
 
 export function streamReducer(state: StreamState, action: StreamAction): StreamState {
-  // R23 DEBUG: action 日志（定位回复丢失，验证后删除）
-  try {
-    // eslint-disable-next-line no-console
-    console.log(`[RD] ${action.type}${action.type === "message_start" ? " " + (action.message.role ?? "") : ""}${action.type === "message_update" ? " " + (action.event?.type ?? "") : ""}${action.type === "message_end" ? " " + (action.message.role ?? "") : ""}`);
-  } catch {}
   switch (action.type) {
     case "conn":
       return { ...state, conn: action.state };
