@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 // InputBar 组件测试（jsdom）：发送/abort 按钮融合 + 队列提示 + 上拉框触发
 import { describe, expect, it, vi, afterEach } from "vitest";
 import { render, screen, cleanup } from "@testing-library/react";

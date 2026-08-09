@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 // Chat 组件渲染测试（jsdom）：R18 langgraph 流式模型 / 终态只留最终回复 / progress 单 scroll ReAct 流
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, cleanup, within } from "@testing-library/react";
