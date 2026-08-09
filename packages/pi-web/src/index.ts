@@ -14,9 +14,11 @@
  */
 
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { Type } from "typebox";
 import { parseArgs, USAGE } from "./server/interface/args.js";
 import { createWebConsole } from "./server/application/web-console.js";
 import { registerRpcHandler } from "./server/interface/rpc-handler.js";
+import { askAndWait, askRegistry, WEB_ASK_GUIDELINES } from "./server/domain/web-ask.js";
 
 const BROADCAST_EVENT_TYPES = [
   "message_start",
@@ -41,9 +43,75 @@ const BROADCAST_EVENT_TYPES = [
   "session_compact",
 ] as const;
 
+/** R25：web 提问工具注册（进程级；照 pi-notify-termux ask 模式：execute 阻塞等待回答） */
+function registerWebAskTools(pi: ExtensionAPI): void {
+  // 参数/返回按 registerTool 泛型推断；kind 仅用于自文档（三个 execute 行为一致）
+  const ask = (_kind: "single" | "multi" | "text") => async (
+    toolCallId: string,
+    _params: any,
+    signal: AbortSignal | undefined,
+  ) => askAndWait(askRegistry, toolCallId, signal);
+  pi.registerTool({
+    name: "web_ask_single",
+    label: "向 web 用户提问（单选）",
+    description:
+      "通过 web 控制台向用户提出一个单选题（2-6 个选项）。阻塞等待用户回答（最长 10 分钟，回答自动回到上下文后继续）。适用于需要用户在有限选项中澄清/决策的场景。",
+    promptSnippet: "Ask the user a single-choice question via the web console (waits for the answer)",
+    promptGuidelines: [
+      "Use web_ask_single when the user needs to pick from a finite set of choices (2-6 options) and the web console is open.",
+      "Do not guess a decision the user should make — ask first via web_ask_single.",
+    ],
+    parameters: Type.Object({
+      question: Type.String({ description: "要问的问题" }),
+      options: Type.Array(Type.String(), { minItems: 2, maxItems: 6, description: "选项（2-6 个）" }),
+    }),
+    execute: ask("single"),
+  });
+  pi.registerTool({
+    name: "web_ask_multi",
+    label: "向 web 用户提问（多选）",
+    description:
+      "通过 web 控制台向用户提出一个多选题（1-8 个选项，可限制最多选择数）。阻塞等待用户回答（最长 10 分钟）。",
+    promptSnippet: "Ask the user a multi-select question via the web console (waits for the answer)",
+    promptGuidelines: [
+      "Use web_ask_multi when the user should select several items from a list (1-8 options); set maxSelect when a limited number is required.",
+    ],
+    parameters: Type.Object({
+      question: Type.String({ description: "要问的问题" }),
+      options: Type.Array(Type.String(), { minItems: 1, maxItems: 8, description: "选项（1-8 个）" }),
+      maxSelect: Type.Optional(Type.Number({ minimum: 1, description: "最多可选数量" })),
+    }),
+    execute: ask("multi"),
+  });
+  pi.registerTool({
+    name: "web_ask_text",
+    label: "向 web 用户提问（文本输入）",
+    description:
+      "通过 web 控制台向用户提出一个自由文本问题（短回答）。阻塞等待用户回答（最长 10 分钟）。适用于无法枚举选项的开放问题。",
+    promptSnippet: "Ask the user a free-text question via the web console (waits for the answer)",
+    promptGuidelines: [
+      "Use web_ask_text for open-ended questions that cannot be enumerated as options; prefer single/multi when choices are finite.",
+    ],
+    parameters: Type.Object({
+      question: Type.String({ description: "要问的问题" }),
+      placeholder: Type.Optional(Type.String({ description: "输入框占位提示" })),
+    }),
+    execute: ask("text"),
+  });
+  // 每轮系统提示注入：引导 LLM 提问时优先使用 web_ask_*（照 pi-notify-termux confirm 注入）
+  pi.on("before_agent_start", (event) => {
+    return { systemPrompt: `${event.systemPrompt}
+
+${WEB_ASK_GUIDELINES}` };
+  });
+}
+
 export default function (pi: ExtensionAPI): void {
   const console = createWebConsole();
   registerRpcHandler(console);
+
+  // R25：web 提问工具（阻塞等待回答）
+  registerWebAskTools(pi);
 
   // 每次 factory 运行（startup / 会话切换）都重绑当前 api
   console.bindApi(pi);

@@ -608,7 +608,7 @@ describe("R25 compact 锚定渲染", () => {
     expect(q2Idx).toBeGreaterThan(replyIdx);
     // DOM 位置：record 在 回复1 message 之后、q2 message 之前
     const before = (a: Element, b: Element) => !!(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
-    expect(before(items[replyIdx]!, record)).toBe(true);
-    expect(before(record, items[q2Idx]!)).toBe(true);
+    expect(before(items[replyIdx]!, record!)).toBe(true);
+    expect(before(record!, items[q2Idx]!)).toBe(true);
   });
 });

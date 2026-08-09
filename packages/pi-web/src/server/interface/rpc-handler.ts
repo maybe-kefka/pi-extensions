@@ -14,6 +14,7 @@ import {
   type ConversationTokens,
 } from "../domain/context-breakdown.js";
 import { expandSkillChips, type SkillLookupEntry } from "../domain/skill-expand.js";
+import { askRegistry } from "../domain/web-ask.js";
 import { readFileSync } from "node:fs";
 import { listFiles } from "../domain/file-lister.js";
 import { resolveUserEntryId } from "../domain/fork-util.js";
@@ -38,6 +39,18 @@ async function handleRequest(
   const withPrivilegedRefresh = <T extends object>(options: T) => console.withPrivilegedRefresh(options);
 
   switch (method) {
+    case "web-ask:answer": {
+      // R25：web 提问工具回答通道——resolve 阻塞中的 execute（未找到/已终结 → 报错）
+      const toolCallId = params.toolCallId;
+      if (typeof toolCallId !== "string" || toolCallId === "") {
+        throw new WebServerError(-32602, "toolCallId 必须是非空字符串");
+      }
+      if (!askRegistry.answer(toolCallId, params.answer)) {
+        throw new WebServerError(-32602, "未找到对应的提问（可能已超时/取消/已回答）");
+      }
+      return { ok: true };
+    }
+
     case "pi:sendMessage": {
       const text = params.text;
       if (typeof text !== "string" || text.trim() === "") {
