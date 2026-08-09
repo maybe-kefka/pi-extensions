@@ -125,7 +125,8 @@ export default function App() {
   const send = useCallback((text: string) => {
     const c = rpcRef.current;
     if (!c) return;
-    c.request("pi:sendMessage", { text }).catch((e) => {
+    // R25：LLM 忙碌时排队（steer：当前 turn 工具执行完后、下次 LLM 调用前注入——输出结束后自动处理）
+    c.request("pi:sendMessage", { text, deliverAs: "steer" }).catch((e) => {
       toast.error(`发送失败: ${e.message}`);
     });
   }, []);
