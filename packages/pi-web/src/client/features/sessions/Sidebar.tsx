@@ -288,6 +288,7 @@ export function Sidebar({
 }: SidebarContentProps & { collapsed: boolean }) {
   return (
     <aside
+      inert={collapsed || undefined}
       className={`scrollbar-thin scrollbar-gutter-stable hidden shrink-0 flex-col border-l transition-[width] duration-200 lg:flex ${
         collapsed
           ? "w-0 overflow-hidden border-l-0 p-0"
