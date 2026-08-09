@@ -3,12 +3,18 @@ import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
+import babel from "@rolldown/plugin-babel";
+import { reactCompilerPreset } from "@vitejs/plugin-react";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-// 前端构建：root = src/client，产物 dist/client
+// 前端构建：root = src/client，产物 dist/client；React Compiler 自动 memo 编译
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  plugins: [
+    react(),
+    babel({ presets: [reactCompilerPreset()] }),
+    tailwindcss(),
+  ],
   base: "/",
   root: path.resolve(__dirname, "src/client"),
   build: {
