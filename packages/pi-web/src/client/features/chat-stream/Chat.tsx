@@ -410,7 +410,7 @@ export function Chat({
       <MessageScrollerProvider autoScroll>
         <MessageScroller className="min-h-0 flex-1">
           <MessageScrollerViewport>
-            <MessageScrollerContent className="mx-auto w-full max-w-3xl gap-3 px-4 py-3">
+            <MessageScrollerContent className="mx-auto w-full max-w-3xl gap-3 px-4 pt-3 pb-8">
               {!hasContent ? (
                 <Empty className="mt-16">
                   <EmptyHeader>
