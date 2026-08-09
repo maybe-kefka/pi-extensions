@@ -263,6 +263,22 @@ function currentBubble(state: StreamState): TurnBubble {
   return b;
 }
 
+/** R20：agent 结束兜底——所有气泡的最后一个非 final turn 标记为 final（中断场景安全网） */
+function finalizeActiveTurns(state: StreamState): StreamState {
+  let changed = false;
+  const bubbles = state.bubbles.map((b) => {
+    if (b.turns.length === 0) return b;
+    const last = b.turns[b.turns.length - 1];
+    if (last.final) return b;
+    changed = true;
+    return {
+      ...b,
+      turns: [...b.turns.slice(0, -1), { ...last, final: true, endedAt: last.endedAt ?? Date.now() }],
+    };
+  });
+  return changed ? { ...state, bubbles } : state;
+}
+
 export function streamReducer(state: StreamState, action: StreamAction): StreamState {
   switch (action.type) {
     case "conn":
@@ -446,6 +462,13 @@ export function streamReducer(state: StreamState, action: StreamAction): StreamS
       const finalText = lastTextOf(action.message.content);
       const thinking = thinkingOfContent(action.message.content);
       const ids = toolCallIdsOf(action.message.content);
+      // R20：含工具调用的轮不立即 final——实测事件序 message_end 先于
+      // tool_execution_start，提前 final 会使 tool_start 的块 id 填充分支短路
+      // （tool 块 id 恒空 → ToolCard 永不渲染）。等 turn_end 兜底 final（此时
+      // 工具已执行完，id 已填充）。纯文本/思考轮保持立即 final（R18 行为）。
+      const hasTool = ids.length > 0 || turn.steps.some((s) => s.type === "tool");
+      const final = !hasTool;
+      const endedAt = final ? Date.now() : turn.endedAt;
       // 空 turn（无 text、无 thinking、无工具）→ 移除；turns 空且无 user 文本的孤儿气泡一并移除
       if (!finalText && !thinking && ids.length === 0) {
         const turns = bubble.turns.slice(0, -1);
@@ -467,9 +490,9 @@ export function streamReducer(state: StreamState, action: StreamAction): StreamS
             thinking: thinking || turn.thinking,
             toolCallIds: ids.length > 0 ? ids : turn.toolCallIds,
             steps: stepsOfContent(action.message.content),
-            final: true,
+            final,
             startedAt: turn.startedAt,
-            endedAt: Date.now(),
+            endedAt,
           },
         ],
       });
@@ -487,23 +510,28 @@ export function streamReducer(state: StreamState, action: StreamAction): StreamS
       };
       const existing = state.tools.find((t) => t.toolCallId === action.toolCallId);
       // R18：流式中 tool 块填充 toolCallId（toolcall_start 无 id，tool_execution_start 按序填充第一个空 tool 块）
+      // R20：无空块时在 steps 末尾追加（防御 tool_execution_start 先于 toolcall_start 的交错）
       const bubble = state.bubbles.find((b) => b.id === state.currentBubbleId);
       if (bubble) {
         const turn = bubble.turns[bubble.turns.length - 1];
         if (turn && !turn.final) {
           const i = turn.steps.findIndex((s) => s.type === "tool" && s.toolCallId === "");
-          if (i >= 0) {
-            const steps = [...turn.steps.slice(0, i), { type: "tool" as const, toolCallId: action.toolCallId }, ...turn.steps.slice(i + 1)];
-            return {
-              ...state,
-              tools: existing
-                ? state.tools.map((t) => (t.toolCallId === action.toolCallId ? { ...t, args: action.args } : t))
-                : [...state.tools, row],
-              bubbles: state.bubbles.map((b) =>
-                b.id === bubble.id ? { ...b, turns: [...bubble.turns.slice(0, -1), { ...turn, steps }] } : b,
-              ),
-            };
-          }
+          // 无空块时：同 id 块已存在（message_end 重建带真实 id）→ 不重复；否则末尾追加（防御交错）
+          const steps =
+            i >= 0
+              ? [...turn.steps.slice(0, i), { type: "tool" as const, toolCallId: action.toolCallId }, ...turn.steps.slice(i + 1)]
+              : turn.steps.some((s) => s.type === "tool" && s.toolCallId === action.toolCallId)
+                ? turn.steps
+                : [...turn.steps, { type: "tool" as const, toolCallId: action.toolCallId }];
+          return {
+            ...state,
+            tools: existing
+              ? state.tools.map((t) => (t.toolCallId === action.toolCallId ? { ...t, args: action.args } : t))
+              : [...state.tools, row],
+            bubbles: state.bubbles.map((b) =>
+              b.id === bubble.id ? { ...b, turns: [...bubble.turns.slice(0, -1), { ...turn, steps }] } : b,
+            ),
+          };
         }
       }
       return {
@@ -552,11 +580,16 @@ export function streamReducer(state: StreamState, action: StreamAction): StreamS
     case "agent_start":
       return { ...state, streaming: true };
 
-    case "agent_end":
-      return { ...state, streaming: action.willRetry ? true : false };
+    // R20：agent_end / agent_settled 兜底 final 化非 final turn（中断场景无 turn_end）
+    case "agent_end": {
+      const finalized = finalizeActiveTurns(state);
+      return { ...finalized, streaming: action.willRetry ? true : false };
+    }
 
-    case "agent_settled":
-      return { ...state, streaming: false };
+    case "agent_settled": {
+      const finalized = finalizeActiveTurns(state);
+      return { ...finalized, streaming: false };
+    }
 
     case "queue_update":
       return {

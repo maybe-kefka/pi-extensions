@@ -443,3 +443,57 @@ describe("R18.1b：start 事件建块（真实流式 message_start content 为�
     expect(turn.steps[2]).toEqual({ type: "text", text: "x" });
   });
 });
+
+describe("R20：真实事件序（message_end 先于 tool_execution_start）", () => {
+  const toolTurnActions: StreamAction[] = [
+    { type: "message_start", message: { role: "user", content: "q" } },
+    { type: "message_start", message: { role: "assistant", content: [] } },
+    { type: "message_update", event: { type: "toolcall_start", contentIndex: 0 } },
+    // 实测顺序：message_end 在 tool_execution_start 之前到达
+    { type: "message_end", message: { role: "assistant", content: [{ type: "toolCall", id: "t1", name: "bash", arguments: { command: "ls" } }] } },
+    { type: "tool_start", toolCallId: "t1", toolName: "bash", args: { command: "ls" } },
+  ];
+
+  it("message_end(tool 轮) 不 final，tool_start 仍填充块 id，turn_end 才 final", () => {
+    const state = reduce(toolTurnActions);
+    const turn = state.bubbles[0].turns[0];
+    expect(turn.final).toBe(false);
+    // tool 块 id 已被 tool_start 填充（即使 message_end 已过）
+    expect(turn.steps).toEqual([{ type: "tool", toolCallId: "t1" }]);
+    expect(state.tools[0]).toMatchObject({ toolCallId: "t1", toolName: "bash" });
+    // turn_end 才 final
+    const after = reduce([{ type: "turn_end" }], state);
+    expect(after.bubbles[0].turns[0].final).toBe(true);
+  });
+
+  it("agent_end 兜底 final 化非 final turn（中断场景无 turn_end）", () => {
+    const state = reduce(toolTurnActions);
+    expect(state.bubbles[0].turns[0].final).toBe(false);
+    const after = reduce([{ type: "agent_end", willRetry: false }], state);
+    expect(after.bubbles[0].turns[0].final).toBe(true);
+    const afterSettled = reduce([{ type: "agent_settled" }], state);
+    expect(afterSettled.bubbles[0].turns[0].final).toBe(true);
+  });
+
+  it("防御：tool_start 无空 tool 块时在 steps 末尾追加（execution 先到）", () => {
+    const state = reduce([
+      { type: "message_start", message: { role: "user", content: "q" } },
+      { type: "message_start", message: { role: "assistant", content: [] } },
+      { type: "tool_start", toolCallId: "t1", toolName: "bash", args: { command: "ls" } },
+    ]);
+    const turn = state.bubbles[0].turns[0];
+    expect(turn.steps).toEqual([{ type: "tool", toolCallId: "t1" }]);
+  });
+
+  it("纯文本轮 message_end 仍立即 final（无 tool 时保持 R18 行为）", () => {
+    const state = reduce([
+      { type: "message_start", message: { role: "user", content: "q" } },
+      { type: "message_start", message: { role: "assistant", content: [] } },
+      { type: "message_update", event: { type: "text_delta", contentIndex: 0, delta: "答" } },
+      { type: "message_end", message: { role: "assistant", content: [{ type: "text", text: "答案" }] } },
+    ]);
+    const turn = state.bubbles[0].turns[0];
+    expect(turn.final).toBe(true);
+    expect(turn.text).toBe("答案");
+  });
+});

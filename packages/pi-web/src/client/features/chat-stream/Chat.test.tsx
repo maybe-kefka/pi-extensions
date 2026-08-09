@@ -124,8 +124,8 @@ describe("Chat 气泡渲染（R18 langgraph 流式模型）", () => {
     expect(screen.getByText(/"command"/)).toBeTruthy();
   });
 
-  it("流式中：多轮循环轮边界清空——只显示当前活跃轮内容", () => {
-    const s = run([
+  it("R20：轮边界不清空——新轮有内容才原子切换（过渡期显示上一轮）", () => {
+    const first = run([
       { type: "message_start", message: { role: "user", content: "q" } },
       {
         type: "message_start",
@@ -137,16 +137,72 @@ describe("Chat 气泡渲染（R18 langgraph 流式模型）", () => {
           ],
         },
       },
-      { type: "message_end", message: { role: "assistant", content: [{ type: "text", text: "第一轮过程文本" }, { type: "toolCall", id: "t1", name: "bash", arguments: {} }] } },
-      { type: "message_start", message: { role: "assistant", content: [{ type: "text", text: "" }] } },
-      { type: "message_update", event: { type: "text_delta", contentIndex: 0, delta: "第二轮" } },
+      {
+        type: "message_end",
+        message: { role: "assistant", content: [{ type: "text", text: "第一轮过程文本" }, { type: "toolCall", id: "t1", name: "bash", arguments: {} }] },
+      },
+      { type: "tool_start", toolCallId: "t1", toolName: "bash", args: { command: "ls" } },
+      { type: "tool_end", toolCallId: "t1", result: { content: [{ type: "text", text: "out" }] }, isError: false },
+      { type: "turn_end" },
+      // 第二轮刚开始（steps 空）——过渡期
+      { type: "message_start", message: { role: "assistant", content: [] } },
     ]);
     const dispatch = vi.fn();
-    render(<Chat state={s} dispatch={dispatch} onFork={vi.fn()} />);
-    // 第一轮内容已清空（轮边界），只显示第二轮
+    const { rerender } = render(<Chat state={first} dispatch={dispatch} onFork={vi.fn()} />);
+    // 新轮无内容 → 上一轮内容保留（工具卡片可见，无空白帧）
+    expect(screen.getByText("bash")).toBeTruthy();
+    expect(screen.getByText("out")).toBeTruthy();
+    // text_delta 到达 → 原子切换为新轮内容
+    const second = run([
+      ...(() => {
+        const a: StreamAction[] = [
+          { type: "message_start", message: { role: "user", content: "q" } },
+          {
+            type: "message_start",
+            message: {
+              role: "assistant",
+              content: [
+                { type: "text", text: "第一轮过程文本" },
+                { type: "toolCall", id: "t1", name: "bash", arguments: {} },
+              ],
+            },
+          },
+          {
+            type: "message_end",
+            message: { role: "assistant", content: [{ type: "text", text: "第一轮过程文本" }, { type: "toolCall", id: "t1", name: "bash", arguments: {} }] },
+          },
+          { type: "tool_start", toolCallId: "t1", toolName: "bash", args: { command: "ls" } },
+          { type: "tool_end", toolCallId: "t1", result: { content: [{ type: "text", text: "out" }] }, isError: false },
+          { type: "turn_end" },
+          { type: "message_start", message: { role: "assistant", content: [] } },
+        ];
+        return a;
+      })(),
+      { type: "message_update", event: { type: "text_delta", contentIndex: 0, delta: "第二轮" } },
+    ]);
+    rerender(<Chat state={second} dispatch={dispatch} onFork={vi.fn()} />);
+    // 已切换：显示第二轮，旧轮内容隐藏
     expect(screen.getByText(/第二轮/)).toBeTruthy();
     expect(screen.queryByText("第一轮过程文本")).toBeNull();
     expect(screen.queryByText("bash")).toBeNull();
+  });
+
+  it("R20：终态工具轮（无最终文本）显示工具卡片 done 态", () => {
+    const s = run([
+      { type: "message_start", message: { role: "user", content: "q" } },
+      { type: "message_start", message: { role: "assistant", content: [] } },
+      { type: "message_update", event: { type: "toolcall_start", contentIndex: 0 } },
+      { type: "message_end", message: { role: "assistant", content: [{ type: "toolCall", id: "t1", name: "bash", arguments: { command: "ls" } }] } },
+      { type: "tool_start", toolCallId: "t1", toolName: "bash", args: { command: "ls" } },
+      { type: "tool_end", toolCallId: "t1", result: { content: [{ type: "text", text: "out" }] }, isError: false },
+      { type: "turn_end" },
+      { type: "agent_settled" },
+    ]);
+    const dispatch = vi.fn();
+    render(<Chat state={s} dispatch={dispatch} onFork={vi.fn()} />);
+    // 终态：无最终文本 → 保留工具卡片（done 态）而非白屏
+    expect(screen.getByText("bash")).toBeTruthy();
+    expect(screen.getByText("out")).toBeTruthy();
   });
 
   it("终态：thinking/工具/过程文本全消失，只留最终回复", () => {

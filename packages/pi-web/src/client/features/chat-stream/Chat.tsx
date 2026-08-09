@@ -130,8 +130,9 @@ function ReasoningBlock({ text }: { text: string }) {
 /**
  * 流式过程区（R18 langgraph 模型）：当前活跃轮（LLMNode）的 steps 按序实时渲染——
  * thinking 块灰色小字全文、text 块 Markdown 流式 + ▍、tool 块 ToolNode 卡片。
+ * R20：active=false 时（过渡期显示上一轮 / 终态工具轮）不渲染 ▍ 光标。
  */
-function StreamingSteps({ turn, tools }: { turn: Turn; tools: StreamState["tools"] }) {
+function StreamingSteps({ turn, tools, active = true }: { turn: Turn; tools: StreamState["tools"]; active?: boolean }) {
   const rows = new Map<string, StreamState["tools"][number]>();
   for (const t of tools) rows.set(t.toolCallId, t);
   const steps = turn.steps;
@@ -154,11 +155,11 @@ function StreamingSteps({ turn, tools }: { turn: Turn; tools: StreamState["tools
           if (!row) return null;
           return <ToolCard key={i} row={row} />;
         }
-        // text 块：Markdown 流式 + ▍（最后一个 text 块）
+        // text 块：Markdown 流式 + ▍（最后一个 text 块，仅活跃轮）
         return (
           <div key={i} data-slot="step-text">
             <Markdown text={st.text} />
-            {i === lastTextIdx && <span className="animate-pulse">▍</span>}
+            {active && i === lastTextIdx && <span className="animate-pulse">▍</span>}
           </div>
         );
       })}
@@ -267,6 +268,17 @@ function TurnBubbleView({
   const streaming = bubbleStreaming(bubble);
   const activeTurn = streaming ? bubble.turns[bubble.turns.length - 1] : null;
   const finalTurn = !streaming ? bubble.turns[bubble.turns.length - 1] : null;
+  // R20：新轮 steps 为空（活跃轮刚开始）→ 显示最后一个有内容的 turn（无空白帧）；
+  // 活跃轮有内容后原子切换。
+  const visibleTurn = (() => {
+    if (activeTurn && (activeTurn.steps.length > 0 || activeTurn.text.trim())) return activeTurn;
+    if (!streaming) return null;
+    for (let i = bubble.turns.length - 2; i >= 0; i--) {
+      const t = bubble.turns[i];
+      if (t.steps.length > 0 || t.text.trim()) return t;
+    }
+    return null;
+  })();
   // R20：工具栏 per-bubble 独立——已完成气泡 fork+progress 常驻；
   // 活跃气泡只显示 progress（实时看当前大 Turn 流程），fork 仅完成态出现。
   const showFullToolbar = hasUser && !streaming;
@@ -302,11 +314,14 @@ function TurnBubbleView({
           </MessageAvatar>
           <MessageContent>
             <Bubble variant="outline" className="w-full">
-              {/* R18：流式中只显示当前活跃轮的 steps；终态只留最终回复文本 */}
+              {/* R18：流式中显示当前活跃轮；终态只留最终回复文本。
+                  R20：活跃轮无内容时延续显示上一轮（无空白）；终态工具轮（无最终文本）显示步骤内容 */}
               {activeTurn ? (
-                <StreamingSteps turn={activeTurn} tools={tools} />
+                visibleTurn ? <StreamingSteps turn={visibleTurn} tools={tools} active={visibleTurn === activeTurn} /> : null
               ) : finalTurn && finalTurn.text.trim() ? (
                 <Markdown text={finalTurn.text} />
+              ) : finalTurn && finalTurn.steps.length > 0 ? (
+                <StreamingSteps turn={finalTurn} tools={tools} active={false} />
               ) : null}
             </Bubble>
             {showFullToolbar && (
