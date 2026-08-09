@@ -1,4 +1,4 @@
-import { Fragment, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useMemo, useRef, useState } from "react";
 import type * as React from "react";
 import { Bot, ChevronDown, ChevronRight, CircleCheck, CircleX, GitFork, Loader2, User, Wrench } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/shared/ui/avatar";
@@ -119,6 +119,102 @@ function ToolCard({ row }: { row: StreamState["tools"][number] }) {
   );
 }
 
+/** R25：web 提问工具交互卡片（web_ask_single/multi/text）——问题 + 回答控件；已回答显示结果 */
+function WebAskCard({
+  row,
+  onAnswer,
+}: {
+  row: StreamState["tools"][number];
+  onAnswer: (toolCallId: string, answer: unknown) => void;
+}) {
+  const answered = row.output.trim() !== "";
+  const [selected, setSelected] = useState<string[]>([]);
+  const [text, setText] = useState("");
+  const args =
+    row.args !== null && typeof row.args === "object"
+      ? (row.args as { question?: string; options?: string[]; placeholder?: string; maxSelect?: number })
+      : null;
+  const question = args?.question ?? row.toolName;
+  const options = args?.options ?? [];
+  const isMulti = row.toolName === "web_ask_multi";
+  const maxSelect = args?.maxSelect;
+
+  const submit = useCallback(() => {
+    const answer = isMulti ? selected : row.toolName === "web_ask_text" ? text : selected[0] ?? null;
+    if (answer === null || (isMulti ? selected.length === 0 : row.toolName === "web_ask_text" ? text.trim() === "" : false)) return;
+    onAnswer(row.toolCallId, answer);
+  }, [isMulti, selected, text, onAnswer, row.toolCallId, row.toolName]);
+
+  const toggle = (opt: string) => {
+    setSelected((prev) => {
+      if (isMulti) {
+        if (prev.includes(opt)) return prev.filter((x) => x !== opt);
+        if (maxSelect !== undefined && prev.length >= maxSelect) return prev;
+        return [...prev, opt];
+      }
+      return [opt];
+    });
+  };
+
+  if (answered) {
+    return (
+      <div data-slot="web-ask" data-answered="true" className="border-border bg-muted/30 flex flex-col gap-1.5 rounded-xl border p-3 text-xs">
+        <div className="text-foreground font-medium">❓ {question}</div>
+        <div className="text-muted-foreground border-border rounded-md border p-2 whitespace-pre-wrap">
+          已回答：{row.output}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div data-slot="web-ask" className="border-border bg-muted/30 flex flex-col gap-2 rounded-xl border p-3 text-xs">
+      <div className="text-foreground font-medium">❓ {question}</div>
+      {row.toolName === "web_ask_text" ? (
+        <textarea
+          data-slot="web-ask-input"
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder={args?.placeholder ?? "输入回答…"}
+          rows={2}
+          className="border-input bg-background focus-visible:ring-ring/50 min-h-10 w-full resize-none rounded-md border px-2 py-1.5 text-xs focus-visible:ring-[3px] focus-visible:outline-none"
+        />
+      ) : (
+        <div className="flex flex-col gap-1">
+          {options.map((opt) => (
+            <button
+              key={opt}
+              type="button"
+              data-slot="web-ask-option"
+              data-selected={selected.includes(opt) ? "true" : "false"}
+              onClick={() => toggle(opt)}
+              className="border-border hover:bg-background/60 flex w-full cursor-pointer items-center gap-2 rounded-md border px-2 py-1.5 text-left"
+            >
+              <span
+                className={`flex size-3.5 shrink-0 items-center justify-center rounded-sm border ${
+                  selected.includes(opt) ? "bg-primary border-primary" : "border-border bg-background"
+                }`}
+              >
+                {selected.includes(opt) && <span className="text-background text-[10px] leading-none">✓</span>}
+              </span>
+              <span className="min-w-0">{opt}</span>
+            </button>
+          ))}
+        </div>
+      )}
+      <button
+        type="button"
+        data-slot="web-ask-submit"
+        onClick={submit}
+        disabled={isMulti ? selected.length === 0 : row.toolName === "web_ask_text" ? text.trim() === "" : selected.length === 0}
+        className="bg-primary text-primary-foreground hover:bg-primary/90 w-fit cursor-pointer rounded-md px-3 py-1.5 font-medium disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        提交回答
+      </button>
+    </div>
+  );
+}
+
 /** 单个 reasoning 折叠块（R18：折叠显示 "reasoning" 标签，点击就地展开全文） */
 function ReasoningBlock({ text }: { text: string }) {
   const [open, setOpen] = useState(false);
@@ -151,12 +247,15 @@ function StreamingSteps({
   tools,
   active = true,
   processing = false,
+  onAnswer,
 }: {
   turn: Turn;
   tools: StreamState["tools"];
   active?: boolean;
   /** R24：工具结果窗口期——thinking 块由顶部指示器显示（避免重复） */
   processing?: boolean;
+  /** R25：web 提问工具回答回调 */
+  onAnswer: (toolCallId: string, answer: unknown) => void;
 }) {
   const rows = new Map<string, StreamState["tools"][number]>();
   for (const t of tools) rows.set(t.toolCallId, t);
@@ -186,7 +285,11 @@ function StreamingSteps({
         if (st.type === "tool") {
           const row = rows.get(st.toolCallId);
           if (!row) return null;
-          return <ToolCard key={i} row={row} />;
+          return row.toolName.startsWith("web_ask_") ? (
+            <WebAskCard key={i} row={row} onAnswer={onAnswer} />
+          ) : (
+            <ToolCard key={i} row={row} />
+          );
         }
         // text 块：R23 F1——流式中（active）轻量纯文本渲染（避免每 delta 全量 ReactMarkdown 解析）；
         // 终态/过渡轮（active=false）保持 Markdown。▍ 光标仅活跃轮最后 text 块。
@@ -303,12 +406,15 @@ function TurnBubbleView({
   rows,
   onFork,
   processing,
+  onAnswer,
 }: {
   bubble: TurnBubble;
   rows: ToolRow[];
   onFork: (userIndex: number) => void;
   /** R24：工具结果窗口期文本（仅最后一个气泡非 null）；null = 非窗口期 */
   processing: string | null;
+  /** R25：web 提问工具回答回调 */
+  onAnswer: (toolCallId: string, answer: unknown) => void;
 }) {
   const [timelineOpen, setTimelineOpen] = useState(false);
   const hasUser = bubble.userIndex >= 0;
@@ -376,11 +482,13 @@ function TurnBubbleView({
               {/* R18：流式中显示当前活跃轮；终态只留最终回复文本。
                   R20：活跃轮无内容时延续显示上一轮（无空白）；终态工具轮（无最终文本）显示步骤内容 */}
               {activeTurn ? (
-                visibleTurn ? <StreamingSteps turn={visibleTurn} tools={rows} active={visibleTurn === activeTurn} processing={processing !== null} /> : null
+                visibleTurn ? (
+                  <StreamingSteps turn={visibleTurn} tools={rows} active={visibleTurn === activeTurn} processing={processing !== null} onAnswer={onAnswer} />
+                ) : null
               ) : finalTurn && finalTurn.text.trim() ? (
                 <Markdown text={finalTurn.text} />
               ) : finalTurn && finalTurn.steps.length > 0 ? (
-                <StreamingSteps turn={finalTurn} tools={rows} active={false} processing={processing !== null} />
+                <StreamingSteps turn={finalTurn} tools={rows} active={false} processing={processing !== null} onAnswer={onAnswer} />
               ) : null}
             </Bubble>
             {showFullToolbar && (
@@ -456,10 +564,13 @@ export function Chat({
   state,
   dispatch,
   onFork,
+  onAnswerAsk,
 }: {
   state: StreamState;
   dispatch: React.Dispatch<StreamAction>;
   onFork: (userIndex: number) => void;
+  /** R25：web 提问工具回答提交（App 接 RPC web-ask:answer） */
+  onAnswerAsk: (toolCallId: string, answer: unknown) => void;
 }) {
   const hasContent = state.bubbles.length > 0 || state.tools.length > 0;
   const compacting = state.compacting;
@@ -514,6 +625,7 @@ export function Chat({
                             rows={toolsForBubble(b, state.tools, rowsCacheRef.current)}
                             onFork={onFork}
                             processing={idx === state.bubbles.length - 1 ? state.processingToolResult : null}
+                            onAnswer={onAnswerAsk}
                           />
                         </MessageGroup>
                       </MessageScrollerItem>

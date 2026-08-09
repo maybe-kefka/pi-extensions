@@ -51,7 +51,7 @@ describe("Chat 气泡渲染（R18 langgraph 流式模型）", () => {
     ]);
     expect(s.bubbles).toHaveLength(1);
     const dispatch = vi.fn();
-    render(<Chat state={s} dispatch={dispatch} onFork={vi.fn()} />);
+    render(<Chat state={s} dispatch={dispatch} onFork={vi.fn()} onAnswerAsk={vi.fn()} />);
     expect(screen.getByText("问题一")).toBeTruthy();
     // 只显示最终回复（最后一个 turn），中间 turn 文本隐藏
     expect(screen.getByText("最终回复")).toBeTruthy();
@@ -63,7 +63,7 @@ describe("Chat 气泡渲染（R18 langgraph 流式模型）", () => {
   it("user 消息气泡在右（data-align=end）", () => {
     const s = run([{ type: "message_start", message: { role: "user", content: "你好" } }]);
     const dispatch = vi.fn();
-    const { container } = render(<Chat state={s} dispatch={dispatch} onFork={vi.fn()} />);
+    const { container } = render(<Chat state={s} dispatch={dispatch} onFork={vi.fn()} onAnswerAsk={vi.fn()} />);
     const message = container.querySelector('[data-slot="message"]');
     expect(message?.getAttribute("data-align")).toBe("end");
   });
@@ -87,7 +87,7 @@ describe("Chat 气泡渲染（R18 langgraph 流式模型）", () => {
       { type: "message_update", event: { type: "text_delta", contentIndex: 1, delta: "在" } },
     ]);
     const dispatch = vi.fn();
-    render(<Chat state={s} dispatch={dispatch} onFork={vi.fn()} />);
+    render(<Chat state={s} dispatch={dispatch} onFork={vi.fn()} onAnswerAsk={vi.fn()} />);
     // reasoning 灰色小字实时全文（无 Thinking… 占位行）
     expect(screen.getByText("正在思考")).toBeTruthy();
     expect(screen.queryByText(/Thinking/)).toBeNull();
@@ -115,7 +115,7 @@ describe("Chat 气泡渲染（R18 langgraph 流式模型）", () => {
       { type: "tool_update", toolCallId: "t1", partialResult: { content: [{ type: "text", text: "out" }] } },
     ]);
     const dispatch = vi.fn();
-    const { container } = render(<Chat state={s} dispatch={dispatch} onFork={vi.fn()} />);
+    const { container } = render(<Chat state={s} dispatch={dispatch} onFork={vi.fn()} onAnswerAsk={vi.fn()} />);
     // content 在前、工具卡片在后（DOM 顺序）
     const slots = container.querySelectorAll("[data-slot]");
     const texts = [...slots].map((n) => n.getAttribute("data-slot"));
@@ -152,7 +152,7 @@ describe("Chat 气泡渲染（R18 langgraph 流式模型）", () => {
       { type: "message_start", message: { role: "assistant", content: [] } },
     ]);
     const dispatch = vi.fn();
-    const { rerender } = render(<Chat state={first} dispatch={dispatch} onFork={vi.fn()} />);
+    const { rerender } = render(<Chat state={first} dispatch={dispatch} onFork={vi.fn()} onAnswerAsk={vi.fn()} />);
     // 新轮无内容 → 上一轮内容保留（工具卡片可见，无空白帧）
     expect(screen.getByText("bash")).toBeTruthy();
     expect(screen.getByText("out")).toBeTruthy();
@@ -184,7 +184,7 @@ describe("Chat 气泡渲染（R18 langgraph 流式模型）", () => {
       })(),
       { type: "message_update", event: { type: "text_delta", contentIndex: 0, delta: "第二轮" } },
     ]);
-    rerender(<Chat state={second} dispatch={dispatch} onFork={vi.fn()} />);
+    rerender(<Chat state={second} dispatch={dispatch} onFork={vi.fn()} onAnswerAsk={vi.fn()} />);
     // 已切换：显示第二轮，旧轮内容隐藏
     expect(screen.getByText(/第二轮/)).toBeTruthy();
     expect(screen.queryByText("第一轮过程文本")).toBeNull();
@@ -203,7 +203,7 @@ describe("Chat 气泡渲染（R18 langgraph 流式模型）", () => {
       { type: "agent_settled" },
     ]);
     const dispatch = vi.fn();
-    render(<Chat state={s} dispatch={dispatch} onFork={vi.fn()} />);
+    render(<Chat state={s} dispatch={dispatch} onFork={vi.fn()} onAnswerAsk={vi.fn()} />);
     // 终态：无最终文本 → 保留工具卡片（done 态）而非白屏
     expect(screen.getByText("bash")).toBeTruthy();
     expect(screen.getByText("out")).toBeTruthy();
@@ -226,7 +226,7 @@ describe("Chat 气泡渲染（R18 langgraph 流式模型）", () => {
       { type: "agent_settled" },
     ]);
     const dispatch = vi.fn();
-    render(<Chat state={s} dispatch={dispatch} onFork={vi.fn()} />);
+    render(<Chat state={s} dispatch={dispatch} onFork={vi.fn()} onAnswerAsk={vi.fn()} />);
     // 只显示最终 text 块（最后 text 块），过程 content / thinking / 工具全隐藏
     expect(screen.getByText("最终答案")).toBeTruthy();
     expect(screen.queryByText("过程文本")).toBeNull();
@@ -273,7 +273,7 @@ describe("Chat 工具栏", () => {
     const s = run(doneBubble());
     const dispatch = vi.fn();
     const onFork = vi.fn();
-    render(<Chat state={s} dispatch={dispatch} onFork={onFork} />);
+    render(<Chat state={s} dispatch={dispatch} onFork={onFork} onAnswerAsk={vi.fn()} />);
     expect(screen.getByRole("button", { name: /fork/ })).toBeTruthy();
     expect(screen.getByRole("button", { name: /progress/ })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: /fork/ }));
@@ -283,7 +283,7 @@ describe("Chat 工具栏", () => {
   it("progress 弹窗：content 正常展示、reasoning 折叠（点击展开全文）、tool 折叠（点击展开 args/output）、不含最终回复", () => {
     const s = run(doneBubble());
     const dispatch = vi.fn();
-    render(<Chat state={s} dispatch={dispatch} onFork={vi.fn()} />);
+    render(<Chat state={s} dispatch={dispatch} onFork={vi.fn()} onAnswerAsk={vi.fn()} />);
     fireEvent.click(screen.getByRole("button", { name: /progress/ }));
     const scroll = document.querySelector("[data-slot=progress-scroll]");
     expect(scroll).toBeTruthy();
@@ -307,7 +307,7 @@ describe("Chat 工具栏", () => {
   it("R20：已完成气泡在 agent 忙碌时按钮保留（per-bubble 独立）", () => {
     const s = run([...doneBubble(), { type: "agent_start" }]);
     const dispatch = vi.fn();
-    render(<Chat state={s} dispatch={dispatch} onFork={vi.fn()} />);
+    render(<Chat state={s} dispatch={dispatch} onFork={vi.fn()} onAnswerAsk={vi.fn()} />);
     // 气泡已完成（自身不在流式）→ 即使 agent 全局忙碌也显示按钮
     expect(screen.getByRole("button", { name: /fork/ })).toBeTruthy();
     expect(screen.getByRole("button", { name: /progress/ })).toBeTruthy();
@@ -325,7 +325,7 @@ describe("Chat 工具栏", () => {
     ]);
     expect(s.bubbles).toHaveLength(2);
     const dispatch = vi.fn();
-    render(<Chat state={s} dispatch={dispatch} onFork={vi.fn()} />);
+    render(<Chat state={s} dispatch={dispatch} onFork={vi.fn()} onAnswerAsk={vi.fn()} />);
     // 已完成气泡 A：fork + progress 均可见
     expect(screen.getAllByRole("button", { name: /fork/ })).toHaveLength(1);
     expect(screen.getAllByRole("button", { name: /progress/ })).toHaveLength(2);
@@ -340,7 +340,7 @@ describe("Chat 工具栏", () => {
       { type: "message_update", event: { type: "text_delta", contentIndex: 0, delta: "流式" } },
     ]);
     const dispatch = vi.fn();
-    render(<Chat state={s} dispatch={dispatch} onFork={vi.fn()} />);
+    render(<Chat state={s} dispatch={dispatch} onFork={vi.fn()} onAnswerAsk={vi.fn()} />);
     expect(screen.getByRole("button", { name: /progress/ })).toBeTruthy();
     expect(screen.queryByRole("button", { name: /fork/ })).toBeNull();
   });
@@ -353,7 +353,7 @@ describe("Chat 工具栏", () => {
     ]);
     expect(s.bubbles[0].userIndex).toBe(-1);
     const dispatch = vi.fn();
-    render(<Chat state={s} dispatch={dispatch} onFork={vi.fn()} />);
+    render(<Chat state={s} dispatch={dispatch} onFork={vi.fn()} onAnswerAsk={vi.fn()} />);
     expect(screen.getByText("孤儿")).toBeTruthy();
     expect(screen.queryByRole("button", { name: /fork/ })).toBeNull();
   });
@@ -362,7 +362,7 @@ describe("Chat 工具栏", () => {
 describe("Chat 空状态", () => {
   it("无消息 → 空状态提示", () => {
     const dispatch = vi.fn();
-    render(<Chat state={initialState} dispatch={dispatch} onFork={vi.fn()} />);
+    render(<Chat state={initialState} dispatch={dispatch} onFork={vi.fn()} onAnswerAsk={vi.fn()} />);
     expect(screen.getByText("暂无消息")).toBeTruthy();
   });
 });
@@ -384,7 +384,7 @@ describe("R20 compact 展示", () => {
 
   it("before：聊天流显示压缩中记录（转圈 + 原因，无顶部横幅）", () => {
     const dispatch = vi.fn();
-    render(<Chat state={compactBannerState("before", "threshold", true)} dispatch={dispatch} onFork={vi.fn()} />);
+    render(<Chat state={compactBannerState("before", "threshold", true)} dispatch={dispatch} onFork={vi.fn()} onAnswerAsk={vi.fn()} />);
     expect(document.querySelector("[data-slot=compact-banner]")).toBeNull();
     const record = document.querySelector("[data-slot=compact-record]");
     expect(record).toBeTruthy();
@@ -395,7 +395,7 @@ describe("R20 compact 展示", () => {
 
   it("done：记录气泡完成态（willRetry 提示）", () => {
     const dispatch = vi.fn();
-    render(<Chat state={compactBannerState("done", "manual", true)} dispatch={dispatch} onFork={vi.fn()} />);
+    render(<Chat state={compactBannerState("done", "manual", true)} dispatch={dispatch} onFork={vi.fn()} onAnswerAsk={vi.fn()} />);
     expect(document.querySelector("[data-slot=compact-banner]")).toBeNull();
     const record = document.querySelector("[data-slot=compact-record]");
     expect(record).toBeTruthy();
@@ -406,7 +406,7 @@ describe("R20 compact 展示", () => {
 
   it("无 compact 状态：无记录气泡", () => {
     const dispatch = vi.fn();
-    render(<Chat state={run([{ type: "message_start", message: { role: "user", content: "q" } }])} dispatch={dispatch} onFork={vi.fn()} />);
+    render(<Chat state={run([{ type: "message_start", message: { role: "user", content: "q" } }])} dispatch={dispatch} onFork={vi.fn()} onAnswerAsk={vi.fn()} />);
     expect(document.querySelector("[data-slot=compact-banner]")).toBeNull();
     expect(document.querySelector("[data-slot=compact-record]")).toBeNull();
   });
@@ -419,7 +419,7 @@ describe("R22 turn_start 气泡时机", () => {
       { type: "message_start", message: { role: "user", content: "q" } },
       { type: "turn_start" },
     ]);
-    render(<Chat state={state} dispatch={dispatch} onFork={vi.fn()} />);
+    render(<Chat state={state} dispatch={dispatch} onFork={vi.fn()} onAnswerAsk={vi.fn()} />);
     const caret = document.querySelector("[data-slot=working-caret]");
     expect(caret).toBeTruthy();
     expect(document.querySelector("[data-slot=streaming-steps]")).toBeTruthy();
@@ -438,7 +438,7 @@ describe("R23 F1 流式纯文本渲染", () => {
       { type: "message_update", event: { type: "text_delta", contentIndex: 0, delta: " 内容" } },
     ]);
     const dispatch = vi.fn();
-    const { container } = render(<Chat state={s} dispatch={dispatch} onFork={vi.fn()} />);
+    const { container } = render(<Chat state={s} dispatch={dispatch} onFork={vi.fn()} onAnswerAsk={vi.fn()} />);
     const stepText = container.querySelector("[data-slot=step-text]");
     expect(stepText).toBeTruthy();
     // 纯文本：无 markdown 结构，原文可见（含未解析的 ** 标记）
@@ -458,7 +458,7 @@ describe("R23 F1 流式纯文本渲染", () => {
       { type: "turn_start" },
     ]);
     const dispatch = vi.fn();
-    const { container } = render(<Chat state={s} dispatch={dispatch} onFork={vi.fn()} />);
+    const { container } = render(<Chat state={s} dispatch={dispatch} onFork={vi.fn()} onAnswerAsk={vi.fn()} />);
     const stepText = container.querySelector("[data-slot=step-text]");
     expect(stepText).toBeTruthy();
     // Markdown 渲染（markdown-body 存在），且解析了 **格式**（strong 元素）
@@ -484,7 +484,7 @@ describe("R23 F3 ToolCard 惰性序列化", () => {
       { type: "tool_start", toolCallId: "t1", toolName: "bash", args: bigArgs },
     ]);
     const dispatch = vi.fn();
-    const { container } = render(<Chat state={s} dispatch={dispatch} onFork={vi.fn()} />);
+    const { container } = render(<Chat state={s} dispatch={dispatch} onFork={vi.fn()} onAnswerAsk={vi.fn()} />);
     // 折叠态：卡片按钮内不出现完整 JSON 体（preview 有截断，无展开区）
     const btn = container.querySelector("[data-slot=tool-toggle]");
     expect(btn?.textContent).not.toContain("xxxxx".repeat(1000));
@@ -503,7 +503,7 @@ describe("R24 UI 细节", () => {
       { type: "message_start", message: { role: "user", content: "q" } },
       { type: "message_start", message: { role: "assistant", content: [{ type: "text", text: "回复" }] } },
     ]);
-    const { container } = render(<Chat state={s} dispatch={vi.fn()} onFork={vi.fn()} />);
+    const { container } = render(<Chat state={s} dispatch={vi.fn()} onFork={vi.fn()} onAnswerAsk={vi.fn()} />);
     const avatars = container.querySelectorAll("[data-slot=message-avatar]");
     expect(avatars.length).toBeGreaterThan(0);
     for (const a of avatars) {
@@ -514,7 +514,7 @@ describe("R24 UI 细节", () => {
 
   it("聊天流底部空间 25vh（pb-[25vh]）", () => {
     const s = run([{ type: "message_start", message: { role: "user", content: "q" } }]);
-    const { container } = render(<Chat state={s} dispatch={vi.fn()} onFork={vi.fn()} />);
+    const { container } = render(<Chat state={s} dispatch={vi.fn()} onFork={vi.fn()} onAnswerAsk={vi.fn()} />);
     const content = container.querySelector("[data-slot=message-scroller-content]");
     expect(content?.className).toContain("pb-[25vh]");
   });
@@ -527,7 +527,7 @@ describe("R24 think 窗口", () => {
       { type: "message_start", message: { role: "assistant", content: [{ type: "thinking", thinking: "" }] } },
       { type: "message_update", event: { type: "thinking_delta", contentIndex: 0, delta: "x".repeat(200), partial: { thinking: "x".repeat(200) } } },
     ]);
-    const { container } = render(<Chat state={s} dispatch={vi.fn()} onFork={vi.fn()} />);
+    const { container } = render(<Chat state={s} dispatch={vi.fn()} onFork={vi.fn()} onAnswerAsk={vi.fn()} />);
     const th = container.querySelector("[data-slot=step-thinking]");
     expect(th).toBeTruthy();
     expect(th?.className).toContain("max-h-16");
@@ -552,7 +552,7 @@ describe("R24 工具结果窗口期渲染", () => {
       { type: "tool_start", toolCallId: "t1", toolName: "bash", args: {} },
       { type: "tool_end", toolCallId: "t1", result: { content: [{ type: "text", text: "out" }] }, isError: false },
     ]);
-    const { container } = render(<Chat state={s} dispatch={vi.fn()} onFork={vi.fn()} />);
+    const { container } = render(<Chat state={s} dispatch={vi.fn()} onFork={vi.fn()} onAnswerAsk={vi.fn()} />);
     const ind = container.querySelector("[data-slot=tool-processing]");
     expect(ind).toBeTruthy();
     expect(ind?.textContent).toContain("thinking......");
@@ -573,14 +573,14 @@ describe("R24 工具结果窗口期渲染", () => {
       type: "message_update",
       event: { type: "thinking_delta", contentIndex: 0, delta: "分析工具输出", partial: { thinking: "分析工具输出" } },
     });
-    const { container, rerender } = render(<Chat state={withThinking} dispatch={vi.fn()} onFork={vi.fn()} />);
+    const { container, rerender } = render(<Chat state={withThinking} dispatch={vi.fn()} onFork={vi.fn()} onAnswerAsk={vi.fn()} />);
     expect(container.querySelector("[data-slot=tool-processing]")?.textContent).toContain("分析工具输出");
     // text_delta → 指示器消失
     const withText = streamReducer(withThinking, {
       type: "message_update",
       event: { type: "text_delta", contentIndex: 1, delta: "结果" },
     });
-    rerender(<Chat state={withText} dispatch={vi.fn()} onFork={vi.fn()} />);
+    rerender(<Chat state={withText} dispatch={vi.fn()} onFork={vi.fn()} onAnswerAsk={vi.fn()} />);
     expect(container.querySelector("[data-slot=tool-processing]")).toBeNull();
   });
 });
@@ -596,7 +596,7 @@ describe("R25 compact 锚定渲染", () => {
     const anchorId = done.anchorBubbleId;
     // 压缩后追加新消息 → 记录仍在 anchor 后、新消息前
     const s2 = streamReducer(done, { type: "message_start", message: { role: "user", content: "q2" } });
-    const { container } = render(<Chat state={s2} dispatch={vi.fn()} onFork={vi.fn()} />);
+    const { container } = render(<Chat state={s2} dispatch={vi.fn()} onFork={vi.fn()} onAnswerAsk={vi.fn()} />);
     const items = [...container.querySelectorAll("[data-slot=message]")];
     const record = container.querySelector("[data-slot=compact-record]");
     expect(record).toBeTruthy();
@@ -610,5 +610,46 @@ describe("R25 compact 锚定渲染", () => {
     const before = (a: Element, b: Element) => !!(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
     expect(before(items[replyIdx]!, record!)).toBe(true);
     expect(before(record!, items[q2Idx]!)).toBe(true);
+  });
+});
+
+describe("R25 web 提问工具渲染", () => {
+  const askState = () =>
+    run([
+      { type: "message_start", message: { role: "user", content: "q" } },
+      { type: "message_start", message: { role: "assistant", content: [{ type: "toolCall", id: "t1", name: "web_ask_single", arguments: {} }] } },
+      { type: "tool_start", toolCallId: "t1", toolName: "web_ask_single", args: { question: "选哪个？", options: ["A", "B"] } },
+    ]);
+
+  it("web_ask_single 渲染问题卡片（选项按钮）", () => {
+    const { container } = render(<Chat state={askState()} dispatch={vi.fn()} onFork={vi.fn()} onAnswerAsk={vi.fn()} />);
+    const card = container.querySelector("[data-slot=web-ask]");
+    expect(card).toBeTruthy();
+    expect(card?.textContent).toContain("选哪个？");
+    const opts = [...container.querySelectorAll("[data-slot=web-ask-option]")];
+    expect(opts.map((o) => o.textContent)).toEqual(["A", "B"]);
+    // 未回答 → 提交按钮可用性
+    expect(container.querySelector("[data-slot=web-ask-submit]")).toBeTruthy();
+  });
+
+  it("选择选项 + 提交 → onAnswerAsk(toolCallId, answer)；已回答后显示结果", () => {
+    const onAnswer = vi.fn();
+    const { container, rerender } = render(<Chat state={askState()} dispatch={vi.fn()} onFork={vi.fn()} onAnswerAsk={onAnswer} />);
+    const opts = [...container.querySelectorAll("[data-slot=web-ask-option]")];
+    fireEvent.click(opts[1] as HTMLElement);
+    fireEvent.click(container.querySelector("[data-slot=web-ask-submit]") as HTMLElement);
+    expect(onAnswer).toHaveBeenCalledWith("t1", "B");
+    // 已回答（tool_end 带 output）→ 非交互、显示结果
+    const s2 = streamReducer(askState(), {
+      type: "tool_end",
+      toolCallId: "t1",
+      result: { content: [{ type: "text", text: "{\"status\":\"answered\",\"answer\":\"B\"}" }] },
+      isError: false,
+    });
+    rerender(<Chat state={s2} dispatch={vi.fn()} onFork={vi.fn()} onAnswerAsk={onAnswer} />);
+    const answered = container.querySelector("[data-slot=web-ask][data-answered=true]");
+    expect(answered).toBeTruthy();
+    expect(answered?.textContent).toContain("B");
+    expect(container.querySelector("[data-slot=web-ask-submit]")).toBeNull();
   });
 });

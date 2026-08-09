@@ -130,6 +130,13 @@ export default function App() {
     });
   }, []);
 
+  // R25：web 提问工具回答 → RPC 通道（resolve 服务器端阻塞的 execute）
+  const answerAsk = useCallback((toolCallId: string, answer: unknown) => {
+    rpcRef.current?.request("web-ask:answer", { toolCallId, answer }).catch((e) => {
+      toast.error(`回答提交失败: ${e.message}`);
+    });
+  }, []);
+
   const abort = useCallback(() => {
     rpcRef.current?.request("pi:abort").catch((e) => toast.error(`abort: ${e.message}`));
   }, []);
@@ -295,7 +302,12 @@ export default function App() {
       />
       <DisconnectBannerMemo conn={conn} />
       <div className="flex min-h-0 flex-1">
-        <Chat state={state} dispatch={dispatch} onFork={fork} />
+        <Chat
+          state={state}
+          dispatch={dispatch}
+          onFork={fork}
+          onAnswerAsk={answerAsk}
+        />
         <SidebarMemo collapsed={sidebarCollapsed} {...sidebarProps} />
       </div>
       <SidebarSheetMemo open={drawerOpen} onOpenChange={setDrawerOpen} {...sidebarProps} />
