@@ -1,0 +1,394 @@
+/**
+ * R26 Themes：主题引擎（唯一测试 seam——纯函数，不碰 DOM）。
+ *
+ * - THEMES：5 个流行主题（GitHub / One Dark / Dracula / Nord / Tokyo Night）× 浅深双色板，
+ *   色板值取自各主题官方公开常量（GitHub Primer / Atom One / Dracula / Nord / tokyonight）
+ * - resolveTheme：用户偏好 + 系统色板 → 应用目标 {theme, scheme}
+ * - loadPreference / savePreference：localStorage 持久化（缺省 "system"，非法值回退默认）
+ * - parseSystemScheme：matchMedia 注入式解析系统深浅
+ *
+ * DOM 应用（data-theme/.dark 挂载、change 监听）与 UI 面板为薄层，不在此模块。
+ */
+
+export type Scheme = "light" | "dark";
+export type ThemeName = "github" | "one-dark" | "dracula" | "nord" | "tokyo-night";
+export type ThemePreference = { theme: ThemeName; scheme: Scheme | "system" };
+
+export const THEME_NAMES: ThemeName[] = ["github", "one-dark", "dracula", "nord", "tokyo-night"];
+export const DEFAULT_PREFERENCE: ThemePreference = { theme: "github", scheme: "system" };
+export const PREFERENCE_KEY = "pi-web:theme-preference";
+
+export interface ThemeTokens {
+  background: string;
+  foreground: string;
+  card: string;
+  cardForeground: string;
+  popover: string;
+  popoverForeground: string;
+  primary: string;
+  primaryForeground: string;
+  secondary: string;
+  secondaryForeground: string;
+  muted: string;
+  mutedForeground: string;
+  accent: string;
+  accentForeground: string;
+  destructive: string;
+  success: string;
+  warning: string;
+  border: string;
+  input: string;
+  ring: string;
+  chart1: string;
+  chart2: string;
+  chart3: string;
+  chart4: string;
+  chart5: string;
+}
+
+export interface ThemeDefinition {
+  name: ThemeName;
+  label: string;
+  light: ThemeTokens;
+  dark: ThemeTokens;
+}
+
+export const THEMES: Record<ThemeName, ThemeDefinition> = {
+  github: {
+    name: "github",
+    label: "GitHub",
+    light: {
+      background: "#ffffff",
+      foreground: "#1f2328",
+      card: "#ffffff",
+      cardForeground: "#1f2328",
+      popover: "#ffffff",
+      popoverForeground: "#1f2328",
+      primary: "#0969da",
+      primaryForeground: "#ffffff",
+      secondary: "#f6f8fa",
+      secondaryForeground: "#1f2328",
+      muted: "#f6f8fa",
+      mutedForeground: "#59636e",
+      accent: "#0969da",
+      accentForeground: "#ffffff",
+      destructive: "#d1242f",
+      success: "#1a7f37",
+      warning: "#9a6700",
+      border: "#d1d9e0",
+      input: "#d1d9e0",
+      ring: "#0969da",
+      chart1: "#0969da",
+      chart2: "#1a7f37",
+      chart3: "#d1242f",
+      chart4: "#9a6700",
+      chart5: "#8250df",
+    },
+    dark: {
+      background: "#0d1117",
+      foreground: "#f0f6fc",
+      card: "#0d1117",
+      cardForeground: "#f0f6fc",
+      popover: "#0d1117",
+      popoverForeground: "#f0f6fc",
+      primary: "#4493f8",
+      primaryForeground: "#0d1117",
+      secondary: "#151b23",
+      secondaryForeground: "#f0f6fc",
+      muted: "#151b23",
+      mutedForeground: "#9198a1",
+      accent: "#4493f8",
+      accentForeground: "#0d1117",
+      destructive: "#f85149",
+      success: "#3fb950",
+      warning: "#d29922",
+      border: "#3d444d",
+      input: "#3d444d",
+      ring: "#4493f8",
+      chart1: "#4493f8",
+      chart2: "#3fb950",
+      chart3: "#f85149",
+      chart4: "#d29922",
+      chart5: "#a371f7",
+    },
+  },
+  "one-dark": {
+    name: "one-dark",
+    label: "One Dark",
+    light: {
+      background: "#fafafa",
+      foreground: "#383a42",
+      card: "#fafafa",
+      cardForeground: "#383a42",
+      popover: "#fafafa",
+      popoverForeground: "#383a42",
+      primary: "#4078f2",
+      primaryForeground: "#ffffff",
+      secondary: "#f0f0f1",
+      secondaryForeground: "#383a42",
+      muted: "#f0f0f1",
+      mutedForeground: "#a0a1a7",
+      accent: "#0184bc",
+      accentForeground: "#ffffff",
+      destructive: "#e45649",
+      success: "#50a14f",
+      warning: "#986801",
+      border: "#e5e5e6",
+      input: "#e5e5e6",
+      ring: "#4078f2",
+      chart1: "#4078f2",
+      chart2: "#50a14f",
+      chart3: "#e45649",
+      chart4: "#986801",
+      chart5: "#a626a4",
+    },
+    dark: {
+      background: "#282c34",
+      foreground: "#abb2bf",
+      card: "#282c34",
+      cardForeground: "#abb2bf",
+      popover: "#282c34",
+      popoverForeground: "#abb2bf",
+      primary: "#61afef",
+      primaryForeground: "#282c34",
+      secondary: "#21252b",
+      secondaryForeground: "#abb2bf",
+      muted: "#21252b",
+      mutedForeground: "#5c6370",
+      accent: "#56b6c2",
+      accentForeground: "#282c34",
+      destructive: "#e06c75",
+      success: "#98c379",
+      warning: "#e5c07b",
+      border: "#3e4451",
+      input: "#3e4451",
+      ring: "#61afef",
+      chart1: "#61afef",
+      chart2: "#98c379",
+      chart3: "#e06c75",
+      chart4: "#e5c07b",
+      chart5: "#c678dd",
+    },
+  },
+  dracula: {
+    name: "dracula",
+    label: "Dracula",
+    light: {
+      background: "#ffffff",
+      foreground: "#44475a",
+      card: "#ffffff",
+      cardForeground: "#44475a",
+      popover: "#ffffff",
+      popoverForeground: "#44475a",
+      primary: "#8b5cf6",
+      primaryForeground: "#ffffff",
+      secondary: "#f4f4fa",
+      secondaryForeground: "#44475a",
+      muted: "#f4f4fa",
+      mutedForeground: "#6272a4",
+      accent: "#22b8cf",
+      accentForeground: "#ffffff",
+      destructive: "#ff5555",
+      success: "#3dbd6e",
+      warning: "#e6c84f",
+      border: "#e2e2ee",
+      input: "#e2e2ee",
+      ring: "#8b5cf6",
+      chart1: "#8b5cf6",
+      chart2: "#3dbd6e",
+      chart3: "#ff5555",
+      chart4: "#e6c84f",
+      chart5: "#ff79c6",
+    },
+    dark: {
+      background: "#282a36",
+      foreground: "#f8f8f2",
+      card: "#282a36",
+      cardForeground: "#f8f8f2",
+      popover: "#282a36",
+      popoverForeground: "#f8f8f2",
+      primary: "#bd93f9",
+      primaryForeground: "#282a36",
+      secondary: "#21222c",
+      secondaryForeground: "#f8f8f2",
+      muted: "#21222c",
+      mutedForeground: "#6272a4",
+      accent: "#8be9fd",
+      accentForeground: "#282a36",
+      destructive: "#ff5555",
+      success: "#50fa7b",
+      warning: "#f1fa8c",
+      border: "#44475a",
+      input: "#44475a",
+      ring: "#bd93f9",
+      chart1: "#bd93f9",
+      chart2: "#50fa7b",
+      chart3: "#ff5555",
+      chart4: "#f1fa8c",
+      chart5: "#ff79c6",
+    },
+  },
+  nord: {
+    name: "nord",
+    label: "Nord",
+    light: {
+      background: "#eceff4",
+      foreground: "#2e3440",
+      card: "#eceff4",
+      cardForeground: "#2e3440",
+      popover: "#eceff4",
+      popoverForeground: "#2e3440",
+      primary: "#5e81ac",
+      primaryForeground: "#ffffff",
+      secondary: "#e5e9f0",
+      secondaryForeground: "#2e3440",
+      muted: "#e5e9f0",
+      mutedForeground: "#4c566a",
+      accent: "#81a1c1",
+      accentForeground: "#2e3440",
+      destructive: "#bf616a",
+      success: "#a3be8c",
+      warning: "#ebcb8b",
+      border: "#d8dee9",
+      input: "#d8dee9",
+      ring: "#5e81ac",
+      chart1: "#5e81ac",
+      chart2: "#a3be8c",
+      chart3: "#bf616a",
+      chart4: "#ebcb8b",
+      chart5: "#b48ead",
+    },
+    dark: {
+      background: "#2e3440",
+      foreground: "#eceff4",
+      card: "#2e3440",
+      cardForeground: "#eceff4",
+      popover: "#2e3440",
+      popoverForeground: "#eceff4",
+      primary: "#88c0d0",
+      primaryForeground: "#2e3440",
+      secondary: "#3b4252",
+      secondaryForeground: "#eceff4",
+      muted: "#3b4252",
+      mutedForeground: "#4c566a",
+      accent: "#8fbcbb",
+      accentForeground: "#2e3440",
+      destructive: "#bf616a",
+      success: "#a3be8c",
+      warning: "#ebcb8b",
+      border: "#3b4252",
+      input: "#3b4252",
+      ring: "#88c0d0",
+      chart1: "#88c0d0",
+      chart2: "#a3be8c",
+      chart3: "#bf616a",
+      chart4: "#ebcb8b",
+      chart5: "#b48ead",
+    },
+  },
+  "tokyo-night": {
+    name: "tokyo-night",
+    label: "Tokyo Night",
+    light: {
+      background: "#e1e2e7",
+      foreground: "#3760bf",
+      card: "#e1e2e7",
+      cardForeground: "#3760bf",
+      popover: "#e1e2e7",
+      popoverForeground: "#3760bf",
+      primary: "#2e7de9",
+      primaryForeground: "#ffffff",
+      secondary: "#d7d8dd",
+      secondaryForeground: "#3760bf",
+      muted: "#d7d8dd",
+      mutedForeground: "#6172b0",
+      accent: "#007197",
+      accentForeground: "#ffffff",
+      destructive: "#f52a65",
+      success: "#587539",
+      warning: "#8c6c3e",
+      border: "#b6b8c6",
+      input: "#b6b8c6",
+      ring: "#2e7de9",
+      chart1: "#2e7de9",
+      chart2: "#587539",
+      chart3: "#f52a65",
+      chart4: "#8c6c3e",
+      chart5: "#7847bd",
+    },
+    dark: {
+      background: "#1a1b26",
+      foreground: "#c0caf5",
+      card: "#1a1b26",
+      cardForeground: "#c0caf5",
+      popover: "#1a1b26",
+      popoverForeground: "#c0caf5",
+      primary: "#7aa2f7",
+      primaryForeground: "#1a1b26",
+      secondary: "#16161e",
+      secondaryForeground: "#c0caf5",
+      muted: "#16161e",
+      mutedForeground: "#565f89",
+      accent: "#7dcfff",
+      accentForeground: "#1a1b26",
+      destructive: "#f7768e",
+      success: "#9ece6a",
+      warning: "#e0af68",
+      border: "#414868",
+      input: "#414868",
+      ring: "#7aa2f7",
+      chart1: "#7aa2f7",
+      chart2: "#9ece6a",
+      chart3: "#f7768e",
+      chart4: "#e0af68",
+      chart5: "#bb9af7",
+    },
+  },
+};
+
+export interface ResolvedTheme {
+  theme: ThemeName;
+  scheme: Scheme;
+}
+
+/** 用户偏好 + 系统色板 → 应用目标。scheme=system 时跟随系统色板，否则固定。 */
+export function resolveTheme(preference: ThemePreference, systemScheme: Scheme): ResolvedTheme {
+  return {
+    theme: THEMES[preference.theme] ? preference.theme : DEFAULT_PREFERENCE.theme,
+    scheme: preference.scheme === "system" ? systemScheme : preference.scheme,
+  };
+}
+
+function isThemeName(v: unknown): v is ThemeName {
+  return typeof v === "string" && v in THEMES;
+}
+
+function isScheme(v: unknown): v is Scheme | "system" {
+  return v === "light" || v === "dark" || v === "system";
+}
+
+/** 读取持久化偏好：无值/非法 JSON/非法字段均回退默认（不写存储）。 */
+export function loadPreference(storage: Pick<Storage, "getItem">): ThemePreference {
+  const raw = storage.getItem(PREFERENCE_KEY);
+  if (!raw) return DEFAULT_PREFERENCE;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (typeof parsed !== "object" || parsed === null) return DEFAULT_PREFERENCE;
+    const { theme, scheme } = parsed as Record<string, unknown>;
+    if (!isThemeName(theme) || !isScheme(scheme)) return DEFAULT_PREFERENCE;
+    return { theme, scheme };
+  } catch {
+    return DEFAULT_PREFERENCE;
+  }
+}
+
+export function savePreference(storage: Pick<Storage, "setItem">, preference: ThemePreference): void {
+  storage.setItem(PREFERENCE_KEY, JSON.stringify(preference));
+}
+
+/** 注入式系统色板解析（测试传 fake matchMedia；浏览器传 window.matchMedia）。 */
+export function parseSystemScheme(
+  matchMedia: (query: string) => { matches: boolean },
+): Scheme {
+  return matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
