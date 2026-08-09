@@ -64,7 +64,12 @@ async function handleRequest(
     }
 
     case "pi:compact": {
-      requireCtxOf().compact();
+      // R21：错误不再静默——pi 端（会话太小/已压缩等）异常经 onError → notify 广播 → 前端侧栏通知
+      requireCtxOf().compact({
+        onError: (e: Error) => {
+          console.broadcast("notify", { message: `压缩失败：${e.message}`, notifyType: "error" });
+        },
+      });
       return null;
     }
 
