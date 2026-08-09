@@ -3,7 +3,7 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, cleanup, within } from "@testing-library/react";
 import { Chat } from "./Chat";
-import { initialState, streamReducer, type StreamAction } from "@/entities/chat/stream";
+import { initialState, streamReducer, type StreamAction, type StreamState } from "@/entities/chat/stream";
 
 afterEach(cleanup);
 
@@ -360,5 +360,47 @@ describe("Chat 空状态", () => {
     const dispatch = vi.fn();
     render(<Chat state={initialState} dispatch={dispatch} onFork={vi.fn()} />);
     expect(screen.getByText("暂无消息")).toBeTruthy();
+  });
+});
+
+describe("R20 compact 展示", () => {
+  function compactBannerState(phase: "before" | "done", reason: string | null = "manual", willRetry = false): StreamState {
+    return run([
+      { type: "message_start", message: { role: "user", content: "q" } },
+      { type: "message_start", message: { role: "assistant", content: [{ type: "text", text: "答" }] } },
+      { type: "message_end", message: { role: "assistant", content: [{ type: "text", text: "答" }] } },
+      ...(phase === "before"
+        ? [{ type: "session_before_compact" as const, reason, willRetry }]
+        : [
+            { type: "session_before_compact" as const, reason, willRetry },
+            { type: "session_compact" as const, reason, willRetry, fromExtension: false },
+          ]),
+    ]);
+  }
+
+  it("before：显示压缩中横幅（含原因）", () => {
+    const dispatch = vi.fn();
+    render(<Chat state={compactBannerState("before", "threshold", true)} dispatch={dispatch} onFork={vi.fn()} />);
+    const banner = document.querySelector("[data-slot=compact-banner]");
+    expect(banner).toBeTruthy();
+    expect(banner?.textContent).toContain("正在压缩上下文");
+    expect(banner?.textContent).toContain("阈值");
+  });
+
+  it("done：横幅消失，系统记录气泡出现（willRetry 提示）", () => {
+    const dispatch = vi.fn();
+    render(<Chat state={compactBannerState("done", "manual", true)} dispatch={dispatch} onFork={vi.fn()} />);
+    expect(document.querySelector("[data-slot=compact-banner]")).toBeNull();
+    const record = document.querySelector("[data-slot=compact-record]");
+    expect(record).toBeTruthy();
+    expect(record?.textContent).toContain("上下文已压缩");
+    expect(record?.textContent).toContain("将重试上一条消息");
+  });
+
+  it("无 compact 状态：无横幅无记录", () => {
+    const dispatch = vi.fn();
+    render(<Chat state={run([{ type: "message_start", message: { role: "user", content: "q" } }])} dispatch={dispatch} onFork={vi.fn()} />);
+    expect(document.querySelector("[data-slot=compact-banner]")).toBeNull();
+    expect(document.querySelector("[data-slot=compact-record]")).toBeNull();
   });
 });

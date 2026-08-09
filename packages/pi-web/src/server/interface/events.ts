@@ -88,6 +88,12 @@ export function mapEvent(type: string, payload: unknown): MappedEvent {
     case "session_start":
       return { fields: { reason: p.reason, previousSessionFile: p.previousSessionFile ?? null }, refreshState: true };
 
+    case "session_before_compact":
+      return {
+        fields: { reason: p.reason ?? null, willRetry: p.willRetry === true, fromExtension: p.fromExtension === true },
+        refreshState: true,
+      };
+
     case "session_info_changed":
       return { fields: { name: p.name ?? null }, refreshState: true };
     case "model_select":

@@ -34,6 +34,7 @@ const BROADCAST_EVENT_TYPES = [
   "session_before_switch",
   "session_shutdown",
   "session_start",
+  "session_before_compact",
   "session_info_changed",
   "model_select",
   "thinking_level_select",

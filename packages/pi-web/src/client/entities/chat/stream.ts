@@ -63,6 +63,8 @@ export interface StreamState {
   availableThinkingLevels: string[];
   context: { tokens: number | null; contextWindow: number | null; percent: number | null };
   messageCount: number;
+  /** R20：compact 状态（session_before_compact → before；session_compact → done） */
+  compacting: { phase: "before" | "done"; reason: string | null; willRetry: boolean } | null;
   bridge: {
     status: Record<string, string>;
     widget: { key: string; lines: string[] } | null;
@@ -121,6 +123,8 @@ export type StreamAction =
   | { type: "session_start"; reason?: string }
   | { type: "session_shutdown"; reason?: string }
   | { type: "session_before_switch"; reason?: string }
+  | { type: "session_before_compact"; reason?: string | null; willRetry?: boolean }
+  | { type: "session_compact"; reason?: string | null; willRetry?: boolean; fromExtension?: boolean }
   | { type: "session_switch_ready" }
   | { type: "notify"; message: string; notifyType: string }
   | { type: "setStatus"; statusKey: string; statusText: string | null }
@@ -141,6 +145,7 @@ export const initialState: StreamState = {
   availableThinkingLevels: ["off", "minimal", "low", "medium", "high", "xhigh", "max"],
   context: { tokens: null, contextWindow: null, percent: null },
   messageCount: 0,
+  compacting: null,
   bridge: { status: {}, widget: null, notifies: [] },
   conn: "closed",
 };
@@ -620,11 +625,24 @@ export function streamReducer(state: StreamState, action: StreamAction): StreamS
       return {
         ...state,
         sessionReason: action.reason ?? "startup",
-        // 会话切换 → 清空旧会话气泡与工具
+        // 会话切换 → 清空旧会话气泡与工具（含 compact 状态）
         bubbles: [],
         tools: [],
         currentBubbleId: null,
         userCount: 0,
+        compacting: null,
+      };
+
+    case "session_before_compact":
+      return {
+        ...state,
+        compacting: { phase: "before", reason: action.reason ?? null, willRetry: action.willRetry === true },
+      };
+
+    case "session_compact":
+      return {
+        ...state,
+        compacting: { phase: "done", reason: action.reason ?? null, willRetry: action.willRetry === true },
       };
 
     case "session_shutdown":

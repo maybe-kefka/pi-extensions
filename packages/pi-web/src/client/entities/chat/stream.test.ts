@@ -497,3 +497,28 @@ describe("R20：真实事件序（message_end 先于 tool_execution_start）", (
     expect(turn.text).toBe("答案");
   });
 });
+
+describe("R20：compact 状态", () => {
+  it("session_before_compact → compacting.phase = before（reason/willRetry 保留）", () => {
+    const state = reduce([
+      { type: "session_before_compact", reason: "threshold", willRetry: true },
+    ]);
+    expect(state.compacting).toEqual({ phase: "before", reason: "threshold", willRetry: true });
+  });
+
+  it("session_compact → phase = done（reason 保留）", () => {
+    const state = reduce([
+      { type: "session_before_compact", reason: "manual", willRetry: false },
+      { type: "session_compact", reason: "manual", willRetry: false, fromExtension: false },
+    ]);
+    expect(state.compacting).toEqual({ phase: "done", reason: "manual", willRetry: false });
+  });
+
+  it("session_start 重置 compacting", () => {
+    const state = reduce([
+      { type: "session_before_compact", reason: "overflow", willRetry: true },
+      { type: "session_start", reason: "new" },
+    ]);
+    expect(state.compacting).toBeNull();
+  });
+});
