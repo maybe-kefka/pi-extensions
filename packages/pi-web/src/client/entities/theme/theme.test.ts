@@ -78,26 +78,17 @@ describe("THEMES 定义完整性", () => {
 });
 
 describe("resolveTheme", () => {
-  it("scheme=system 时跟随系统色板，主题保持用户选择", () => {
-    expect(resolveTheme({ theme: "dracula", scheme: "system" }, "dark")).toEqual({
-      theme: "dracula",
-      scheme: "dark",
-    });
-    expect(resolveTheme({ theme: "dracula", scheme: "system" }, "light")).toEqual({
-      theme: "dracula",
-      scheme: "light",
-    });
-  });
-
-  it("scheme 固定浅/深时忽略系统色板", () => {
-    expect(resolveTheme({ theme: "nord", scheme: "light" }, "dark")).toEqual({
-      theme: "nord",
-      scheme: "light",
-    });
-    expect(resolveTheme({ theme: "nord", scheme: "dark" }, "light")).toEqual({
-      theme: "nord",
-      scheme: "dark",
-    });
+  it("全组合矩阵：5 主题 × 3 偏好 × 2 系统色板", () => {
+    for (const theme of THEME_NAMES) {
+      // scheme=system → 跟随系统色板
+      expect(resolveTheme({ theme, scheme: "system" }, "dark")).toEqual({ theme, scheme: "dark" });
+      expect(resolveTheme({ theme, scheme: "system" }, "light")).toEqual({ theme, scheme: "light" });
+      // 固定浅/深 → 忽略系统色板
+      expect(resolveTheme({ theme, scheme: "light" }, "dark")).toEqual({ theme, scheme: "light" });
+      expect(resolveTheme({ theme, scheme: "light" }, "light")).toEqual({ theme, scheme: "light" });
+      expect(resolveTheme({ theme, scheme: "dark" }, "light")).toEqual({ theme, scheme: "dark" });
+      expect(resolveTheme({ theme, scheme: "dark" }, "dark")).toEqual({ theme, scheme: "dark" });
+    }
   });
 
   it("默认偏好 = github + system", () => {

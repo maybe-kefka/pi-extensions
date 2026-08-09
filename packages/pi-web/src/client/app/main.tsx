@@ -3,11 +3,10 @@ import { createRoot } from "react-dom/client";
 import "./index.css";
 import App from "./App";
 import { TooltipProvider } from "@/shared/ui/tooltip";
-import { applyTheme, watchSystemScheme } from "./apply-theme";
+import { applyTheme } from "./apply-theme";
 
-// R26：主题——首帧前应用（避免闪屏），跟随系统模式下系统深浅变化实时刷新
+// R26：主题——首帧前应用（避免闪屏）；系统深浅变化由 App 统一订阅（toast 联动同源）
 applyTheme();
-watchSystemScheme(() => applyTheme());
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

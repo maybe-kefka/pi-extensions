@@ -13,6 +13,3 @@
 - [ ] 刷新后选择保持；切换不丢会话
 - [ ] `npm test` + `npm run typecheck` 全绿 + 浏览器冒烟
 
-## Blocked by
-
-01 — theme-engine

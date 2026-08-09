@@ -1,6 +1,6 @@
 > **系统基线 SPEC（v1 归档）**：本文件为 pi-web 的历史系统级规格（协议/安全/状态口径等技术基线）。
-> 自 R19 起不再追加新内容——每次迭代的规格独立落盘到 `.agents/specs/R<迭代>/SPEC.md`（见 `.agents/templates/spec.md` 模板），
-> 需引用本基线时写"基线 SPEC §X"。迭代工作草稿在 `.scratch/<迭代>/`（gitignore），完成后归档。
+> 自 R19 起不再追加新内容——每次迭代的规格独立落盘到 `.agents/specs/<slug>/SPEC.md`（依据 `/skill:to-spec` 生成，无本地模板），
+> 需引用本基线时写"基线 SPEC §X"。迭代工作草稿在 `.scratch/<slug>/`（gitignore），完成后归档。
 
 ---
 # SPEC — @kefka/pi-web

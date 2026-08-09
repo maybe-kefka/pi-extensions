@@ -14,6 +14,3 @@
 - [ ] CSS：5 主题 × 浅（`:root` 覆盖）/深（`.dark` 覆盖）变量块接入；默认 zinc 兜底保留
 - [ ] `npm test` + `npm run typecheck` 全绿
 
-## Blocked by
-
-None — can start immediately.

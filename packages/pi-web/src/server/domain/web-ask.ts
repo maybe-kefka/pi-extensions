@@ -20,6 +20,8 @@ export interface PendingAsk {
 
 export interface AskRegistry {
   readonly pendingCount: number;
+  /** 超时阈值（毫秒）——序列化超时文案时使用 */
+  readonly timeoutMs: number;
   register(toolCallId: string, resolve: (result: AskResult) => void): void;
   /** 幂等：已终结（超时/取消/已回答）返回 false */
   answer(toolCallId: string, answer: unknown): boolean;
@@ -30,6 +32,7 @@ export interface AskRegistry {
 export function createAskRegistry(timeoutMs: number = ASK_TIMEOUT_MS): AskRegistry {
   const pending = new Map<string, PendingAsk>();
   return {
+    timeoutMs,
     get pendingCount() {
       return pending.size;
     },
@@ -63,10 +66,10 @@ export const askRegistry: AskRegistry = createAskRegistry();
 
 /**
  * 工具结果 → LLM/对话流文本：友好格式（用户选择后的选项直读，而非 raw JSON）。
- * - answered：single → 「你选择了：X」；multi → 「你选择了：A、B」；text → 「你的回答：...」
+ * - answered：统一「你的选择：X」（多选顿号连接 A、B）——single/multi/text 同格式
  * - timeout：超时兜底（LLM 自行决定）；cancelled：工具被中止
  */
-export function serializeAskResult(result: AskResult): string {
+export function serializeAskResult(result: AskResult, timeoutMs: number = ASK_TIMEOUT_MS): string {
   switch (result.status) {
     case "answered": {
       const a = result.answer;
@@ -75,7 +78,7 @@ export function serializeAskResult(result: AskResult): string {
 你的选择：${label}`;
     }
     case "timeout":
-      return "⏱️ 用户未在 10 分钟内回答（web 提问超时）。请自行决定，不要再等用户。";
+      return `⏱️ 用户未在 ${Math.round(timeoutMs / 60000)} 分钟内回答（web 提问超时）。请自行决定，不要再等用户。`;
     case "cancelled":
       return "❌ web 提问被中止（工具已取消）。请停止等待并继续当前任务。";
   }
@@ -92,7 +95,7 @@ export function askAndWait(
 ): Promise<{ content: Array<{ type: "text"; text: string }>; details: AskResult }> {
   return new Promise((resolve) => {
     registry.register(toolCallId, (result) => {
-      resolve({ content: [{ type: "text", text: serializeAskResult(result) }], details: result });
+      resolve({ content: [{ type: "text", text: serializeAskResult(result, registry.timeoutMs) }], details: result });
     });
     signal?.addEventListener("abort", () => registry.abort(toolCallId), { once: true });
   });

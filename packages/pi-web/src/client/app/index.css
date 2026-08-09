@@ -60,7 +60,8 @@
   --chart-5: oklch(0.645 0.246 16.439);
 }
 
-/* ===== R26 Themes：5 主题 × 浅深双色板（由 theme.ts 单数据源生成） ===== */
+/* ===== R26 Themes：5 主题 × 浅深双色板（由 scripts/gen-theme-css.mjs 从 theme.ts 生成——改色板先改 theme.ts 再跑生成器） ===== */
+
 [data-theme="github"] {
   --background: #ffffff;
   --foreground: #1f2328;

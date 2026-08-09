@@ -4,7 +4,6 @@ import type * as React from "react";
 const Toaster = ({ ...props }: ToasterProps) => {
   return (
     <Sonner
-      theme="dark"
       className="toaster group"
       style={
         {

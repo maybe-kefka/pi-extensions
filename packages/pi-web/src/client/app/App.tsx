@@ -59,7 +59,6 @@ export default function App() {
   const onThemeChange = useCallback((pref: ThemePreference) => {
     setThemePref(pref);
     savePreference(window.localStorage, pref);
-    applyTheme(pref);
   }, []);
 
   useEffect(() => {
@@ -68,6 +67,11 @@ export default function App() {
       setSystemScheme(parseSystemScheme((query) => window.matchMedia(query))),
     );
   }, []);
+
+  // 偏好或系统色板变化 → 统一应用 DOM（单一路径；main.tsx 仅负责首帧防闪屏）
+  useEffect(() => {
+    applyTheme(themePref);
+  }, [themePref, systemScheme]);
 
   /** 稳定引用：ContextPanel 挂载时取最新 rpc（避免每次渲染重建导致重拉） */
   const getRequest = useCallback(() => {

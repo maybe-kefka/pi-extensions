@@ -55,4 +55,10 @@ describe("R25 web-ask registry", () => {
     expect(serializeAskResult({ status: "timeout" })).toContain("超时");
     expect(serializeAskResult({ status: "cancelled" })).toContain("中止");
   });
+
+  it("超时文案随 timeoutMs 参数（默认 10 分钟；自定义 5 分钟）", () => {
+    expect(serializeAskResult({ status: "timeout" })).toContain("10 分钟");
+    expect(serializeAskResult({ status: "timeout" }, 5 * 60 * 1000)).toContain("5 分钟");
+    expect(serializeAskResult({ status: "timeout" }, 90 * 1000)).toContain("2 分钟");
+  });
 });
