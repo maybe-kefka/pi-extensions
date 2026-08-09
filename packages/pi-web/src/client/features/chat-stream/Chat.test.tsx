@@ -417,7 +417,7 @@ describe("R22 turn_start 气泡时机", () => {
     const dispatch = vi.fn();
     const state = reduce([
       { type: "message_start", message: { role: "user", content: "q" } },
-      { type: "turn_start", turnIndex: 0 },
+      { type: "turn_start" },
     ]);
     render(<Chat state={state} dispatch={dispatch} onFork={vi.fn()} />);
     const caret = document.querySelector("[data-slot=working-caret]");

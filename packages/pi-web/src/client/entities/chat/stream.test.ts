@@ -527,7 +527,7 @@ describe("turn_start 气泡时机（R22）", () => {
   it("turn_start 创建空 turn（气泡立即出现）", () => {
     const s = reduce([
       { type: "message_start", message: { role: "user", content: "q" } },
-      { type: "turn_start", turnIndex: 0 },
+      { type: "turn_start" },
     ]);
     const b = s.bubbles[0];
     expect(b.turns.length).toBe(1);
@@ -538,7 +538,7 @@ describe("turn_start 气泡时机（R22）", () => {
   it("message_start:assistant 复用 turn_start 的空 turn（不重复）", () => {
     const s = reduce([
       { type: "message_start", message: { role: "user", content: "q" } },
-      { type: "turn_start", turnIndex: 0 },
+      { type: "turn_start" },
       { type: "message_start", message: { role: "assistant", content: [{ type: "text", text: "" }] } },
     ]);
     const b = s.bubbles[0];
