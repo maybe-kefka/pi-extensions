@@ -519,3 +519,18 @@ describe("R24 UI 细节", () => {
     expect(content?.className).toContain("pb-[25vh]");
   });
 });
+
+describe("R24 think 窗口", () => {
+  it("thinking 块限 4 行滚动（max-h-16 overflow-y-auto）", () => {
+    const s = run([
+      { type: "message_start", message: { role: "user", content: "q" } },
+      { type: "message_start", message: { role: "assistant", content: [{ type: "thinking", thinking: "" }] } },
+      { type: "message_update", event: { type: "thinking_delta", contentIndex: 0, delta: "x".repeat(200), partial: { thinking: "x".repeat(200) } } },
+    ]);
+    const { container } = render(<Chat state={s} dispatch={vi.fn()} onFork={vi.fn()} />);
+    const th = container.querySelector("[data-slot=step-thinking]");
+    expect(th).toBeTruthy();
+    expect(th?.className).toContain("max-h-16");
+    expect(th?.className).toContain("overflow-y-auto");
+  });
+});

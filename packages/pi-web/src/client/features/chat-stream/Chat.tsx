@@ -163,7 +163,11 @@ function StreamingSteps({ turn, tools, active = true }: { turn: Turn; tools: Str
       {steps.map((st, i) => {
         if (st.type === "thinking") {
           return st.text.trim() ? (
-            <div key={i} data-slot="step-thinking" className="text-muted-foreground text-xs">
+            <div
+              key={i}
+              data-slot="step-thinking"
+              className="text-muted-foreground scrollbar-thin max-h-16 overflow-y-auto text-xs"
+            >
               {st.text}
             </div>
           ) : null;
