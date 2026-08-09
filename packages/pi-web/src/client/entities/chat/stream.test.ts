@@ -610,3 +610,37 @@ describe("R23 修复：turn_start 不污染已完成气泡", () => {
     expect(s2.agentId).toBe(2);
   });
 });
+
+describe("R24 工具结果窗口期（processingToolResult）", () => {
+  const toolState = reduce([
+    { type: "message_start", message: { role: "user", content: "q" } },
+    { type: "message_start", message: { role: "assistant", content: [{ type: "toolCall", id: "t1", name: "bash", arguments: {} }] } },
+    { type: "tool_start", toolCallId: "t1", toolName: "bash", args: {} },
+    { type: "tool_end", toolCallId: "t1", result: { content: [{ type: "text", text: "out" }] }, isError: false },
+  ]);
+
+  it("tool_end 后窗口期开始（processingToolResult 为空串）", () => {
+    expect(toolState.processingToolResult).toBe("");
+  });
+
+  it("thinking_delta（窗口期内）更新 processingToolResult 为 thinking 内容", () => {
+    const s = streamReducer(toolState, { type: "message_update", event: { type: "thinking_delta", contentIndex: 0, delta: "正在分析", partial: { thinking: "正在分析" } } });
+    expect(s.processingToolResult).toBe("正在分析");
+  });
+
+  it("text_delta 清除窗口期", () => {
+    const withThinking = streamReducer(toolState, { type: "message_update", event: { type: "thinking_delta", contentIndex: 0, delta: "t", partial: { thinking: "t" } } });
+    const s = streamReducer(withThinking, { type: "message_update", event: { type: "text_delta", contentIndex: 1, delta: "结果" } });
+    expect(s.processingToolResult).toBeNull();
+  });
+
+  it("agent_end / agent_settled 清除窗口期", () => {
+    expect(streamReducer(toolState, { type: "agent_end", willRetry: false }).processingToolResult).toBeNull();
+    expect(streamReducer(toolState, { type: "agent_settled" }).processingToolResult).toBeNull();
+  });
+
+  it("history / session_start 重置", () => {
+    expect(streamReducer(toolState, { type: "history", messages: [] }).processingToolResult).toBeNull();
+    expect(streamReducer(toolState, { type: "session_start" }).processingToolResult).toBeNull();
+  });
+});

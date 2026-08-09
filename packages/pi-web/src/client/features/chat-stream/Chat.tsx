@@ -146,7 +146,18 @@ function ReasoningBlock({ text }: { text: string }) {
  * thinking 块灰色小字全文、text 块 Markdown 流式 + ▍、tool 块 ToolNode 卡片。
  * R20：active=false 时（过渡期显示上一轮 / 终态工具轮）不渲染 ▍ 光标。
  */
-function StreamingSteps({ turn, tools, active = true }: { turn: Turn; tools: StreamState["tools"]; active?: boolean }) {
+function StreamingSteps({
+  turn,
+  tools,
+  active = true,
+  processing = false,
+}: {
+  turn: Turn;
+  tools: StreamState["tools"];
+  active?: boolean;
+  /** R24：工具结果窗口期——thinking 块由顶部指示器显示（避免重复） */
+  processing?: boolean;
+}) {
   const rows = new Map<string, StreamState["tools"][number]>();
   for (const t of tools) rows.set(t.toolCallId, t);
   const steps = turn.steps;
@@ -162,7 +173,7 @@ function StreamingSteps({ turn, tools, active = true }: { turn: Turn; tools: Str
       )}
       {steps.map((st, i) => {
         if (st.type === "thinking") {
-          return st.text.trim() ? (
+          return st.text.trim() && !processing ? (
             <div
               key={i}
               data-slot="step-thinking"
@@ -291,10 +302,13 @@ function TurnBubbleView({
   bubble,
   rows,
   onFork,
+  processing,
 }: {
   bubble: TurnBubble;
   rows: ToolRow[];
   onFork: (userIndex: number) => void;
+  /** R24：工具结果窗口期文本（仅最后一个气泡非 null）；null = 非窗口期 */
+  processing: string | null;
 }) {
   const [timelineOpen, setTimelineOpen] = useState(false);
   const hasUser = bubble.userIndex >= 0;
@@ -348,14 +362,24 @@ function TurnBubbleView({
           </MessageAvatar>
           <MessageContent>
             <Bubble variant="outline" className="w-full">
+              {/* R24：工具结果窗口期指示器（LLM 处理工具结果中）——气泡内容区第一行，与头像齐平 */}
+              {processing !== null && (
+                <div
+                  data-slot="tool-processing"
+                  className="text-muted-foreground flex items-center gap-1.5 text-xs"
+                >
+                  <Loader2 className="size-3 shrink-0 animate-spin" />
+                  <span className="min-w-0 truncate">{processing || "thinking......"}</span>
+                </div>
+              )}
               {/* R18：流式中显示当前活跃轮；终态只留最终回复文本。
                   R20：活跃轮无内容时延续显示上一轮（无空白）；终态工具轮（无最终文本）显示步骤内容 */}
               {activeTurn ? (
-                visibleTurn ? <StreamingSteps turn={visibleTurn} tools={rows} active={visibleTurn === activeTurn} /> : null
+                visibleTurn ? <StreamingSteps turn={visibleTurn} tools={rows} active={visibleTurn === activeTurn} processing={processing !== null} /> : null
               ) : finalTurn && finalTurn.text.trim() ? (
                 <Markdown text={finalTurn.text} />
               ) : finalTurn && finalTurn.steps.length > 0 ? (
-                <StreamingSteps turn={finalTurn} tools={rows} active={false} />
+                <StreamingSteps turn={finalTurn} tools={rows} active={false} processing={processing !== null} />
               ) : null}
             </Bubble>
             {showFullToolbar && (
@@ -458,14 +482,19 @@ export function Chat({
                 </Empty>
               ) : (
                 <>
-                  {state.bubbles.map((b) => (
+                  {state.bubbles.map((b, idx) => (
                     <MessageScrollerItem
                       key={b.id}
                       messageId={b.id}
                       scrollAnchor={b.userIndex >= 0}
                     >
                       <MessageGroup>
-                        <TurnBubbleView bubble={b} rows={toolsForBubble(b, state.tools, rowsCacheRef.current)} onFork={onFork} />
+                        <TurnBubbleView
+                          bubble={b}
+                          rows={toolsForBubble(b, state.tools, rowsCacheRef.current)}
+                          onFork={onFork}
+                          processing={idx === state.bubbles.length - 1 ? state.processingToolResult : null}
+                        />
                       </MessageGroup>
                     </MessageScrollerItem>
                   ))}

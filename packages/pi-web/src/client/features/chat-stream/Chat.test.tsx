@@ -534,3 +534,53 @@ describe("R24 think 窗口", () => {
     expect(th?.className).toContain("overflow-y-auto");
   });
 });
+
+describe("R24 工具结果窗口期渲染", () => {
+  it("tool_end 后指示器显示（spinner + thinking......），thinking 块隐藏", () => {
+    const s = run([
+      { type: "message_start", message: { role: "user", content: "q" } },
+      {
+        type: "message_start",
+        message: {
+          role: "assistant",
+          content: [
+            { type: "thinking", thinking: "思考一" },
+            { type: "toolCall", id: "t1", name: "bash", arguments: {} },
+          ],
+        },
+      },
+      { type: "tool_start", toolCallId: "t1", toolName: "bash", args: {} },
+      { type: "tool_end", toolCallId: "t1", result: { content: [{ type: "text", text: "out" }] }, isError: false },
+    ]);
+    const { container } = render(<Chat state={s} dispatch={vi.fn()} onFork={vi.fn()} />);
+    const ind = container.querySelector("[data-slot=tool-processing]");
+    expect(ind).toBeTruthy();
+    expect(ind?.textContent).toContain("thinking......");
+    expect(ind?.querySelector("svg")).toBeTruthy(); // spinner
+    // 窗口期 thinking 块隐藏（避免重复显示）
+    expect(container.querySelector("[data-slot=step-thinking]")).toBeNull();
+  });
+
+  it("thinking 到达后指示器文本替换；text_delta 后指示器消失", () => {
+    const base = run([
+      { type: "message_start", message: { role: "user", content: "q" } },
+      { type: "message_start", message: { role: "assistant", content: [{ type: "toolCall", id: "t1", name: "bash", arguments: {} }] } },
+      { type: "tool_start", toolCallId: "t1", toolName: "bash", args: {} },
+      { type: "tool_end", toolCallId: "t1", result: { content: [{ type: "text", text: "out" }] }, isError: false },
+    ]);
+    // thinking 到达
+    const withThinking = streamReducer(base, {
+      type: "message_update",
+      event: { type: "thinking_delta", contentIndex: 0, delta: "分析工具输出", partial: { thinking: "分析工具输出" } },
+    });
+    const { container, rerender } = render(<Chat state={withThinking} dispatch={vi.fn()} onFork={vi.fn()} />);
+    expect(container.querySelector("[data-slot=tool-processing]")?.textContent).toContain("分析工具输出");
+    // text_delta → 指示器消失
+    const withText = streamReducer(withThinking, {
+      type: "message_update",
+      event: { type: "text_delta", contentIndex: 1, delta: "结果" },
+    });
+    rerender(<Chat state={withText} dispatch={vi.fn()} onFork={vi.fn()} />);
+    expect(container.querySelector("[data-slot=tool-processing]")).toBeNull();
+  });
+});

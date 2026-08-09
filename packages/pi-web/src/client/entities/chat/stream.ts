@@ -75,6 +75,8 @@ export interface StreamState {
   conn: "connecting" | "open" | "closed";
   /** R23：agent 轮次计数（agent_start 递增）；turn_start 跨 agent 判定 */
   agentId: number;
+  /** R24：工具结果处理窗口期（tool_end → 下一轮 text_delta）；null = 非窗口期 */
+  processingToolResult: string | null;
 }
 
 export type StreamAction =
@@ -153,6 +155,7 @@ export const initialState: StreamState = {
   bridge: { status: {}, widget: null, notifies: [] },
   conn: "closed",
   agentId: 0,
+  processingToolResult: null,
 };
 
 let seq = 0;
@@ -351,6 +354,7 @@ export function streamReducer(state: StreamState, action: StreamAction): StreamS
         tools,
         currentBubbleId: bubbles.length > 0 ? bubbles[bubbles.length - 1].id : null,
         userCount,
+        processingToolResult: null,
       };
     }
 
@@ -464,12 +468,19 @@ export function streamReducer(state: StreamState, action: StreamAction): StreamS
         // turn.text 同步 = 最后 text 块累积（终态最终回复 / 流式正文）
         let lastText = "";
         for (const s of steps) if (s.type === "text") lastText = s.text;
-        return updateBubble(state, bubble.id, {
-          turns: [...bubble.turns.slice(0, -1), { ...turn, text: lastText, steps }],
-        });
+        return {
+          ...updateBubble(state, bubble.id, {
+            turns: [...bubble.turns.slice(0, -1), { ...turn, text: lastText, steps }],
+          }),
+          // R24：LLM 开始流式输出 → 窗口期结束
+          processingToolResult: null,
+        };
       }
       if (evt.type === "thinking_delta") {
         const partialThinking = evt.partial?.thinking;
+        // R24：窗口期内（工具结果处理中）→ thinking 内容同步到指示器
+        const nextProcessing =
+          state.processingToolResult !== null ? (partialThinking ?? (evt.delta ?? "")) : state.processingToolResult;
         let steps = turn.steps;
         if (idx !== undefined && steps[idx] && steps[idx].type === "thinking") {
           const text = partialThinking ?? (steps[idx] as { type: "thinking"; text: string }).text + (evt.delta ?? "");
@@ -477,12 +488,15 @@ export function streamReducer(state: StreamState, action: StreamAction): StreamS
         } else if (idx !== undefined) {
           steps = upsertStep(steps, idx, () => ({ type: "thinking", text: partialThinking ?? (evt.delta ?? "") }));
         }
-        return updateBubble(state, bubble.id, {
-          turns: [
-            ...bubble.turns.slice(0, -1),
-            { ...turn, thinking: partialThinking ?? turn.thinking + (evt.delta ?? ""), steps },
-          ],
-        });
+        return {
+          ...updateBubble(state, bubble.id, {
+            turns: [
+              ...bubble.turns.slice(0, -1),
+              { ...turn, thinking: partialThinking ?? turn.thinking + (evt.delta ?? ""), steps },
+            ],
+          }),
+          processingToolResult: nextProcessing,
+        };
       }
       return state;
     }
@@ -605,6 +619,8 @@ export function streamReducer(state: StreamState, action: StreamAction): StreamS
             ? { ...t, output: text || t.output, isError: action.isError, final: true }
             : t,
         ),
+        // R24：工具执行完成 → 窗口期开始（LLM 处理工具结果中）
+        processingToolResult: "",
       };
     }
 
@@ -668,12 +684,12 @@ export function streamReducer(state: StreamState, action: StreamAction): StreamS
     // R20：agent_end / agent_settled 兜底 final 化非 final turn（中断场景无 turn_end）
     case "agent_end": {
       const finalized = finalizeActiveTurns(state);
-      return { ...finalized, streaming: action.willRetry ? true : false };
+      return { ...finalized, streaming: action.willRetry ? true : false, processingToolResult: null };
     }
 
     case "agent_settled": {
       const finalized = finalizeActiveTurns(state);
-      return { ...finalized, streaming: false };
+      return { ...finalized, streaming: false, processingToolResult: null };
     }
 
     case "queue_update":
@@ -711,6 +727,7 @@ export function streamReducer(state: StreamState, action: StreamAction): StreamS
         currentBubbleId: null,
         userCount: 0,
         compacting: null,
+        processingToolResult: null,
       };
 
     case "session_before_compact":
