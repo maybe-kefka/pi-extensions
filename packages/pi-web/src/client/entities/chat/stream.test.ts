@@ -522,3 +522,37 @@ describe("R20：compact 状态", () => {
     expect(state.compacting).toBeNull();
   });
 });
+
+describe("turn_start 气泡时机（R22）", () => {
+  it("turn_start 创建空 turn（气泡立即出现）", () => {
+    const s = reduce([
+      { type: "message_start", message: { role: "user", content: "q" } },
+      { type: "turn_start", turnIndex: 0 },
+    ]);
+    const b = s.bubbles[0];
+    expect(b.turns.length).toBe(1);
+    expect(b.turns[0].final).toBe(false);
+    expect(b.turns[0].steps).toEqual([]);
+  });
+
+  it("message_start:assistant 复用 turn_start 的空 turn（不重复）", () => {
+    const s = reduce([
+      { type: "message_start", message: { role: "user", content: "q" } },
+      { type: "turn_start", turnIndex: 0 },
+      { type: "message_start", message: { role: "assistant", content: [{ type: "text", text: "" }] } },
+    ]);
+    const b = s.bubbles[0];
+    expect(b.turns.length).toBe(1);
+    expect(b.turns[0].text).toBe("");
+  });
+
+  it("message_start:assistant 无空 turn 时正常新建", () => {
+    const s = reduce([
+      { type: "message_start", message: { role: "user", content: "q" } },
+      { type: "message_start", message: { role: "assistant", content: [{ type: "text", text: "hi" }] } },
+    ]);
+    const b = s.bubbles[0];
+    expect(b.turns.length).toBe(1);
+    expect(b.turns[0].text).toBe("hi");
+  });
+});

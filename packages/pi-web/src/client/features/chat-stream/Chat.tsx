@@ -143,6 +143,10 @@ function StreamingSteps({ turn, tools, active = true }: { turn: Turn; tools: Str
       {steps.length === 0 && turn.text.trim() && (
         <span className="wrap-break-word whitespace-pre-wrap">{turn.text}</span>
       )}
+      {/* R22：turn_start 空 turn（LLM 工作中）→ ▍ 光标 */}
+      {steps.length === 0 && !turn.text.trim() && active && (
+        <span data-slot="working-caret" className="animate-pulse">▍</span>
+      )}
       {steps.map((st, i) => {
         if (st.type === "thinking") {
           return st.text.trim() ? (
@@ -278,7 +282,8 @@ function TurnBubbleView({
       const t = bubble.turns[i];
       if (t.steps.length > 0 || t.text.trim()) return t;
     }
-    return null;
+    // R22：无上一轮内容（turn_start 首轮，LLM 刚开始工作）→ 显示空 turn（▍ 光标）
+    return activeTurn ?? null;
   })();
   // R20：工具栏 per-bubble 独立——已完成气泡 fork+progress 常驻；
   // 活跃气泡只显示 progress（实时看当前大 Turn 流程），fork 仅完成态出现。

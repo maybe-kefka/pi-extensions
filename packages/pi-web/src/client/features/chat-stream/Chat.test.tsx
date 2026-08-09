@@ -5,6 +5,10 @@ import { render, screen, fireEvent, cleanup, within } from "@testing-library/rea
 import { Chat } from "./Chat";
 import { initialState, streamReducer, type StreamAction, type StreamState } from "@/entities/chat/stream";
 
+function reduce(actions: StreamAction[]): StreamState {
+  return actions.reduce((st, a) => streamReducer(st, a), initialState);
+}
+
 afterEach(cleanup);
 
 // jsdom 无这些 API，message-scroller 需要
@@ -405,5 +409,19 @@ describe("R20 compact 展示", () => {
     render(<Chat state={run([{ type: "message_start", message: { role: "user", content: "q" } }])} dispatch={dispatch} onFork={vi.fn()} />);
     expect(document.querySelector("[data-slot=compact-banner]")).toBeNull();
     expect(document.querySelector("[data-slot=compact-record]")).toBeNull();
+  });
+});
+
+describe("R22 turn_start 气泡时机", () => {
+  it("turn_start 后 assistant 气泡出现（空 turn + ▍）", () => {
+    const dispatch = vi.fn();
+    const state = reduce([
+      { type: "message_start", message: { role: "user", content: "q" } },
+      { type: "turn_start", turnIndex: 0 },
+    ]);
+    render(<Chat state={state} dispatch={dispatch} onFork={vi.fn()} />);
+    const caret = document.querySelector("[data-slot=working-caret]");
+    expect(caret).toBeTruthy();
+    expect(document.querySelector("[data-slot=streaming-steps]")).toBeTruthy();
   });
 });

@@ -370,7 +370,24 @@ export function streamReducer(state: StreamState, action: StreamAction): StreamS
         };
       }
       // assistant：追加新 turn 到最近气泡（steps 从 content 块初始化，流式按 contentIndex 增量）
+      // R22：turn_start 已创建空 turn → 复用（不重复创建）；否则新建
       const bubble = currentBubble(state);
+      const lastTurn = bubble.turns[bubble.turns.length - 1];
+      const reuseEmpty = lastTurn && !lastTurn.final && lastTurn.steps.length === 0 && !lastTurn.text && !lastTurn.thinking;
+      if (reuseEmpty) {
+        const turn: Turn = {
+          ...lastTurn,
+          text: textOfContent(action.message.content),
+          toolCallIds: toolCallIdsOf(action.message.content),
+          steps: stepsOfContent(action.message.content),
+        };
+        const withTurn: TurnBubble = { ...bubble, turns: [...bubble.turns.slice(0, -1), turn] };
+        return {
+          ...state,
+          bubbles: state.bubbles.map((b) => (b.id === bubble.id ? withTurn : b)),
+          currentBubbleId: bubble.id,
+        };
+      }
       const turn: Turn = {
         text: textOfContent(action.message.content),
         thinking: "",
@@ -569,8 +586,27 @@ export function streamReducer(state: StreamState, action: StreamAction): StreamS
     }
 
     // turn 边界：turn_end 兜底 final 化活跃 turn（message_end 已处理则 no-op）
-    case "turn_start":
-      return state;
+    case "turn_start": {
+      // R22：LLM 开始工作时气泡立即出现（TUI working 同步）——创建空 turn（steps 空 + ▍）
+      const bubble = currentBubble(state);
+      const emptyTurn: Turn = {
+        text: "",
+        thinking: "",
+        toolCallIds: [],
+        steps: [],
+        final: false,
+        startedAt: Date.now(),
+      };
+      const withTurn: TurnBubble = { ...bubble, turns: [...bubble.turns, emptyTurn] };
+      return {
+        ...state,
+        bubbles:
+          state.bubbles.find((b) => b.id === bubble.id)
+            ? state.bubbles.map((b) => (b.id === bubble.id ? withTurn : b))
+            : [...state.bubbles, withTurn],
+        currentBubbleId: bubble.id,
+      };
+    }
 
     case "turn_end": {
       const bubble = state.bubbles.find((b) => b.id === state.currentBubbleId);
