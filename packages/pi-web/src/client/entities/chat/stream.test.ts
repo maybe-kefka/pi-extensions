@@ -644,3 +644,25 @@ describe("R24 工具结果窗口期（processingToolResult）", () => {
     expect(streamReducer(toolState, { type: "session_start" }).processingToolResult).toBeNull();
   });
 });
+
+describe("R25 compact 锚定", () => {
+  it("session_before_compact 记录最后气泡 id 为 anchorBubbleId", () => {
+    const s = reduce([
+      { type: "message_start", message: { role: "user", content: "q" } },
+      { type: "message_start", message: { role: "assistant", content: [{ type: "text", text: "回复" }] } },
+    ]);
+    const lastId = s.bubbles[s.bubbles.length - 1].id;
+    const c = streamReducer(s, { type: "session_before_compact", reason: "threshold", willRetry: false });
+    expect(c.anchorBubbleId).toBe(lastId);
+    expect(c.compacting?.phase).toBe("before");
+  });
+
+  it("无气泡时 anchorBubbleId 为 null；session_start 重置", () => {
+    const c = streamReducer(initialState, { type: "session_before_compact", reason: "manual", willRetry: false });
+    expect(c.anchorBubbleId).toBeNull();
+    const done = streamReducer(c, { type: "session_compact", reason: "manual", willRetry: false });
+    expect(done.anchorBubbleId).toBeNull();
+    const s2 = streamReducer(done, { type: "session_start" });
+    expect(s2.compacting).toBeNull();
+  });
+});

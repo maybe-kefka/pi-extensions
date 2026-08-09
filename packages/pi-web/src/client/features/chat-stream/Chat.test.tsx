@@ -584,3 +584,31 @@ describe("R24 工具结果窗口期渲染", () => {
     expect(container.querySelector("[data-slot=tool-processing]")).toBeNull();
   });
 });
+
+describe("R25 compact 锚定渲染", () => {
+  it("compact 记录渲染在 anchor 气泡之后（非末尾）", () => {
+    const s = run([
+      { type: "message_start", message: { role: "user", content: "q1" } },
+      { type: "message_start", message: { role: "assistant", content: [{ type: "text", text: "回复1" }] } },
+    ]);
+    const c = streamReducer(s, { type: "session_before_compact", reason: "threshold", willRetry: true });
+    const done = streamReducer(c, { type: "session_compact", reason: "threshold", willRetry: true });
+    const anchorId = done.anchorBubbleId;
+    // 压缩后追加新消息 → 记录仍在 anchor 后、新消息前
+    const s2 = streamReducer(done, { type: "message_start", message: { role: "user", content: "q2" } });
+    const { container } = render(<Chat state={s2} dispatch={vi.fn()} onFork={vi.fn()} />);
+    const items = [...container.querySelectorAll("[data-slot=message]")];
+    const record = container.querySelector("[data-slot=compact-record]");
+    expect(record).toBeTruthy();
+    // 顺序：回复1 气泡 → compact 记录 → q2 气泡（记录锚定在压缩时刻最后消息之后，新消息排其后）
+    const idxOf = (text: string) => items.findIndex((el) => el.textContent?.includes(text));
+    const replyIdx = idxOf("回复1");
+    const q2Idx = idxOf("q2");
+    expect(replyIdx).toBeGreaterThanOrEqual(0);
+    expect(q2Idx).toBeGreaterThan(replyIdx);
+    // DOM 位置：record 在 回复1 message 之后、q2 message 之前
+    const before = (a: Element, b: Element) => !!(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(before(items[replyIdx]!, record)).toBe(true);
+    expect(before(record, items[q2Idx]!)).toBe(true);
+  });
+});

@@ -104,7 +104,7 @@ export function mapEvent(type: string, payload: unknown): MappedEvent {
     case "thinking_level_select":
       return { fields: { level: p.level ?? null, previousLevel: p.previousLevel ?? null }, refreshState: true };
     case "session_compact":
-      return { fields: { reason: p.reason ?? null, fromExtension: p.fromExtension === true }, refreshState: true };
+      return { fields: { reason: p.reason ?? null, fromExtension: p.fromExtension === true, willRetry: p.willRetry === true }, refreshState: true };
 
     // ctx.ui 桥接（包装器调用，非 pi 事件）
     case "notify":

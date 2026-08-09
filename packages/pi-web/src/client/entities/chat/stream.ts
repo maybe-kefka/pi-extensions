@@ -77,6 +77,8 @@ export interface StreamState {
   agentId: number;
   /** R24：工具结果处理窗口期（tool_end → 下一轮 text_delta）；null = 非窗口期 */
   processingToolResult: string | null;
+  /** R25：compact 触发时刻最后气泡 id（锚定记录渲染位置）；无气泡时 null */
+  anchorBubbleId: string | null;
 }
 
 export type StreamAction =
@@ -156,6 +158,7 @@ export const initialState: StreamState = {
   conn: "closed",
   agentId: 0,
   processingToolResult: null,
+  anchorBubbleId: null,
 };
 
 let seq = 0;
@@ -728,13 +731,18 @@ export function streamReducer(state: StreamState, action: StreamAction): StreamS
         userCount: 0,
         compacting: null,
         processingToolResult: null,
+        anchorBubbleId: null,
       };
 
-    case "session_before_compact":
+    case "session_before_compact": {
+      // R25：锚定压缩发生时最后一条已完成消息（内核保证压缩仅在轮边界触发）
+      const lastId = state.bubbles.length > 0 ? state.bubbles[state.bubbles.length - 1].id : null;
       return {
         ...state,
         compacting: { phase: "before", reason: action.reason ?? null, willRetry: action.willRetry === true },
+        anchorBubbleId: lastId,
       };
+    }
 
     case "session_compact":
       return {

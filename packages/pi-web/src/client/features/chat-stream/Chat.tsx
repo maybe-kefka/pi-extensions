@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { Fragment, useMemo, useRef, useState } from "react";
 import type * as React from "react";
 import { Bot, ChevronDown, ChevronRight, CircleCheck, CircleX, GitFork, Loader2, User, Wrench } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/shared/ui/avatar";
@@ -329,6 +329,7 @@ function TurnBubbleView({
   })();
   // R20：工具栏 per-bubble 独立——已完成气泡 fork+progress 常驻；
   // 活跃气泡只显示 progress（实时看当前大 Turn 流程），fork 仅完成态出现。
+
   const showFullToolbar = hasUser && !streaming;
   const showProgressOnly = hasUser && streaming;
 
@@ -462,6 +463,25 @@ export function Chat({
 }) {
   const hasContent = state.bubbles.length > 0 || state.tools.length > 0;
   const compacting = state.compacting;
+  // R25：compact 记录 JSX（锚定插入——触发时刻最后气泡之后）
+  const compactRecord =
+    compacting && (compacting.phase === "before" || compacting.phase === "done") ? (
+      <div data-slot="compact-record" className="text-muted-foreground flex justify-center py-1">
+        <span className="bg-muted/40 border-border rounded-full border px-3 py-1 text-[11px]">
+          {compacting.phase === "before" ? (
+            <span className="flex items-center gap-1.5">
+              <Loader2 data-slot="compact-spinner" className="size-3 animate-spin" />
+              正在压缩上下文…（{reasonLabel(compacting.reason)}）
+            </span>
+          ) : (
+            <>
+              上下文已压缩（{reasonLabel(compacting.reason)}）
+              {compacting.willRetry && " · 将重试上一条消息"}
+            </>
+          )}
+        </span>
+      </div>
+    ) : null;
   // R23 F2：per-bubble 工具行引用稳定缓存（toolsForBubble）——工具流式时历史气泡不重渲染
   const rowsCacheRef = useRef(new Map<string, ToolRow[]>());
 
@@ -483,42 +503,24 @@ export function Chat({
               ) : (
                 <>
                   {state.bubbles.map((b, idx) => (
-                    <MessageScrollerItem
-                      key={b.id}
-                      messageId={b.id}
-                      scrollAnchor={b.userIndex >= 0}
-                    >
-                      <MessageGroup>
-                        <TurnBubbleView
-                          bubble={b}
-                          rows={toolsForBubble(b, state.tools, rowsCacheRef.current)}
-                          onFork={onFork}
-                          processing={idx === state.bubbles.length - 1 ? state.processingToolResult : null}
-                        />
-                      </MessageGroup>
-                    </MessageScrollerItem>
+                    <Fragment key={b.id}>
+                      <MessageScrollerItem
+                        messageId={b.id}
+                        scrollAnchor={b.userIndex >= 0}
+                      >
+                        <MessageGroup>
+                          <TurnBubbleView
+                            bubble={b}
+                            rows={toolsForBubble(b, state.tools, rowsCacheRef.current)}
+                            onFork={onFork}
+                            processing={idx === state.bubbles.length - 1 ? state.processingToolResult : null}
+                          />
+                        </MessageGroup>
+                      </MessageScrollerItem>
+                      {state.anchorBubbleId === b.id && compactRecord}
+                    </Fragment>
                   ))}
-                  {/* R21：compact 系统记录（聊天流末尾；before 转圈 / done 完成文案，不持久） */}
-                  {compacting && (compacting.phase === "before" || compacting.phase === "done") && (
-                    <div
-                      data-slot="compact-record"
-                      className="text-muted-foreground flex justify-center py-1"
-                    >
-                      <span className="bg-muted/40 border-border rounded-full border px-3 py-1 text-[11px]">
-                        {compacting.phase === "before" ? (
-                          <span className="flex items-center gap-1.5">
-                            <Loader2 data-slot="compact-spinner" className="size-3 animate-spin" />
-                            正在压缩上下文…（{reasonLabel(compacting.reason)}）
-                          </span>
-                        ) : (
-                          <>
-                            上下文已压缩（{reasonLabel(compacting.reason)}）
-                            {compacting.willRetry && " · 将重试上一条消息"}
-                          </>
-                        )}
-                      </span>
-                    </div>
-                  )}
+                  {state.anchorBubbleId === null && compactRecord}
                 </>
               )}
             </MessageScrollerContent>
