@@ -160,11 +160,21 @@ function StreamingSteps({ turn, tools, active = true }: { turn: Turn; tools: Str
           if (!row) return null;
           return <ToolCard key={i} row={row} />;
         }
-        // text 块：Markdown 流式 + ▍（最后一个 text 块，仅活跃轮）
+        // text 块：R23 F1——流式中（active）轻量纯文本渲染（避免每 delta 全量 ReactMarkdown 解析）；
+        // 终态/过渡轮（active=false）保持 Markdown。▍ 光标仅活跃轮最后 text 块。
+        const caret = active && i === lastTextIdx && <span className="animate-pulse">▍</span>;
+        if (active) {
+          return (
+            <div key={i} data-slot="step-text">
+              <span className="wrap-break-word whitespace-pre-wrap">{st.text}</span>
+              {caret}
+            </div>
+          );
+        }
         return (
           <div key={i} data-slot="step-text">
             <Markdown text={st.text} />
-            {active && i === lastTextIdx && <span className="animate-pulse">▍</span>}
+            {caret}
           </div>
         );
       })}

@@ -425,3 +425,46 @@ describe("R22 turn_start 气泡时机", () => {
     expect(document.querySelector("[data-slot=streaming-steps]")).toBeTruthy();
   });
 });
+
+describe("R23 F1 流式纯文本渲染", () => {
+  it("流式中（active）text 块为纯文本：无 markdown-body，含 ▍ 光标", () => {
+    const s = run([
+      { type: "message_start", message: { role: "user", content: "q" } },
+      {
+        type: "message_start",
+        message: { role: "assistant", content: [{ type: "text", text: "" }] },
+      },
+      { type: "message_update", event: { type: "text_delta", contentIndex: 0, delta: "**加粗**" } },
+      { type: "message_update", event: { type: "text_delta", contentIndex: 0, delta: " 内容" } },
+    ]);
+    const dispatch = vi.fn();
+    const { container } = render(<Chat state={s} dispatch={dispatch} onFork={vi.fn()} />);
+    const stepText = container.querySelector("[data-slot=step-text]");
+    expect(stepText).toBeTruthy();
+    // 纯文本：无 markdown 结构，原文可见（含未解析的 ** 标记）
+    expect(stepText?.querySelector(".markdown-body")).toBeNull();
+    expect(stepText?.textContent).toContain("**加粗** 内容");
+    // ▍ 光标在最后 text 块
+    expect(stepText?.textContent).toContain("▍");
+  });
+
+  it("过渡轮（active=false 显示上一轮）text 块仍为 Markdown", () => {
+    const s = run([
+      { type: "message_start", message: { role: "user", content: "q" } },
+      { type: "message_start", message: { role: "assistant", content: [{ type: "text", text: "第一轮 **格式**" }] } },
+      { type: "message_end", message: { role: "assistant", content: [{ type: "text", text: "第一轮 **格式**" }] } },
+      { type: "turn_end" },
+      // 新轮：turn_start 空 turn，内容未到 → 过渡期显示上一轮（active=false）
+      { type: "turn_start" },
+    ]);
+    const dispatch = vi.fn();
+    const { container } = render(<Chat state={s} dispatch={dispatch} onFork={vi.fn()} />);
+    const stepText = container.querySelector("[data-slot=step-text]");
+    expect(stepText).toBeTruthy();
+    // Markdown 渲染（markdown-body 存在），且解析了 **格式**（strong 元素）
+    expect(stepText?.querySelector(".markdown-body")).toBeTruthy();
+    expect(stepText?.querySelector("strong")).toBeTruthy();
+    // 过渡轮非活跃：无 ▍ 光标
+    expect(stepText?.textContent).not.toContain("▍");
+  });
+});
