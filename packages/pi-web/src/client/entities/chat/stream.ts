@@ -33,6 +33,8 @@ export interface TurnBubble {
   userText: string;
   userFinal: boolean;
   turns: Turn[];
+  /** R23：创建时所属 agent 轮次（agent_start 计数）；turn_start 据此区分“同 agent 多轮”与“新消息” */
+  agentId?: number;
 }
 
 export interface ToolRow {
@@ -71,6 +73,8 @@ export interface StreamState {
     notifies: { id: number; message: string; type: string }[];
   };
   conn: "connecting" | "open" | "closed";
+  /** R23：agent 轮次计数（agent_start 递增）；turn_start 跨 agent 判定 */
+  agentId: number;
 }
 
 export type StreamAction =
@@ -148,6 +152,7 @@ export const initialState: StreamState = {
   compacting: null,
   bridge: { status: {}, widget: null, notifies: [] },
   conn: "closed",
+  agentId: 0,
 };
 
 let seq = 0;
@@ -285,6 +290,11 @@ function finalizeActiveTurns(state: StreamState): StreamState {
 }
 
 export function streamReducer(state: StreamState, action: StreamAction): StreamState {
+  // R23 DEBUG: action 日志（定位回复丢失，验证后删除）
+  try {
+    // eslint-disable-next-line no-console
+    console.log(`[RD] ${action.type}${action.type === "message_start" ? " " + (action.message.role ?? "") : ""}${action.type === "message_update" ? " " + (action.event?.type ?? "") : ""}${action.type === "message_end" ? " " + (action.message.role ?? "") : ""}`);
+  } catch {}
   switch (action.type) {
     case "conn":
       return { ...state, conn: action.state };
@@ -354,6 +364,23 @@ export function streamReducer(state: StreamState, action: StreamAction): StreamS
       // toolResult 消息事件忽略（tools 列表以 tool_execution_* 为准）
       if (role === "toolResult") return state;
       if (role === "user") {
+        // R23：接管 turn_start 创建的占位气泡（跨 agent 且 userIndex -1）——避免重复创建
+        const last = state.bubbles[state.bubbles.length - 1];
+        const orphan = last && last.userIndex === -1 && last.agentId === state.agentId ? last : null;
+        if (orphan) {
+          const b: TurnBubble = {
+            ...orphan,
+            userIndex: state.userCount,
+            userText: textOfContent(action.message.content),
+            userFinal: false,
+          };
+          return {
+            ...state,
+            bubbles: [...state.bubbles.slice(0, -1), b],
+            currentBubbleId: b.id,
+            userCount: state.userCount + 1,
+          };
+        }
         // 新 user 消息 → 新气泡（聚合边界）
         const b: TurnBubble = {
           id: nextId(),
@@ -361,6 +388,7 @@ export function streamReducer(state: StreamState, action: StreamAction): StreamS
           userText: textOfContent(action.message.content),
           userFinal: false,
           turns: [],
+          agentId: state.agentId,
         };
         return {
           ...state,
@@ -587,8 +615,13 @@ export function streamReducer(state: StreamState, action: StreamAction): StreamS
 
     // turn 边界：turn_end 兜底 final 化活跃 turn（message_end 已处理则 no-op）
     case "turn_start": {
-      // R22：LLM 开始工作时气泡立即出现（TUI working 同步）——创建空 turn（steps 空 + ▍）
+      // R23 修复：turn_start 先于 message_start:user 到达（pi 内核事件序）——
+      // 若当前气泡属于上一个 agent（已完成）则绝不追加空 turn（否则污染旧气泡、终态渲染顶掉旧回复），
+      // 而是创建占位气泡（message_start:user 到达后接管）；同 agent 多轮保持聚合。
       const bubble = currentBubble(state);
+      const lastTurn = bubble.turns[bubble.turns.length - 1];
+      const sameAgent = bubble.agentId === state.agentId;
+      const active = lastTurn ? !lastTurn.final : bubble.userFinal === false;
       const emptyTurn: Turn = {
         text: "",
         thinking: "",
@@ -597,14 +630,30 @@ export function streamReducer(state: StreamState, action: StreamAction): StreamS
         final: false,
         startedAt: Date.now(),
       };
-      const withTurn: TurnBubble = { ...bubble, turns: [...bubble.turns, emptyTurn] };
+      if (sameAgent || active) {
+        const withTurn: TurnBubble = { ...bubble, turns: [...bubble.turns, emptyTurn] };
+        return {
+          ...state,
+          bubbles:
+            state.bubbles.find((b) => b.id === bubble.id)
+              ? state.bubbles.map((b) => (b.id === bubble.id ? withTurn : b))
+              : [...state.bubbles, withTurn],
+          currentBubbleId: bubble.id,
+        };
+      }
+      // 跨 agent（新消息占位）：创建独立气泡，等待 message_start:user 接管
+      const orphan: TurnBubble = {
+        id: nextId(),
+        userIndex: -1,
+        userText: "",
+        userFinal: true,
+        turns: [emptyTurn],
+        agentId: state.agentId,
+      };
       return {
         ...state,
-        bubbles:
-          state.bubbles.find((b) => b.id === bubble.id)
-            ? state.bubbles.map((b) => (b.id === bubble.id ? withTurn : b))
-            : [...state.bubbles, withTurn],
-        currentBubbleId: bubble.id,
+        bubbles: [...state.bubbles, orphan],
+        currentBubbleId: orphan.id,
       };
     }
 
@@ -619,7 +668,7 @@ export function streamReducer(state: StreamState, action: StreamAction): StreamS
     }
 
     case "agent_start":
-      return { ...state, streaming: true };
+      return { ...state, streaming: true, agentId: state.agentId + 1 };
 
     // R20：agent_end / agent_settled 兜底 final 化非 final turn（中断场景无 turn_end）
     case "agent_end": {

@@ -556,3 +556,57 @@ describe("turn_start 气泡时机（R22）", () => {
     expect(b.turns[0].text).toBe("hi");
   });
 });
+
+describe("R23 修复：turn_start 不污染已完成气泡", () => {
+  it("新消息 turn_start 先到时：旧气泡 turns 不变，创建占位气泡，message_start:user 接管", () => {
+    // 消息1 完成（agent 1）
+    const s1 = reduce([
+      { type: "agent_start" },
+      { type: "turn_start" },
+      { type: "message_start", message: { role: "user", content: "q1" } },
+      { type: "message_start", message: { role: "assistant", content: [{ type: "text", text: "回复1" }] } },
+      { type: "message_end", message: { role: "assistant", content: [{ type: "text", text: "回复1" }] } },
+      { type: "turn_end" },
+    ]);
+    expect(s1.bubbles).toHaveLength(1);
+    expect(s1.bubbles[0].turns).toHaveLength(1);
+    expect(s1.bubbles[0].turns[0].text).toBe("回复1");
+    // 消息2 开始：agent_start + turn_start 先到
+    // 消息2 开始：agent_start + turn_start 先到（从 s1 继续）
+    const s2 = streamReducer(streamReducer(s1, { type: "agent_start" }), { type: "turn_start" });
+    // 旧气泡不被污染（仍是 1 turn）
+    expect(s2.bubbles[0].turns).toHaveLength(1);
+    // 占位气泡创建（userIndex -1）
+    expect(s2.bubbles).toHaveLength(2);
+    expect(s2.bubbles[1].userIndex).toBe(-1);
+    // message_start:user 接管占位（不新建）
+    const s3 = streamReducer(s2, { type: "message_start", message: { role: "user", content: "q2" } });
+    expect(s3.bubbles).toHaveLength(2);
+    expect(s3.bubbles[1].userText).toBe("q2");
+    expect(s3.bubbles[1].userIndex).toBe(1);
+    expect(s3.bubbles[1].turns).toHaveLength(1); // turn_start 的空 turn 保留
+    expect(s3.bubbles[0].turns).toHaveLength(1); // 旧气泡仍 1 turn（回复不丢）
+  });
+
+  it("同一 agent 多轮：turn_start 追加到同一气泡（不建占位）", () => {
+    const s = reduce([
+      { type: "agent_start" },
+      { type: "turn_start" },
+      { type: "message_start", message: { role: "user", content: "q" } },
+      { type: "message_start", message: { role: "assistant", content: [{ type: "text", text: "第一轮" }] } },
+      { type: "message_end", message: { role: "assistant", content: [{ type: "text", text: "第一轮" }] } },
+      { type: "turn_end" },
+      // 同 agent 第二轮（无 agent_start 间隔）
+      { type: "turn_start" },
+    ]);
+    expect(s.bubbles).toHaveLength(1);
+    expect(s.bubbles[0].turns).toHaveLength(2);
+  });
+
+  it("agent_start 递增 agentId（跨 agent 判定依据）", () => {
+    const s1 = streamReducer(initialState, { type: "agent_start" });
+    expect(s1.agentId).toBe(1);
+    const s2 = streamReducer(s1, { type: "agent_start" });
+    expect(s2.agentId).toBe(2);
+  });
+});
