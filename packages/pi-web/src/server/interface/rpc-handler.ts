@@ -46,7 +46,7 @@ async function handleRequest(
         throw new WebServerError(-32602, "toolCallId 必须是非空字符串");
       }
       if (!askRegistry.answer(toolCallId, params.answer)) {
-        throw new WebServerError(-32602, "未找到对应的提问（可能已超时/取消/已回答）");
+        throw new WebServerError(-32602, `未找到对应的提问（toolCallId=${toolCallId}，可能已超时/取消/已回答）`);
       }
       return { ok: true };
     }
