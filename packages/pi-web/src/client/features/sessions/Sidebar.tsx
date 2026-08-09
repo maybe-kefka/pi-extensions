@@ -9,6 +9,7 @@ import { Sheet, SheetContent, SheetTitle } from "@/shared/ui/sheet";
 import { SessionList, type SessionActions } from "@/features/sessions/SessionList";
 import type { ModelInfo, SessionInfo } from "@/entities/chat/types";
 import type { StreamState } from "@/entities/chat/stream";
+import { THEMES, THEME_NAMES, type ThemePreference } from "@/entities/theme/theme";
 
 export interface SidebarContentProps {
   sessions: SessionInfo[];
@@ -22,6 +23,9 @@ export interface SidebarContentProps {
   sessionActions: SessionActions;
   onSetModel: (provider: string, modelId: string) => void;
   onSetThinking: (level: string) => void;
+  /** R26：主题偏好（外观面板） */
+  themePreference: ThemePreference;
+  onThemeChange: (pref: ThemePreference) => void;
 }
 
 function Panel({ title, action, children }: { title: string; action?: React.ReactNode; children: React.ReactNode }) {
@@ -50,6 +54,8 @@ export function SidebarContent(props: SidebarContentProps) {
     sessionActions,
     onSetModel,
     onSetThinking,
+    themePreference,
+    onThemeChange,
   } = props;
   const [refreshKey, setRefreshKey] = useState(0);
 
@@ -115,6 +121,43 @@ export function SidebarContent(props: SidebarContentProps) {
                     {lvl}
                   </SelectItem>
                 ))}
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+        </div>
+      </Panel>
+
+      <Panel title="外观">
+        <div className="flex flex-col gap-2">
+          <Select
+            value={themePreference.theme}
+            onValueChange={(v) => onThemeChange({ ...themePreference, theme: v as ThemePreference["theme"] })}
+          >
+            <SelectTrigger className="w-full">
+              <SelectValue placeholder="主题…" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectGroup>
+                {THEME_NAMES.map((name) => (
+                  <SelectItem key={name} value={name}>
+                    {THEMES[name].label}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+          <Select
+            value={themePreference.scheme}
+            onValueChange={(v) => onThemeChange({ ...themePreference, scheme: v as ThemePreference["scheme"] })}
+          >
+            <SelectTrigger className="w-full">
+              <SelectValue placeholder="深浅…" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectGroup>
+                <SelectItem value="system">跟随系统</SelectItem>
+                <SelectItem value="light">浅色</SelectItem>
+                <SelectItem value="dark">深色</SelectItem>
               </SelectGroup>
             </SelectContent>
           </Select>

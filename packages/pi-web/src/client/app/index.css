@@ -1,6 +1,5 @@
 @import "tailwindcss";
 @import "tw-animate-css";
-@import "highlight.js/styles/github-dark.css";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -512,9 +511,53 @@
   }
 }
 
-/* highlight.js github-dark 主题（代码高亮） */
+/* R26：代码高亮配色随主题（token 派生，不再硬编码 github-dark） */
 /* 代码块底色统一为容器 bg-muted/50，hljs 背景透明 */
 .markdown-body pre code.hljs {
   background: transparent;
   padding: 0;
+  color: var(--foreground);
+}
+.markdown-body .hljs-keyword,
+.markdown-body .hljs-selector-tag,
+.markdown-body .hljs-doctag {
+  color: var(--primary);
+}
+.markdown-body .hljs-string,
+.markdown-body .hljs-regexp,
+.markdown-body .hljs-addition {
+  color: var(--success);
+}
+.markdown-body .hljs-comment,
+.markdown-body .hljs-quote {
+  color: var(--muted-foreground);
+  font-style: italic;
+}
+.markdown-body .hljs-number,
+.markdown-body .hljs-literal,
+.markdown-body .hljs-symbol {
+  color: var(--warning);
+}
+.markdown-body .hljs-title,
+.markdown-body .hljs-title.function_,
+.markdown-body .hljs-function .hljs-title {
+  color: var(--accent);
+}
+.markdown-body .hljs-type,
+.markdown-body .hljs-built_in,
+.markdown-body .hljs-class .hljs-title {
+  color: var(--chart5);
+}
+.markdown-body .hljs-variable,
+.markdown-body .hljs-attr,
+.markdown-body .hljs-attribute {
+  color: var(--foreground);
+}
+.markdown-body .hljs-operator,
+.markdown-body .hljs-punctuation,
+.markdown-body .hljs-meta {
+  color: var(--muted-foreground);
+}
+.markdown-body .hljs-deletion {
+  color: var(--destructive);
 }

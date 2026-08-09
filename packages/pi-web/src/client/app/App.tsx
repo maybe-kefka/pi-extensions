@@ -10,6 +10,16 @@ import { Sidebar, SidebarSheet, type SidebarContentProps } from "@/features/sess
 import { InputBar } from "@/features/input-bar/InputBar";
 import { DisconnectBanner } from "@/app/ui/DisconnectBanner";
 import { TreeDialog } from "@/features/sessions/TreeDialog";
+import { Toaster } from "@/shared/ui/sonner";
+import { applyTheme, watchSystemScheme } from "@/app/apply-theme";
+import {
+  loadPreference,
+  parseSystemScheme,
+  resolveTheme,
+  savePreference,
+  type Scheme,
+  type ThemePreference,
+} from "@/entities/theme/theme";
 
 
 const SidebarMemo = memo(Sidebar);
@@ -40,6 +50,24 @@ export default function App() {
   const [booted, setBooted] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  // R26：主题偏好（localStorage 持久化）+ 系统深浅（toast 联动）
+  const [themePref, setThemePref] = useState<ThemePreference>(() => loadPreference(window.localStorage));
+  const [systemScheme, setSystemScheme] = useState<Scheme>(() =>
+    parseSystemScheme((query) => window.matchMedia(query)),
+  );
+
+  const onThemeChange = useCallback((pref: ThemePreference) => {
+    setThemePref(pref);
+    savePreference(window.localStorage, pref);
+    applyTheme(pref);
+  }, []);
+
+  useEffect(() => {
+    // 系统深浅变化（跟随系统模式实时跟随；固定深浅时 resolveTheme 忽略）
+    return watchSystemScheme(() =>
+      setSystemScheme(parseSystemScheme((query) => window.matchMedia(query))),
+    );
+  }, []);
 
   /** 稳定引用：ContextPanel 挂载时取最新 rpc（避免每次渲染重建导致重拉） */
   const getRequest = useCallback(() => {
@@ -286,8 +314,10 @@ export default function App() {
       sessionActions,
       onSetModel: setModel,
       onSetThinking: setThinking,
+      themePreference: themePref,
+      onThemeChange,
     }),
-    [sessions, state.sessionFile, state.model, state.thinkingLevel, state.availableThinkingLevels, state.bridge, models, degraded, sessionActions, setModel, setThinking],
+    [sessions, state.sessionFile, state.model, state.thinkingLevel, state.availableThinkingLevels, state.bridge, models, degraded, sessionActions, setModel, setThinking, themePref, onThemeChange],
   );
 
   return (
@@ -333,6 +363,7 @@ export default function App() {
         navigable={!degraded}
         onNavigate={navigateTree}
       />
+      <Toaster position="top-right" theme={resolveTheme(themePref, systemScheme).scheme} />
     </div>
   );
 }
