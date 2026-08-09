@@ -1,0 +1,67 @@
+import type { StreamAction } from "./stream";
+import type { PiEvent } from "./types";
+
+/**
+ * 服务器 pi:event → reducer action 映射（纯函数）。
+ * R20：compact 事件此前漏映射（App.tsx toAction 缺 case）→ 事件被 default 丢弃，
+ * 横幅/系统记录在真实应用中不生效。抽为 entities 层以单测覆盖。
+ */
+export function toAction(evt: PiEvent): StreamAction | null {
+  switch (evt.type) {
+    case "message_start":
+      return { type: "message_start", message: (evt.message ?? {}) as { role?: string; content?: unknown } };
+    case "message_update":
+      return { type: "message_update", event: (evt.event ?? {}) as { type?: string; delta?: string; partial?: { thinking?: string } } };
+    case "message_end":
+      return { type: "message_end", message: (evt.message ?? {}) as { role?: string; content?: unknown } };
+    case "tool_execution_start":
+      return { type: "tool_start", toolCallId: String(evt.toolCallId), toolName: String(evt.toolName), args: evt.args };
+    case "tool_execution_update":
+      return { type: "tool_update", toolCallId: String(evt.toolCallId), partialResult: (evt.partialResult as { content?: unknown } | null) ?? null };
+    case "tool_execution_end":
+      return { type: "tool_end", toolCallId: String(evt.toolCallId), result: (evt.result as { content?: unknown } | null) ?? null, isError: evt.isError === true };
+    case "turn_start":
+      return { type: "turn_start" };
+    case "turn_end":
+      return { type: "turn_end" };
+    case "agent_start":
+      return { type: "agent_start" };
+    case "agent_end":
+      return { type: "agent_end", willRetry: evt.willRetry === true };
+    case "agent_settled":
+      return { type: "agent_settled" };
+    case "queue_update":
+      return { type: "queue_update", steering: (evt.steering as string[]) ?? [], followUp: (evt.followUp as string[]) ?? [] };
+    case "state":
+      return { type: "state", state: evt as Record<string, unknown> };
+    case "session_start":
+      return { type: "session_start", reason: evt.reason as string | undefined };
+    case "session_shutdown":
+      return { type: "session_shutdown", reason: evt.reason as string | undefined };
+    case "session_before_switch":
+      return { type: "session_before_switch", reason: evt.reason as string | undefined };
+    case "session_switch_ready":
+      return { type: "session_switch_ready" };
+    case "session_before_compact":
+      return {
+        type: "session_before_compact",
+        reason: evt.reason == null ? null : String(evt.reason),
+        willRetry: evt.willRetry === true,
+      };
+    case "session_compact":
+      return {
+        type: "session_compact",
+        reason: evt.reason == null ? null : String(evt.reason),
+        willRetry: evt.willRetry === true,
+        fromExtension: evt.fromExtension === true,
+      };
+    case "notify":
+      return { type: "notify", message: String(evt.message ?? ""), notifyType: String(evt.notifyType ?? "info") };
+    case "setStatus":
+      return { type: "setStatus", statusKey: String(evt.statusKey ?? ""), statusText: evt.statusText == null ? null : String(evt.statusText) };
+    case "setWidget":
+      return { type: "setWidget", widgetKey: String(evt.widgetKey ?? ""), widgetLines: Array.isArray(evt.widgetLines) ? (evt.widgetLines as string[]) : null };
+    default:
+      return null;
+  }
+}
