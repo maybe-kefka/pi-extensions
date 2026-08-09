@@ -13,6 +13,13 @@ on:
     branches: [main]
     tags: ["v*"]
 
+# 并发保护：push main 与 push tag 同时触发时（发版场景常见），
+# 两个 run 会同时读到旧版本号并重复发布——串行化为同一组，
+# 后到的 run 排队等待，跑到时 registry 已是新版本 → 脚本自动 skip。
+concurrency:
+  group: publish
+  cancel-in-progress: false
+
 permissions:
   id-token: write # OIDC：npm registry 据此签发一次性发布凭据
   contents: read
