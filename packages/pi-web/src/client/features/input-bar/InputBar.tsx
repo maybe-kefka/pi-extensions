@@ -97,7 +97,7 @@ export function InputBar(props: {
     // R22：chip 值带不可见标记（区分 chip 与手打文本；服务器端只展开标记内的）
     span.dataset.insert =
       kind === "skill" ? `${SKILL_MARK_PREFIX}${insertText.slice("/skill:".length)}\u0001` : `${FILE_MARK_PREFIX}${insertText}\u0001`;
-    span.className = `${style.cls} mx-0.5 inline-flex cursor-default items-center gap-1 rounded-md px-1.5 py-0.5 align-middle text-xs font-medium whitespace-nowrap`;
+    span.className = `${style.cls} mx-0.5 inline-flex cursor-default items-center gap-1 rounded-md px-1.5 py-0.5 align-[1px] text-xs font-medium whitespace-nowrap`;
     span.textContent = `${style.icon} ${label}`.trim();
     const space = document.createTextNode(" ");
 

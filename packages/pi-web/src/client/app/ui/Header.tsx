@@ -34,7 +34,7 @@ export function Header({
   const title = `${label}（${fmt(ctx.tokens)} / ${fmt(ctx.contextWindow)}）— 点击查看占用详情`;
 
   return (
-    <header className="flex items-center gap-3 border-b px-4 pt-[env(safe-area-inset-top)] py-2">
+    <header className="flex items-center gap-3 border-b px-4 pt-[calc(env(safe-area-inset-top)+8px)] pb-2">
       <div className="text-sm font-bold">
         pi <span className="text-muted-foreground hidden font-normal sm:inline">web console</span>
       </div>

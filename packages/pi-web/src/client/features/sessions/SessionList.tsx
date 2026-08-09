@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { Copy, GitBranch, Loader2, Pencil, Plus, Trash2 } from "lucide-react";
-import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/shared/ui/dialog";
 import { Input } from "@/shared/ui/input";
@@ -72,9 +71,8 @@ export function SessionList({
                   {label}
                 </span>
                 <span className="text-muted-foreground shrink-0 tabular-nums">{s.messageCount}条</span>
-                {active && <Badge variant="secondary" className="shrink-0">当前</Badge>}
                 <span
-                  className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100"
+                  className="flex max-w-0 shrink-0 items-center gap-0.5 overflow-hidden opacity-0 transition-[max-width,opacity] duration-150 group-hover:max-w-[4rem] group-hover:opacity-100"
                   onClick={(e) => e.stopPropagation()}
                 >
                   <Button
