@@ -13,6 +13,8 @@ import {
   type ContextCategory,
   type ConversationTokens,
 } from "../domain/context-breakdown.js";
+import { expandSkillChips, type SkillLookupEntry } from "../domain/skill-expand.js";
+import { readFileSync } from "node:fs";
 import { listFiles } from "../domain/file-lister.js";
 import { resolveUserEntryId } from "../domain/fork-util.js";
 import { deleteSessionFile } from "../infrastructure/session-files.js";
@@ -47,7 +49,10 @@ async function handleRequest(
       }
       if (!state.api) throw new WebServerError(3, "扩展未就绪");
       try {
-        state.api.sendUserMessage(text.trim(), deliverAs ? { deliverAs } : undefined);
+        // R22：只展开 chip 标记内的 skill（skill:name → XML；file 标记剥路径）——
+        // sendUserMessage 硬编码 expandPromptTemplates:false，pi 内核不展开（基线 SPEC §40）
+        const expanded = expandSkillChips(text.trim(), skillLookupFrom(state.api));
+        state.api.sendUserMessage(expanded, deliverAs ? { deliverAs } : undefined);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         if (message.includes("Agent is already processing")) {
@@ -382,4 +387,24 @@ function buildBreakdownResult(
         }
       : null,
   };
+}
+
+/** R22：从扩展 API 收集 skill 元数据（getCommands 的 skill 命令 sourceInfo 含路径与 baseDir） */
+function skillLookupFrom(api: { getCommands: () => { name: string; source: string; sourceInfo?: { path: string; baseDir?: string } }[] }): SkillLookupEntry[] {
+  const out: SkillLookupEntry[] = [];
+  for (const c of api.getCommands()) {
+    if (c.source !== "skill" || !c.sourceInfo?.path) continue;
+    const name = c.name.replace(/^skill:/, "");
+    try {
+      out.push({
+        name,
+        path: c.sourceInfo.path,
+        baseDir: c.sourceInfo.baseDir ?? c.sourceInfo.path,
+        content: readFileSync(c.sourceInfo.path, "utf-8"),
+      });
+    } catch {
+      // 文件不可读的 skill 跳过（展开时保留原文标记）
+    }
+  }
+  return out;
 }
