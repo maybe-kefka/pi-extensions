@@ -4,7 +4,7 @@ import { ArrowUp, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { MentionMenu, type MentionItem } from "@/components/MentionMenu";
 import { isContentEmpty, serializeContent } from "@/lib/chip-serialize";
-import { filterMentionItems, mentionInitial, mentionKey } from "@/lib/mention";
+import { filterMentionItems, mentionInitial, mentionKeyAt, deriveQueryFromHead } from "@/lib/mention";
 import type { CommandInfo, FileGroup, SkillInfo } from "@/lib/types";
 import type { StreamState } from "@/lib/stream";
 
@@ -69,12 +69,14 @@ export function InputBar(props: {
     const text = node.textContent ?? "";
     // 从光标往前找最近出现的触发序列；contenteditable 中空格可能被浏览器存为 nbsp（ ）
     const head = text.slice(0, offset);
-    const idx = Math.max(
+    // 空格序列（含 nbsp 变体）；无空格序列但 head 以 / 或 @ 开头（行首触发）→ 从 0 删
+    let idx = Math.max(
       head.lastIndexOf(" /"),
       head.lastIndexOf("\u00a0/"),
       head.lastIndexOf(" @"),
       head.lastIndexOf("\u00a0@"),
     );
+    if (idx < 0 && (head.startsWith("/") || head.startsWith("@"))) idx = 0;
     if (idx < 0) return false;
     node.textContent = text.slice(0, idx) + text.slice(offset);
     const nr = document.createRange();
@@ -239,7 +241,11 @@ export function InputBar(props: {
         return;
       }
       // 触发检测与 query 累积（同步更新 ref，避免连续按键同 tick 丢失触发序列）
-      const next = mentionKey(mentionRef.current, e.key);
+      // R18：行首（光标前无任何内容）时 / @ 直接触发
+      const el = editorRef.current;
+      const cursorAtStart =
+        (e.key === "/" || e.key === "@" || e.key === " ") && el ? isCursorAtLineStart(el) : false;
+      const next = mentionKeyAt(mentionRef.current, e.key, cursorAtStart);
       if (next !== mentionRef.current) {
         const wasActive = mentionRef.current.active;
         mentionRef.current = next;
@@ -251,6 +257,40 @@ export function InputBar(props: {
     },
     [mention, mentionItems, activeIndex, selectMention, submit, resetMention, onPickerOpen],
   );
+
+  /** R18：IME 上屏等不经 keydown 的输入——从 DOM 反推 query（与 keydown 累积双轨） */
+  const handleInput = useCallback(() => {
+    setHasInput(true);
+    const el = editorRef.current;
+    if (!el || !mentionRef.current.active) return;
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0) return;
+    const r = sel.getRangeAt(0);
+    const probe = document.createRange();
+    probe.setStart(el, 0);
+    probe.setEnd(r.startContainer, r.startOffset);
+    const q = deriveQueryFromHead(probe.toString());
+    if (q !== null && q !== mentionRef.current.query) {
+      mentionRef.current = { ...mentionRef.current, query: q };
+      setMentionTick((t) => t + 1);
+    }
+  }, []);
+
+  /** 光标是否在输入框行首（光标前无任何内容；contenteditable 中空格已含 nbsp，直接 toString 判断） */
+  const isCursorAtLineStart = useCallback((el: HTMLElement): boolean => {
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0) return false;
+    const r = sel.getRangeAt(0);
+    if (!r.collapsed) return false;
+    const probe = document.createRange();
+    probe.setStart(el, 0);
+    try {
+      probe.setEnd(r.startContainer, r.startOffset);
+    } catch {
+      return false;
+    }
+    return probe.toString().trim().length === 0;
+  }, []);
 
   const handlePaste = useCallback((e: React.ClipboardEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -292,7 +332,7 @@ export function InputBar(props: {
           role="textbox"
           aria-multiline="true"
           className="border-input bg-background focus-visible:ring-ring/50 min-h-10 max-h-40 flex-1 resize-none overflow-y-auto rounded-md border px-3 py-2 text-sm focus-visible:ring-[3px] focus-visible:outline-none"
-          onInput={() => setHasInput(true)}
+          onInput={handleInput}
           onKeyDown={handleKeyDown}
           onPaste={handlePaste}
           onFocus={() => setHasInput(!isContentEmpty(editorRef.current as HTMLElement))}

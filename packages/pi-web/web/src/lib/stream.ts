@@ -1,12 +1,24 @@
 /** 聊天流状态机（纯 reducer，单测覆盖）——轮次聚合气泡模型（SPEC §7）。 */
 
+/**
+ * turn 内 ReAct 步骤块（R18）：content / reasoning / tool 按序交错。
+ * 流式中按 message_update 的 contentIndex 增量累积；message_end 从最终 content 块序列权威重建；
+ * history 回填由 text/thinking/toolCalls 合成。progress 弹窗与流式区渲染的数据源。
+ */
+export type TurnStep =
+  | { type: "text"; text: string }
+  | { type: "thinking"; text: string }
+  | { type: "tool"; toolCallId: string };
+
 export interface Turn {
-  /** 该 turn 最终文本（流式中持续累积；message_end 用最终 content 覆盖） */
+  /** 最终回复（R18：message_end 后 = content 里最后一个 text 块；流式中 = 最后 text 块累积） */
   text: string;
   /** thinking 块全文 */
   thinking: string;
   /** 本 turn content 声明的 toolCall 列表（对应全局 tools 列表） */
   toolCallIds: string[];
+  /** R18：块序列（content/reasoning/tool 按序，见 TurnStep） */
+  steps: TurnStep[];
   final: boolean;
   /** turn 开始时间戳（message_start 记录；history 回填无） */
   startedAt?: number;
@@ -173,6 +185,34 @@ export function toolCallIdsOf(content: unknown): string[] {
   return ids;
 }
 
+/** 内容里最后一个 text 块（R18：最终回复）；无 text 块 → "" */
+export function lastTextOf(content: unknown): string {
+  if (!Array.isArray(content)) return typeof content === "string" ? content : "";
+  let last = "";
+  for (const b of content) {
+    if (b && typeof b === "object" && "text" in (b as object)) last = String((b as { text: unknown }).text);
+  }
+  return last;
+}
+
+/** 从 content 块序列重建 steps（R18：text/thinking/toolCall 按序，无内容块跳过） */
+export function stepsOfContent(content: unknown): TurnStep[] {
+  if (!Array.isArray(content)) return typeof content === "string" && content ? [{ type: "text", text: content }] : [];
+  const out: TurnStep[] = [];
+  for (const b of content) {
+    if (!b || typeof b !== "object") continue;
+    const blk = b as { type?: unknown; text?: unknown; thinking?: unknown; id?: unknown };
+    if (blk.type === "text") {
+      out.push({ type: "text", text: String(blk.text ?? "") });
+    } else if (blk.type === "thinking") {
+      out.push({ type: "thinking", text: String(blk.thinking ?? "") });
+    } else if (blk.type === "toolCall") {
+      if (blk.id != null) out.push({ type: "tool", toolCallId: String(blk.id) });
+    }
+  }
+  return out;
+}
+
 /** 气泡是否仍在更新（有未 final 的 turn） */
 export function bubbleStreaming(bubble: TurnBubble): boolean {
   return bubble.turns.some((t) => !t.final);
@@ -202,6 +242,13 @@ export function bubbleActiveThinking(bubble: TurnBubble): string | null {
     if (!t.final) return t.thinking;
   }
   return null;
+}
+
+/** 按 contentIndex 更新 steps（越界时补齐占位块；start 事件与 delta 共用） */
+function upsertStep(steps: TurnStep[], idx: number, make: (existing: TurnStep) => TurnStep): TurnStep[] {
+  let out = steps;
+  while (out.length <= idx) out = [...out, { type: "text", text: "" }];
+  return [...out.slice(0, idx), make(out[idx]), ...out.slice(idx + 1)];
 }
 
 function updateBubble(state: StreamState, id: string, patch: Partial<TurnBubble>): StreamState {
@@ -250,6 +297,11 @@ export function streamReducer(state: StreamState, action: StreamAction): StreamS
             text: m.text,
             thinking: m.thinking ?? "",
             toolCallIds: toolCalls.map((t) => t.id),
+            steps: [
+              ...(m.text ? [{ type: "text" as const, text: m.text }] : []),
+              ...((m.thinking ?? "") ? [{ type: "thinking" as const, text: m.thinking as string }] : []),
+              ...toolCalls.map((t) => ({ type: "tool" as const, toolCallId: t.id })),
+            ],
             final: true,
           });
         } else {
@@ -296,12 +348,13 @@ export function streamReducer(state: StreamState, action: StreamAction): StreamS
           userCount: state.userCount + 1,
         };
       }
-      // assistant：追加新 turn 到最近气泡
+      // assistant：追加新 turn 到最近气泡（steps 从 content 块初始化，流式按 contentIndex 增量）
       const bubble = currentBubble(state);
       const turn: Turn = {
         text: textOfContent(action.message.content),
         thinking: "",
         toolCallIds: toolCallIdsOf(action.message.content),
+        steps: stepsOfContent(action.message.content),
         final: false,
         startedAt: Date.now(),
       };
@@ -322,17 +375,51 @@ export function streamReducer(state: StreamState, action: StreamAction): StreamS
       if (!bubble) return state;
       const turn = bubble.turns[bubble.turns.length - 1];
       if (!turn || turn.final) return state;
+      const idx = typeof evt.contentIndex === "number" ? evt.contentIndex : undefined;
+      // start 事件：按 contentIndex 建块（真实流式 message_start content 为空，块由 start 带出）
+      if (idx !== undefined && (evt.type === "thinking_start" || evt.type === "text_start" || evt.type === "toolcall_start")) {
+        let steps = turn.steps;
+        if (evt.type === "thinking_start" && steps[idx]?.type !== "thinking") {
+          steps = upsertStep(steps, idx, () => ({ type: "thinking", text: "" }));
+        } else if (evt.type === "text_start" && steps[idx]?.type !== "text") {
+          steps = upsertStep(steps, idx, () => ({ type: "text", text: "" }));
+        } else if (evt.type === "toolcall_start" && steps[idx]?.type !== "tool") {
+          steps = upsertStep(steps, idx, () => ({ type: "tool", toolCallId: "" }));
+        }
+        if (steps !== turn.steps) return updateBubble(state, bubble.id, { turns: [...bubble.turns.slice(0, -1), { ...turn, steps }] });
+        return state;
+      }
       if (evt.type === "text_delta") {
+        // 按 contentIndex 定位 text 块（R18）；无 index → 追加（旧事件防御）
+        let steps = turn.steps;
+        if (idx !== undefined && steps[idx] && steps[idx].type === "text") {
+          const blk = steps[idx] as { type: "text"; text: string };
+          steps = upsertStep(steps, idx, () => ({ type: "text", text: blk.text + (evt.delta ?? "") }));
+        } else if (idx !== undefined) {
+          steps = upsertStep(steps, idx, () => ({ type: "text", text: evt.delta ?? "" }));
+        } else {
+          steps = [...steps, { type: "text", text: evt.delta ?? "" }];
+        }
+        // turn.text 同步 = 最后 text 块累积（终态最终回复 / 流式正文）
+        let lastText = "";
+        for (const s of steps) if (s.type === "text") lastText = s.text;
         return updateBubble(state, bubble.id, {
-          turns: [...bubble.turns.slice(0, -1), { ...turn, text: turn.text + (evt.delta ?? "") }],
+          turns: [...bubble.turns.slice(0, -1), { ...turn, text: lastText, steps }],
         });
       }
       if (evt.type === "thinking_delta") {
         const partialThinking = evt.partial?.thinking;
+        let steps = turn.steps;
+        if (idx !== undefined && steps[idx] && steps[idx].type === "thinking") {
+          const text = partialThinking ?? (steps[idx] as { type: "thinking"; text: string }).text + (evt.delta ?? "");
+          steps = upsertStep(steps, idx, () => ({ type: "thinking", text }));
+        } else if (idx !== undefined) {
+          steps = upsertStep(steps, idx, () => ({ type: "thinking", text: partialThinking ?? (evt.delta ?? "") }));
+        }
         return updateBubble(state, bubble.id, {
           turns: [
             ...bubble.turns.slice(0, -1),
-            { ...turn, thinking: partialThinking ?? turn.thinking + (evt.delta ?? "") },
+            { ...turn, thinking: partialThinking ?? turn.thinking + (evt.delta ?? ""), steps },
           ],
         });
       }
@@ -356,7 +443,7 @@ export function streamReducer(state: StreamState, action: StreamAction): StreamS
       if (!bubble) return state;
       const turn = bubble.turns[bubble.turns.length - 1];
       if (!turn || turn.final) return state;
-      const finalText = textOfContent(action.message.content);
+      const finalText = lastTextOf(action.message.content);
       const thinking = thinkingOfContent(action.message.content);
       const ids = toolCallIdsOf(action.message.content);
       // 空 turn（无 text、无 thinking、无工具）→ 移除；turns 空且无 user 文本的孤儿气泡一并移除
@@ -379,6 +466,7 @@ export function streamReducer(state: StreamState, action: StreamAction): StreamS
             text: finalText || turn.text,
             thinking: thinking || turn.thinking,
             toolCallIds: ids.length > 0 ? ids : turn.toolCallIds,
+            steps: stepsOfContent(action.message.content),
             final: true,
             startedAt: turn.startedAt,
             endedAt: Date.now(),
@@ -398,6 +486,26 @@ export function streamReducer(state: StreamState, action: StreamAction): StreamS
         expanded: false,
       };
       const existing = state.tools.find((t) => t.toolCallId === action.toolCallId);
+      // R18：流式中 tool 块填充 toolCallId（toolcall_start 无 id，tool_execution_start 按序填充第一个空 tool 块）
+      const bubble = state.bubbles.find((b) => b.id === state.currentBubbleId);
+      if (bubble) {
+        const turn = bubble.turns[bubble.turns.length - 1];
+        if (turn && !turn.final) {
+          const i = turn.steps.findIndex((s) => s.type === "tool" && s.toolCallId === "");
+          if (i >= 0) {
+            const steps = [...turn.steps.slice(0, i), { type: "tool" as const, toolCallId: action.toolCallId }, ...turn.steps.slice(i + 1)];
+            return {
+              ...state,
+              tools: existing
+                ? state.tools.map((t) => (t.toolCallId === action.toolCallId ? { ...t, args: action.args } : t))
+                : [...state.tools, row],
+              bubbles: state.bubbles.map((b) =>
+                b.id === bubble.id ? { ...b, turns: [...bubble.turns.slice(0, -1), { ...turn, steps }] } : b,
+              ),
+            };
+          }
+        }
+      }
       return {
         ...state,
         tools: existing

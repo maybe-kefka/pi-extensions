@@ -35,8 +35,8 @@ describe("辅助函数", () => {
       userText: "q",
       userFinal: true,
       turns: [
-        { text: "a", thinking: "想1", toolCallIds: ["t1"], final: true },
-        { text: "b", thinking: "想2", toolCallIds: ["t2", "t1"], final: false },
+        { text: "a", thinking: "想1", toolCallIds: ["t1"], steps: [], final: true },
+        { text: "b", thinking: "想2", toolCallIds: ["t2", "t1"], steps: [], final: false },
       ],
     };
     expect(bubbleStreaming(b)).toBe(true);
@@ -61,8 +61,8 @@ describe("辅助函数", () => {
       userText: "q",
       userFinal: true,
       turns: [
-        { text: "a", thinking: "想1", toolCallIds: [], final: true },
-        { text: "b", thinking: "想2", toolCallIds: [], final: false },
+        { text: "a", thinking: "想1", toolCallIds: [], steps: [], final: true },
+        { text: "b", thinking: "想2", toolCallIds: [], steps: [], final: false },
       ],
     };
     expect(bubbleActiveThinking(b)).toBe("想2");
@@ -72,7 +72,7 @@ describe("辅助函数", () => {
     // 无 thinking 的活跃 turn → 空串
     const noThink = {
       ...b,
-      turns: [{ text: "b", thinking: "", toolCallIds: [], final: false }],
+      turns: [{ text: "b", thinking: "", toolCallIds: [], steps: [], final: false }],
     };
     expect(bubbleActiveThinking(noThink)).toBe("");
     // 空 turns
@@ -273,5 +273,173 @@ describe("agent 状态与会话切换", () => {
   it("未知 action 返回原状态", () => {
     const s = reduce([{ type: "session_before_switch", reason: "resume" }]);
     expect(s.sessionReason).toBe("switching:resume");
+  });
+});
+
+describe("R18：Turn.steps 块序列", () => {
+  it("message_end 从 content 块序列重建 steps（text/thinking/toolCall 按序）", () => {
+    const state = reduce([
+      { type: "message_start", message: { role: "user", content: "q" } },
+      { type: "message_start", message: { role: "assistant", content: [] } },
+      {
+        type: "message_end",
+        message: {
+          role: "assistant",
+          content: [
+            { type: "text", text: "我先读取文件" },
+            { type: "thinking", thinking: "计划一下" },
+            { type: "toolCall", id: "t1", name: "bash", arguments: {} },
+            { type: "text", text: "完成" },
+          ],
+        },
+      },
+    ]);
+    const turn = state.bubbles[0].turns[0];
+    expect(turn.steps).toEqual([
+      { type: "text", text: "我先读取文件" },
+      { type: "thinking", text: "计划一下" },
+      { type: "tool", toolCallId: "t1" },
+      { type: "text", text: "完成" },
+    ]);
+    // turn.text = 最后 text 块（最终回复），不含过程 content
+    expect(turn.text).toBe("完成");
+    expect(turn.thinking).toBe("计划一下");
+    expect(turn.toolCallIds).toEqual(["t1"]);
+  });
+
+  it("纯文本 content → 单 text step；turn.text 不变", () => {
+    const state = reduce([
+      { type: "message_start", message: { role: "user", content: "q" } },
+      { type: "message_start", message: { role: "assistant", content: [] } },
+      { type: "message_end", message: { role: "assistant", content: [{ type: "text", text: "你好" }] } },
+    ]);
+    expect(state.bubbles[0].turns[0].steps).toEqual([{ type: "text", text: "你好" }]);
+    expect(state.bubbles[0].turns[0].text).toBe("你好");
+  });
+
+  it("纯 toolCall turn → steps 仅 tool；text 为空", () => {
+    const state = reduce([
+      { type: "message_start", message: { role: "user", content: "q" } },
+      { type: "message_start", message: { role: "assistant", content: [{ type: "toolCall", id: "t1", name: "bash", arguments: {} }] } },
+      { type: "message_end", message: { role: "assistant", content: [{ type: "toolCall", id: "t1", name: "bash", arguments: {} }] } },
+    ]);
+    const turn = state.bubbles[0].turns[0];
+    expect(turn.steps).toEqual([{ type: "tool", toolCallId: "t1" }]);
+    expect(turn.text).toBe("");
+  });
+
+  it("流式中 steps 按 contentIndex 增量累积（thinking/text 块）", () => {
+    const state = reduce([
+      { type: "message_start", message: { role: "user", content: "q" } },
+      {
+        type: "message_start",
+        message: {
+          role: "assistant",
+          content: [
+            { type: "thinking", thinking: "" },
+            { type: "text", text: "" },
+          ],
+        },
+      },
+      { type: "message_update", event: { type: "thinking_delta", contentIndex: 0, partial: { thinking: "想" } } },
+      { type: "message_update", event: { type: "thinking_delta", contentIndex: 0, partial: { thinking: "想想" } } },
+      { type: "message_update", event: { type: "text_delta", contentIndex: 1, delta: "你" } },
+      { type: "message_update", event: { type: "text_delta", contentIndex: 1, delta: "好" } },
+    ]);
+    const turn = state.bubbles[0].turns[0];
+    expect(turn.steps).toEqual([
+      { type: "thinking", text: "想想" },
+      { type: "text", text: "你好" },
+    ]);
+    // turn.text 同步为最后 text 块累积
+    expect(turn.text).toBe("你好");
+  });
+
+  it("history 回填合成 steps（text/thinking/toolCalls）", () => {
+    const state = reduce([
+      {
+        type: "history",
+        messages: [
+          { role: "user", text: "q", userIndex: 0 },
+          { role: "assistant", text: "答", thinking: "想", toolCalls: [{ id: "t1", name: "bash", arguments: {} }] },
+        ],
+      },
+    ]);
+    expect(state.bubbles[0].turns[0].steps).toEqual([
+      { type: "text", text: "答" },
+      { type: "thinking", text: "想" },
+      { type: "tool", toolCallId: "t1" },
+    ]);
+  });
+
+  it("流式 message_start 时 steps 从 content 初始化（含 toolCall 块）", () => {
+    const state = reduce([
+      { type: "message_start", message: { role: "user", content: "q" } },
+      {
+        type: "message_start",
+        message: {
+          role: "assistant",
+          content: [
+            { type: "thinking", thinking: "想" },
+            { type: "toolCall", id: "t1", name: "bash", arguments: {} },
+          ],
+        },
+      },
+    ]);
+    expect(state.bubbles[0].turns[0].steps).toEqual([
+      { type: "thinking", text: "想" },
+      { type: "tool", toolCallId: "t1" },
+    ]);
+  });
+});
+
+describe("R18.1b：start 事件建块（真实流式 message_start content 为空）", () => {
+  it("thinking_start/text_start 按 contentIndex 建块，delta 累积", () => {
+    const state = reduce([
+      { type: "message_start", message: { role: "user", content: "q" } },
+      { type: "message_start", message: { role: "assistant", content: [] } },
+      { type: "message_update", event: { type: "thinking_start", contentIndex: 0 } },
+      { type: "message_update", event: { type: "thinking_delta", contentIndex: 0, delta: "想", partial: { thinking: "想" } } },
+      { type: "message_update", event: { type: "thinking_delta", contentIndex: 0, delta: "想", partial: { thinking: "想想" } } },
+      { type: "message_update", event: { type: "text_start", contentIndex: 1 } },
+      { type: "message_update", event: { type: "text_delta", contentIndex: 1, delta: "你" } },
+      { type: "message_update", event: { type: "text_delta", contentIndex: 1, delta: "好" } },
+    ]);
+    const turn = state.bubbles[0].turns[0];
+    expect(turn.steps).toEqual([
+      { type: "thinking", text: "想想" },
+      { type: "text", text: "你好" },
+    ]);
+    expect(turn.text).toBe("你好");
+  });
+
+  it("toolcall_start 建 tool 块，tool_execution_start 按序填充 toolCallId", () => {
+    const state = reduce([
+      { type: "message_start", message: { role: "user", content: "q" } },
+      { type: "message_start", message: { role: "assistant", content: [] } },
+      { type: "message_update", event: { type: "thinking_start", contentIndex: 0 } },
+      { type: "message_update", event: { type: "toolcall_start", contentIndex: 1 } },
+      { type: "tool_start", toolCallId: "t1", toolName: "bash", args: { command: "ls" } },
+      { type: "tool_update", toolCallId: "t1", partialResult: { content: [{ type: "text", text: "out" }] } },
+    ]);
+    const turn = state.bubbles[0].turns[0];
+    expect(turn.steps).toEqual([
+      { type: "thinking", text: "" },
+      { type: "tool", toolCallId: "t1" },
+    ]);
+    // 全局 tools 表正常
+    expect(state.tools[0]).toMatchObject({ toolCallId: "t1", toolName: "bash", output: "out" });
+  });
+
+  it("越界防御：contentIndex 跳跃时补齐占位块", () => {
+    const state = reduce([
+      { type: "message_start", message: { role: "user", content: "q" } },
+      { type: "message_start", message: { role: "assistant", content: [] } },
+      { type: "message_update", event: { type: "text_start", contentIndex: 2 } },
+      { type: "message_update", event: { type: "text_delta", contentIndex: 2, delta: "x" } },
+    ]);
+    const turn = state.bubbles[0].turns[0];
+    expect(turn.steps).toHaveLength(3);
+    expect(turn.steps[2]).toEqual({ type: "text", text: "x" });
   });
 });

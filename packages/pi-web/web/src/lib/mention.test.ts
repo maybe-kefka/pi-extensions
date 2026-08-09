@@ -146,3 +146,71 @@ describe("R17 上拉框修订", () => {
     expect(filterMentionItems(items, "code-review")).toEqual([items[0]]);
   });
 });
+
+describe("R18：行首触发与 query 反推", () => {
+  it("行首触发：光标在输入框开头时 / 或 @ 直接激活", async () => {
+    const { mentionKeyAt, mentionInitial } = await import("./mention");
+    const s = mentionKeyAt(mentionInitial, "/", true);
+    expect(s.active).toBe(true);
+    expect(s.kind).toBe("skill");
+    const a = mentionKeyAt(mentionInitial, "@", true);
+    expect(a.active).toBe(true);
+    expect(a.kind).toBe("file");
+  });
+
+  it("非行首：/ 或 @ 不触发（需前置空格）", async () => {
+    const { mentionKeyAt, mentionInitial } = await import("./mention");
+    expect(mentionKeyAt(mentionInitial, "/", false).active).toBe(false);
+    expect(mentionKeyAt(mentionInitial, "@", false).active).toBe(false);
+  });
+
+  it("行首标志不污染普通字符（prevWasSpace 不残留）", async () => {
+    const { mentionKeyAt, mentionKey, mentionInitial } = await import("./mention");
+    const s = mentionKeyAt(mentionInitial, "a", true);
+    expect(s.prevWasSpace).toBe(false);
+    // 后续非空格字符不触发
+    expect(mentionKey(s, "/").active).toBe(false);
+  });
+
+  it("行首触发后继续输入累积 query（状态机 active 分支不变）", async () => {
+    const { mentionKeyAt, mentionKey, mentionInitial } = await import("./mention");
+    let s = mentionKeyAt(mentionInitial, "/", true);
+    s = mentionKey(s, "c");
+    s = mentionKey(s, "o");
+    expect(s.query).toBe("co");
+  });
+
+  it("deriveQueryFromHead：空格触发序列后的文本", async () => {
+    const { deriveQueryFromHead } = await import("./mention");
+    expect(deriveQueryFromHead(" /cod")).toBe("cod");
+    expect(deriveQueryFromHead("abc /cod")).toBe("cod");
+    expect(deriveQueryFromHead(" /web")).toBe("web");
+    expect(deriveQueryFromHead(" / @")).toBe("");
+  });
+
+  it("deriveQueryFromHead：nbsp 变体（contenteditable 空格）", async () => {
+    const { deriveQueryFromHead } = await import("./mention");
+    expect(deriveQueryFromHead("\u00a0/cod")).toBe("cod");
+    expect(deriveQueryFromHead("ab\u00a0@src")).toBe("src");
+  });
+
+  it("deriveQueryFromHead：行首模式（无空格前缀）", async () => {
+    const { deriveQueryFromHead } = await import("./mention");
+    expect(deriveQueryFromHead("/cod")).toBe("cod");
+    expect(deriveQueryFromHead("@file")).toBe("file");
+    expect(deriveQueryFromHead("/")).toBe("");
+  });
+
+  it("deriveQueryFromHead：最近触发序列优先（多段）", async () => {
+    const { deriveQueryFromHead } = await import("./mention");
+    expect(deriveQueryFromHead(" /web @x")).toBe("x");
+  });
+
+  it("deriveQueryFromHead：无触发上下文 → null", async () => {
+    const { deriveQueryFromHead } = await import("./mention");
+    expect(deriveQueryFromHead("abc")).toBeNull();
+    expect(deriveQueryFromHead("abc/def")).toBeNull();
+    expect(deriveQueryFromHead("path@x")).toBeNull();
+    expect(deriveQueryFromHead("")).toBeNull();
+  });
+});

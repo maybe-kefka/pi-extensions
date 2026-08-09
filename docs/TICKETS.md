@@ -272,3 +272,43 @@
 ### R17.4 收尾 ✅
 - 构建 web/dist；`npm test` + `npm run typecheck` 全绿；E2E 冒烟 pi:listFiles 含目录
 - SPEC §4.4/§7 已同步；commit
+
+## R18 触发规则扩展 + langgraph 流式模型 + progress 单 scroll ReAct 流（2026-08，grilling 对齐）
+
+> 决策记录（2026-08 grilling 逐题对齐）：
+> - 触发规则（Q1）：**行首（光标前无内容）直接 `/` `@` 触发** + 任意位置 `' /'` `' @'` 触发（空格含 nbsp）；选中时触发序列替换为插入内容
+> - IME 加固（Q2）：query 以 onInput 从 DOM 反推为准（光标前最近触发序列后到光标的文本），中文输入法上屏也能筛选
+> - @ 文件面板（Q3）：与触发规则同根因（行首 @ 不触发），面板数据链路已正常（冒烟 122 项）
+> - 终态最终回复（Q4）= **最后一个 turn 的文本**（有 tool_call 的 turn 不会 finish，终态 turn 必为纯文本回复；中间 turn 正文终态一律隐藏）
+> - 流式模型（Q7/Q8，langgraph GraphNode 心智）：气泡只显示**当前活跃轮**——灰色小字 reasoning 实时全文 + content Markdown 流式 + ToolNode 卡片（状态图标+工具名+输出预览，就地展开）接在内容后；轮边界清空重来；终态只留最终回复
+> - progress 按钮仅**终态**出现（流式中不显示）；progress 弹窗（Q5/Q6）= 单 scroll 完整 ReAct 流（content 正常 Markdown / reasoning 折叠显示 "reasoning" / tool 折叠摘要），全部就地展开
+
+### R18.1 数据层：Turn.steps（TDD）
+- `Turn` 增加 `steps: TurnStep[]`；`TurnStep = {type: "content"|"reasoning"|"tool", text?, toolCallId?}`
+- `message_end`：从 content 块序列（text/thinking/toolCall 按序）重建 steps
+- `history` 回填：由 text/thinking/toolCalls 合成近似 steps
+- 测试：stream.test.ts +（message_end 多块重建/纯文本/空 turn；history 合成）
+
+### R18.2 触发规则 + IME 加固（TDD）
+- mention.ts：`mentionKeyAt(state, key, cursorAtStart)`（行首时把 prevWasSpace 视为 true 再走状态机）+ `deriveQueryFromHead(head)`（光标前全文 → 最近触发序列后的文本 = query；含 nbsp 变体与行首模式；无触发上下文 → null）
+- InputBar.tsx：keydown 时行首检测（光标前 range.toString().trim() 为空）；onInput 反推 query（active 时覆盖 mentionRef.query + tick）；stripTriggerChars 支持行首单字符（head 无 " /" 但以 "/" 或 "@" 开头 → 从头删）
+- 测试：mention.test.ts +（mentionKeyAt 行首触发/非触发键无污染；deriveQueryFromHead 各种形态）
+
+### R18.3 气泡流式区重构（langgraph 模型，TDD）
+- Chat.tsx TurnBubbleView：
+  - 流式中只渲染**最后一个非 final turn**：灰色小字 reasoning（实时全文）+ content（Markdown 流式 + ▍）+ ToolNode 卡片（ToolCard 就地展开版）
+  - 已 final 中间 turn 不渲染任何内容；终态（全 final）只渲染最后一个 turn 的最终文本
+- ToolCard 改为就地展开（摘要行 + 展开区 args/output，无二级 Dialog）；流式区与 progress 弹窗复用
+- 测试：Chat.test.tsx 重写（流式中 reasoning/content/tool 卡片；轮边界清空；终态只留最终文本；tool 卡片就地展开）
+
+### R18.4 progress 弹窗重构（单 scroll ReAct 流，TDD）
+- TimelineDialog → ProgressDialog：数据源 Turn.steps（按 turn 顺序，turn 内 steps 交错）
+  - content：Markdown 正常展示（不折叠）
+  - reasoning：折叠显示 "reasoning" 标签，点击就地展开全文
+  - tool：折叠摘要行（状态图标+工具名+输出预览），点击就地展开 args/output
+- 单 scroll：内容区一个 overflow-y-auto，内部无嵌套 scroll（ToolCard 展开区不设 max-h+overflow）
+- 测试：Chat.test.tsx（弹窗 steps 渲染/折叠展开/单 scroll 无嵌套）
+
+### R18.5 收尾
+- 构建 web/dist；`npm test` + `npm run typecheck` 全绿；E2E 冒烟（行首触发/@ 面板/流式事件）
+- SPEC §4.4/§7 已同步；commit

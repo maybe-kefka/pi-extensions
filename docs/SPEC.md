@@ -167,21 +167,32 @@
   - 构建：`npm run build:web`（根）/ `npm run build -w pi-web-frontend`；`npm publish` 时 `prepublishOnly` 先构建（`cd web && npm run build`）。
   - **`web/dist` 提交进 git**（个人仓库开箱即用）；`/web` 启动前检查 `dist/index.html` 存在，缺失则报错提示先构建。
 - **布局**：header（连接状态 / 会话名 / 模型 / 思考等级 / **上下文占用条（可点击 → Popover 上下文占用面板，含 compact 按钮）**）+ chat 流 + 侧栏（**会话列表：可点击切换 + 顶部新建按钮 + 每项工具栏（删除/重命名/查看树/复制）**、模型选择、思考等级、状态桥接面板）+ 输入区（**无左侧 "+" 按钮**）。
-- **气泡渲染（R16，ChatGPT 式；R17 修订）**：**气泡最终只显示最终 response 文本**（final 后思考/工具过程显示全部消失）；多轮循环（r→a→r→a→f）中，**过程信息只在流式期间临时显示**：
-  - **流式中（本轮未 final）**：思考中显示一条 "Thinking…" 行（旋转图标，**不展开**）；工具调用显示**工具名行**（状态图标 + 工具名，无详情卡片，不展开）；输出文本流式逐字 + 光标
-  - **轮结束（final）**：该轮 thinking/工具行消失；最终文本渲染 Markdown（纯文本轮 turn 的文本为空则不渲染）
-  - **progress 按钮 + 时间线弹窗保留**：完整 reasoning + Action 记录仍可回看（数据层 Turn.thinking/toolCallIds 不丢，仅渲染层隐藏）
-  - **工具栏**（轮结束出现）：fork + **progress**（流式中 Loader 旋转 "进行中"，结束 CircleCheck "完成"，点击 → 时间线弹窗）；reasoning / tools 两按钮删除
-  - **时间线弹窗（R16）**：按 turn 顺序交错展示全部 thinking 全文 + 工具卡片（thinking 直接全文块，工具卡片可点开二级详情）；不含最终正文
-- **输入区（R16，ChatGPT 式上拉框；R17 修订）**：contenteditable 容器（现状保留）：
-  - **space+/** 触发上拉框**：候选 = skills（**显示 `skill:<name>`**，插入 chip `/skill:<name>`）+ 命令（`pi:listCommands`，插入纯文本 `/name`）；**space+@** 触发上拉框**：候选 = 工作目录文件**与文件夹**（`pi:listFiles` 含目录条目 `isDir`，目录/文件平级混列，插入 chip 路径）
-  - 触发字符（空格+斜杠/空格+@）在选中时被**替换**为插入内容；Esc 取消则字符原样保留
-  - 键盘：上下键切换、回车选中（面板打开时回车不发送）、Esc 取消、继续输入过滤列表（前缀匹配）、鼠标点击可选中；面板从输入框上方弹出
+- **气泡渲染（R16，ChatGPT 式；R17 修订；R18 langgraph 流式模型）**：**气泡最终只显示最终回复文本**（`finish_reason:stop` 后所有 ReAct 中间态消失）；多轮循环（r→a→r→a→f）中，**气泡内只实时展示当前活跃轮（LLMNode）的内容，轮边界清空重来**：
+  - **流式中（当前活跃 turn 未 final）**，按 langgraph GraphNode 心智展示该轮实时内容：
+    - **reasoning**：偏灰色小字（`text-muted-foreground`），thinking 全文实时流出（非占位行、不折叠）
+    - **content**：与终态一致——**Markdown 实时流式渲染** + 尾部 ▍ 光标（markdown 未闭合块容错）
+    - **ToolNode**（工具卡片，接在 content 后面）：状态图标（运行中 spinner / 完成 ✓ / 失败 ✗）+ 工具名 + 输出预览截断，**点击就地展开** args/output（执行中实时更新 output）——与 progress 弹窗内 tool 行同款组件
+  - **轮边界**：新 turn（下一轮 LLMNode）开始 → 上一轮 reasoning/content/tool 全部清空，开始显示新一轮内容；**已 final 的中间 turn 终态前后都不渲染任何内容**
+  - **终态（所有 turn final）**：气泡只留**最后一个 turn 的最终文本**（Markdown 渲染；中间 turn 的正文一律隐藏）；progress 按钮出现
+  - **工具栏**（仅终态出现，流式中不显示）：fork + **progress**（点击 → progress 弹窗）
+- **progress 弹窗（R18 重构，单 scroll ReAct 流）**：终态后查看完整 ReAct 流程：
+  - **总体单 scroll**：弹窗内容区一个 overflow-y-auto，内部**不嵌套**任何二级 scroll（无内外双 scroll）
+  - **数据 = Turn.steps**（turn 内 content/reasoning/tool 按序交错，`message_end` 从 content 块序列重建；history 回填合成近似 steps）
+  - **content**：正常展示（不折叠），Markdown 渲染，与正文同款
+  - **reasoning**：折叠，默认只显示 "reasoning" 标签，点击**就地展开**全文（pre 纯文本）
+  - **tool**：折叠，显示摘要行（状态图标 + 工具名 + 输出预览截断），点击**就地展开** args/output——与气泡流式中 ToolNode 卡片同款
+  - 不含最终正文（正文在气泡里）；turn 之间按序展示（多轮交错）
+- **输入区（R16，ChatGPT 式上拉框；R17 修订；R18 触发规则扩展 + IME 加固）**：contenteditable 容器（现状保留）：
+  - **触发规则（R18）**：**输入框行首（光标前无任何内容）按 `/` 或 `@` 直接触发**（首个 `/` `@`），**任意位置 `' /'` 或 `' @'` 触发**（空格可为 nbsp）；其余情况不触发
+  - **触发面板**：`/` → skills（**显示 `skill:<name>`**，插入 chip `/skill:<name>`）+ 命令（`pi:listCommands`，插入纯文本 `/name`）；`@` → 工作目录文件**与文件夹**（`pi:listFiles` 含目录条目 `isDir`，目录/文件平级混列，插入 chip 路径）
+  - 触发字符（行首 `/` `@` / 空格+斜杠 / 空格+@）在选中时被**替换**为插入内容；Esc 取消则字符原样保留
+  - **IME 加固（R18）**：query 以 `onInput` 从编辑器 DOM 反推（光标前最近触发序列之后到光标的文本）为准，与 keydown 累积双轨——中文输入法组词上屏（compositionend）也能实时筛选
+  - 键盘：上下键切换、回车选中（面板打开时回车不发送）、Esc 取消、继续输入实时过滤（包含匹配）、鼠标点击可选中；面板从输入框上方弹出
   - **可见窗口 8 行**：选项超过 8 个时列表滚动，上下键导航高亮行自动滚入视野（scrollIntoView block:nearest）
   - **发送/abort 融合**：输入区右侧单一圆形 icon 按钮——空闲 `↑`（发送）、LLM 运行中 `■`（abort，点击直接停止）；busy 时的"agent 忙碌 + 队列 + deliverAs 选择器"行**删除**（steer 能力移除）
   - **队列**：LLM 运行时回车 = followUp 入队；输入区上方轻提示条"已排队 ×N"；消息流中的队列 marker 删除
 - **轮次聚合（v-next）**：聊天流按**气泡**渲染——每条 user 消息开启新气泡，到下一条 user 消息前的全部内容聚合进同一气泡（工具循环的多个 assistant turn、thinking、toolcall、toolResult 均在内）。
-  - 气泡 = `{userText, userIndex, turns: [{text, thinking, toolCallIds, final, startedAt?, endedAt?}]}`；`userIndex`（第几条 user 消息，0-based）由后端在 `pi:getMessages` 标记，流式消息由前端自增计数——**fork 即发 `pi:fork {userIndex}`**。
+  - 气泡 = `{userText, userIndex, turns: [{text, thinking, toolCallIds, steps, final, startedAt?, endedAt?}]}`；`userIndex`（第几条 user 消息，0-based）由后端在 `pi:getMessages` 标记，流式消息由前端自增计数——**fork 即发 `pi:fork {userIndex}`**。**`steps`（R18）**：turn 内 ReAct 步骤序列 `[{type: "content"|“reasoning”|“tool”, text?, toolCallId?}]`，`message_end` 从 content 块序列（text/thinking/toolCall 按序）重建，history 回填由 text/thinking/toolCalls 合成——progress 弹窗数据源。
   - 气泡底部**工具栏**（轮结束后出现，即无活跃 turn 且 agent 空闲）：fork（分叉该轮）+ **progress**（点击 → 时间线弹窗：全部 thinking + Action 交错流程）。
   - 流式中气泡实时更新（thinking / 文本累积）；`turn_end` / `agent_settled` 驱动轮次边界与工具栏显隐。
 - **交互升级（v2 重构）**：thinking 与工具输出**可展开/收起**（工具输出折叠态截断 ~1200 字符）；**跟随滚动开关**（上翻暂停自动滚动，出现"回到底部"按钮）；输入框为多行 `Textarea`（Enter 发送 / Shift+Enter 换行）；**断线横幅** + 指数退避重连（≤10s）。

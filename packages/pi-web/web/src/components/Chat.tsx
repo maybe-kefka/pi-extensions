@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import type * as React from "react";
-import { Bot, CircleCheck, CircleX, GitFork, Loader2, User, Wrench } from "lucide-react";
+import { Bot, ChevronDown, ChevronRight, CircleCheck, CircleX, GitFork, Loader2, User, Wrench } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -8,7 +8,6 @@ import { Bubble, BubbleContent } from "@/components/ui/bubble";
 import { Markdown } from "@/components/ui/markdown";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
-import { Marker, MarkerContent } from "@/components/ui/marker";
 import { Message, MessageAvatar, MessageContent, MessageGroup, MessageHeader } from "@/components/ui/message";
 import {
   MessageScroller,
@@ -26,6 +25,7 @@ import {
   type StreamState,
   type Turn,
   type TurnBubble,
+  type TurnStep,
 } from "@/lib/stream";
 
 function BotAvatar() {
@@ -61,98 +61,118 @@ function StatusIcon({ status }: { status: ToolStatus }) {
   return <CircleCheck className="text-success size-3.5" />;
 }
 
-const STATUS_LABEL: Record<ToolStatus, { text: string; variant: "secondary" | "default" | "destructive" }> = {
-  running: { text: "运行中", variant: "secondary" },
-  done: { text: "完成", variant: "default" },
-  error: { text: "失败", variant: "destructive" },
-};
-
-/** 单个工具详情卡片（点击弹窗，气泡内联与时间线弹窗复用） */
+/**
+ * ToolNode 卡片（R18）：摘要行（状态图标 + 工具名 + 输出预览截断）+ 点击**就地展开** args/output。
+ * 气泡流式区与 progress 弹窗共用；展开区不设 max-h/overflow（弹窗总体单 scroll）。
+ */
 function ToolCard({ row }: { row: StreamState["tools"][number] }) {
   const [open, setOpen] = useState(false);
   const status = toolStatus(row);
   const preview =
     row.output.trim() || (row.args === null || row.args === undefined ? "" : JSON.stringify(row.args));
-  const label = STATUS_LABEL[status];
-
   return (
-    <>
-      <Button
-        variant="outline"
-        className="flex h-auto w-full cursor-pointer items-center gap-2 rounded-xl px-3 py-2 text-left text-xs"
-        onClick={() => setOpen(true)}
+    <div className="flex flex-col gap-1" data-slot="step-tool">
+      <button
+        type="button"
+        data-slot="tool-toggle"
+        className="border-border bg-muted/30 hover:bg-muted/50 flex w-full cursor-pointer items-center gap-2 rounded-xl border px-3 py-2 text-left text-xs"
+        onClick={() => setOpen((o) => !o)}
       >
+        {open ? <ChevronDown className="size-3.5 shrink-0" /> : <ChevronRight className="size-3.5 shrink-0" />}
         <StatusIcon status={status} />
         <span className="shrink-0 font-medium">{row.toolName}</span>
         {preview && <span className="text-muted-foreground min-w-0 flex-1 truncate">{preview}</span>}
-      </Button>
-
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-base">
-              <span>⚙ {row.toolName}</span>
-              <Badge variant={label.variant}>{label.text}</Badge>
-            </DialogTitle>
-            <DialogDescription className="font-mono text-[11px]">{row.toolCallId}</DialogDescription>
-          </DialogHeader>
+      </button>
+      {open && (
+        <div className="border-border bg-muted/30 flex flex-col gap-1 rounded-xl border p-2">
           {row.args !== null && row.args !== undefined && (
             <div className="min-w-0">
-              <div className="text-muted-foreground mb-1 text-xs">参数</div>
-              <pre className="bg-muted/50 border-border max-h-40 overflow-y-auto rounded-md border p-2 text-xs whitespace-pre-wrap [overflow-wrap:anywhere]">
+              <div className="text-muted-foreground mb-0.5 text-[11px]">参数</div>
+              <pre className="text-muted-foreground border-border rounded-md border p-2 text-xs whitespace-pre-wrap [overflow-wrap:anywhere]">
                 {JSON.stringify(row.args, null, 2)}
               </pre>
             </div>
           )}
           <div className="min-w-0">
-            <div className="text-muted-foreground mb-1 text-xs">输出</div>
-            <pre className="bg-muted/50 border-border max-h-96 overflow-y-auto rounded-md border p-2 text-xs whitespace-pre-wrap [overflow-wrap:anywhere]">
+            <div className="text-muted-foreground mb-0.5 text-[11px]">输出</div>
+            <pre className="text-muted-foreground border-border rounded-md border p-2 text-xs whitespace-pre-wrap [overflow-wrap:anywhere]">
               {row.output || "(空)"}
             </pre>
           </div>
-        </DialogContent>
-      </Dialog>
-    </>
-  );
-}
-
-/**
- * 流式过程行（R17 极简）：本轮未 final 时——Thinking… 行（不展开）+ 工具名行（状态图标 + 工具名）。
- * final 后不渲染（气泡只留最终文本，完整记录在时间线弹窗）。
- */
-function StreamingProgress({
-  turn,
-  tools,
-}: {
-  turn: Turn;
-  tools: StreamState["tools"];
-}) {
-  // turn 已声明的工具 + 全局正在执行（未 final）的工具行（toolCallIds 流式中为空，靠 tool_start 事件补全）
-  const rows: StreamState["tools"][number][] = [
-    ...turn.toolCallIds
-      .map((id) => tools.find((t) => t.toolCallId === id))
-      .filter((t): t is StreamState["tools"][number] => t !== undefined),
-    ...tools.filter((t) => !t.final && !turn.toolCallIds.includes(t.toolCallId)),
-  ];
-  return (
-    <div className="flex flex-col gap-1" data-slot="streaming-progress">
-      {turn.thinking.trim().length > 0 && (
-        <div className="text-muted-foreground flex items-center gap-1.5 text-xs">
-          <Loader2 className="size-3 animate-spin" /> Thinking…
         </div>
       )}
-      {rows.map((row) => (
-        <div key={row.toolCallId} className="text-muted-foreground flex items-center gap-1.5 text-xs">
-          <StatusIcon status={toolStatus(row)} />
-          <span className="truncate font-medium">{row.toolName}</span>
-        </div>
-      ))}
     </div>
   );
 }
 
-/** 时间线弹窗：按 turn 顺序交错展示 thinking 全文 + 工具卡片（不含最终正文） */
-function TimelineDialog({
+/** 单个 reasoning 折叠块（R18：折叠显示 "reasoning" 标签，点击就地展开全文） */
+function ReasoningBlock({ text }: { text: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="flex flex-col gap-1" data-slot="step-reasoning">
+      <button
+        type="button"
+        className="text-muted-foreground hover:bg-muted/50 flex w-fit cursor-pointer items-center gap-1 rounded-md px-1.5 py-0.5 text-xs"
+        onClick={() => setOpen((o) => !o)}
+      >
+        {open ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
+        reasoning
+      </button>
+      {open && (
+        <pre className="text-muted-foreground bg-muted/30 border-border rounded-md border p-2 text-xs whitespace-pre-wrap [overflow-wrap:anywhere]">
+          {text}
+        </pre>
+      )}
+    </div>
+  );
+}
+
+/**
+ * 流式过程区（R18 langgraph 模型）：当前活跃轮（LLMNode）的 steps 按序实时渲染——
+ * thinking 块灰色小字全文、text 块 Markdown 流式 + ▍、tool 块 ToolNode 卡片。
+ */
+function StreamingSteps({ turn, tools }: { turn: Turn; tools: StreamState["tools"] }) {
+  const rows = new Map<string, StreamState["tools"][number]>();
+  for (const t of tools) rows.set(t.toolCallId, t);
+  const steps = turn.steps;
+  const lastTextIdx = steps.reduce((acc, st, i) => (st.type === "text" ? i : acc), -1);
+  return (
+    <div className="flex flex-col gap-1.5" data-slot="streaming-steps">
+      {steps.length === 0 && turn.text.trim() && (
+        <span className="wrap-break-word whitespace-pre-wrap">{turn.text}</span>
+      )}
+      {steps.map((st, i) => {
+        if (st.type === "thinking") {
+          return st.text.trim() ? (
+            <div key={i} data-slot="step-thinking" className="text-muted-foreground text-xs">
+              {st.text}
+            </div>
+          ) : null;
+        }
+        if (st.type === "tool") {
+          const row = rows.get(st.toolCallId);
+          if (!row) return null;
+          return <ToolCard key={i} row={row} />;
+        }
+        // text 块：Markdown 流式 + ▍（最后一个 text 块）
+        return (
+          <div key={i} data-slot="step-text">
+            <Markdown text={st.text} />
+            {i === lastTextIdx && <span className="animate-pulse">▍</span>}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/**
+ * progress 弹窗（R18）：单 scroll 完整 ReAct 流。
+ * 数据源 Turn.steps（按 turn 顺序，turn 内 steps 交错）：content 正常展示（Markdown）、
+ * reasoning 折叠（"reasoning" 标签）、tool 折叠（摘要行）——全部就地展开；
+ * 跳过最后一个 turn 的最后一个 text 块（最终回复在气泡里）。总体单 scroll，无嵌套。
+ */
+function ProgressDialog({
   bubble,
   tools,
   open,
@@ -164,19 +184,28 @@ function TimelineDialog({
   onOpenChange: (o: boolean) => void;
 }) {
   const entries = useMemo(() => {
-    const out: { kind: "thinking" | "tool"; turnIndex: number; thinking?: string; toolRow?: StreamState["tools"][number] }[] = [];
+    const out: { turnIndex: number; step: TurnStep }[] = [];
     bubble.turns.forEach((turn, ti) => {
-      if (turn.thinking.trim()) {
-        out.push({ kind: "thinking", turnIndex: ti, thinking: turn.thinking });
-      }
-      for (const id of turn.toolCallIds) {
-        const row = tools.find((t) => t.toolCallId === id);
-        if (row) out.push({ kind: "tool", turnIndex: ti, toolRow: row });
-      }
+      const isLastTurn = ti === bubble.turns.length - 1;
+      turn.steps.forEach((st, si) => {
+        // 最终回复（最后 turn 的最后 text 块）不在弹窗
+        if (isLastTurn && si === turn.steps.length - 1 && st.type === "text") return;
+        out.push({ turnIndex: ti, step: st });
+      });
     });
     return out;
-  }, [bubble, tools]);
+  }, [bubble]);
+  const rows = new Map<string, StreamState["tools"][number]>();
+  for (const t of tools) rows.set(t.toolCallId, t);
   const toolCount = bubbleToolCallIds(bubble).length;
+  const [openReasoning, setOpenReasoning] = useState<Set<number>>(new Set());
+  const [openTools, setOpenTools] = useState<Set<number>>(new Set());
+  const toggle = (set: Set<number>, i: number, on: boolean) => {
+    const next = new Set(set);
+    if (on) next.add(i);
+    else next.delete(i);
+    return next;
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -187,23 +216,35 @@ function TimelineDialog({
             本轮完整 reasoning + Action 流程（{bubble.turns.length} 轮 · {toolCount} 次工具调用）
           </DialogDescription>
         </DialogHeader>
-        <div className="flex max-h-[60vh] flex-col gap-3 overflow-y-auto">
+        {/* 总体单 scroll：外层一个 overflow-y-auto，内部不嵌套任何二级 scroll */}
+        <div className="flex max-h-[60vh] flex-col gap-3 overflow-y-auto" data-slot="progress-scroll">
           {entries.length === 0 && <div className="text-muted-foreground p-2 text-xs">（本气泡无思考与工具记录）</div>}
-          {entries.map((e, i) =>
-            e.kind === "thinking" ? (
-              <div key={i} className="flex flex-col gap-1">
-                <span className="text-muted-foreground text-xs">第 {e.turnIndex + 1} 轮 · 思考</span>
-                <pre className="bg-muted/50 border-border max-h-56 overflow-y-auto rounded-md border p-2 text-xs whitespace-pre-wrap [overflow-wrap:anywhere]">
-                  {e.thinking}
-                </pre>
+          {entries.map((e, i) => {
+            const st = e.step;
+            if (st.type === "text") {
+              return (
+                <div key={i} data-slot="progress-content" className="flex flex-col gap-0.5">
+                  <span className="text-muted-foreground text-[11px]">第 {e.turnIndex + 1} 轮 · 内容</span>
+                  <Markdown text={st.text} />
+                </div>
+              );
+            }
+            if (st.type === "thinking") {
+              return (
+                <div key={i} data-slot="progress-reasoning">
+                  <span className="text-muted-foreground text-[11px]">第 {e.turnIndex + 1} 轮 · 思考</span>
+                  <ReasoningBlock text={st.text} />
+                </div>
+              );
+            }
+            const row = rows.get(st.toolCallId);
+            return (
+              <div key={i} data-slot="progress-tool">
+                <span className="text-muted-foreground text-[11px]">第 {e.turnIndex + 1} 轮 · 工具</span>
+                {row ? <ToolCard row={row} /> : <div className="text-muted-foreground text-xs">{st.toolCallId}</div>}
               </div>
-            ) : (
-              <div key={i} className="flex flex-col gap-1">
-                <span className="text-muted-foreground text-xs">第 {e.turnIndex + 1} 轮 · 工具</span>
-                {e.toolRow && <ToolCard row={e.toolRow} />}
-              </div>
-            ),
-          )}
+            );
+          })}
         </div>
       </DialogContent>
     </Dialog>
@@ -225,7 +266,9 @@ function TurnBubbleView({
   const [timelineOpen, setTimelineOpen] = useState(false);
   const hasUser = bubble.userIndex >= 0;
   const streaming = bubbleStreaming(bubble);
-  // 工具栏：轮结束后出现（气泡内无活跃 turn 且 agent 空闲、有 user 消息）
+  const activeTurn = streaming ? bubble.turns[bubble.turns.length - 1] : null;
+  const finalTurn = !streaming ? bubble.turns[bubble.turns.length - 1] : null;
+  // 工具栏：终态后出现（无活跃 turn 且 agent 空闲、有 user 消息）
   const showToolbar = hasUser && !streaming && !agentStreaming;
 
   return (
@@ -258,37 +301,12 @@ function TurnBubbleView({
           </MessageAvatar>
           <MessageContent>
             <Bubble variant="outline" className="w-full">
-              {bubble.turns.map((turn, i) => {
-                const isLast = i === bubble.turns.length - 1;
-                // 空 turn（无正文且非流式中）不渲染——纯工具/纯 thinking turn 的正文为空，避免"只有分隔线的空白行"
-                const hasVisible = turn.text.trim().length > 0 || (isLast && !turn.final);
-                if (!hasVisible) return null;
-                return (
-                  <div key={i} className={i > 0 ? "mt-2 border-t pt-2" : ""}>
-                    <div className="flex flex-col gap-1.5">
-                      {/* R17：过程信息（Thinking…/工具名行）只在流式中显示，final 后消失 */}
-                      {!turn.final && <StreamingProgress turn={turn} tools={tools} />}
-                      {turn.text.trim() ? (
-                        isLast && !turn.final ? (
-                          <span className="wrap-break-word whitespace-pre-wrap">
-                            {turn.text}
-                            <span className="animate-pulse">▍</span>
-                          </span>
-                        ) : (
-                          <Markdown text={turn.text} />
-                        )
-                      ) : isLast && !turn.final ? (
-                        <span className="animate-pulse">▍</span>
-                      ) : null}
-                    </div>
-                  </div>
-                );
-              })}
-              {streaming && bubble.turns.length === 0 && (
-                <div className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
-                  <Loader2 className="size-3 animate-spin" /> Thinking…
-                </div>
-              )}
+              {/* R18：流式中只显示当前活跃轮的 steps；终态只留最终回复文本 */}
+              {activeTurn ? (
+                <StreamingSteps turn={activeTurn} tools={tools} />
+              ) : finalTurn && finalTurn.text.trim() ? (
+                <Markdown text={finalTurn.text} />
+              ) : null}
             </Bubble>
             {showToolbar && (
               <div className="flex items-center gap-1 pt-1">
@@ -314,17 +332,8 @@ function TurnBubbleView({
                       className="text-muted-foreground h-6 cursor-pointer px-2 text-[11px]"
                       onClick={() => setTimelineOpen(true)}
                     >
-                      {streaming ? (
-                        <>
-                          <Loader2 className="size-3 animate-spin" data-icon="inline-start" />
-                          进行中
-                        </>
-                      ) : (
-                        <>
-                          <Wrench data-icon="inline-start" className="size-3" />
-                          progress
-                        </>
-                      )}
+                      <Wrench data-icon="inline-start" className="size-3" />
+                      progress
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent>查看完整 reasoning + Action 流程</TooltipContent>
@@ -335,7 +344,7 @@ function TurnBubbleView({
         </Message>
       )}
 
-      <TimelineDialog bubble={bubble} tools={tools} open={timelineOpen} onOpenChange={setTimelineOpen} />
+      <ProgressDialog bubble={bubble} tools={tools} open={timelineOpen} onOpenChange={setTimelineOpen} />
     </>
   );
 }

@@ -46,6 +46,31 @@ export function mentionKey(state: MentionState, key: string): MentionState {
   return { ...state, prevWasSpace: false };
 }
 
+/**
+ * R18：带"光标在输入框行首"上下文的触发检测——行首（光标前无任何内容）时
+ * 把 prevWasSpace 视为 true（首个 `/` `@` 直接触发），否则与 mentionKey 完全一致。
+ * 行首标志对非触发键无污染（mentionKey 返回时 prevWasSpace 重置）。
+ */
+export function mentionKeyAt(state: MentionState, key: string, cursorAtStart: boolean): MentionState {
+  return mentionKey(cursorAtStart ? { ...state, prevWasSpace: true } : state, key);
+}
+
+/**
+ * R18：从光标前全文反推上拉框 query（IME 上屏等不经 keydown 的输入）。
+ * 取最近触发序列（空格+斜杠 / 空格+@，空格可为 nbsp）之后的文本；
+ * 无空格序列但以 / 或 @ 开头（行首触发）→ 取其后文本；无触发上下文 → null。
+ */
+export function deriveQueryFromHead(head: string): string | null {
+  let idx = -1;
+  for (const sp of [" ", "\u00a0"]) {
+    const i = Math.max(head.lastIndexOf(sp + "/"), head.lastIndexOf(sp + "@"));
+    if (i > idx) idx = i;
+  }
+  if (idx >= 0) return head.slice(idx + 2);
+  if (head.startsWith("/") || head.startsWith("@")) return head.slice(1);
+  return null;
+}
+
 export interface MentionItem {
   id: string;
   label: string;
