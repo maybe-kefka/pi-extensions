@@ -65,3 +65,17 @@ export function toAction(evt: PiEvent): StreamAction | null {
       return null;
   }
 }
+
+/**
+ * R23 F5：高频流式 action 判定——包 startTransition 渲染（非紧急，避免阻塞输入/滚动）；
+ * 消息边界/连接/历史等保持同步（滚动锚定与气泡边界即时）。
+ * text_delta / thinking_delta 经 toAction 映射为 message_update（event.type 区分）。
+ */
+export function isTransitionalAction(action: StreamAction): boolean {
+  if (action.type === "tool_update") return true;
+  if (action.type === "message_update") {
+    const t = action.event?.type;
+    return t === "text_delta" || t === "thinking_delta";
+  }
+  return false;
+}

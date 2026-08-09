@@ -1,8 +1,8 @@
-import { memo, useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { memo, startTransition, useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { toast } from "sonner";
 import { createRpcClient, type RpcClient } from "@/shared/api/rpc";
 import { initialState, streamReducer, type StreamAction } from "@/entities/chat/stream";
-import { toAction } from "@/entities/chat/events";
+import { isTransitionalAction, toAction } from "@/entities/chat/events";
 import type { CommandInfo, FileGroup, ModelInfo, PiEvent, SessionInfo, SkillInfo, TreeNode, WebState } from "@/entities/chat/types";
 import { Header } from "@/app/ui/Header";
 import { Chat } from "@/features/chat-stream/Chat";
@@ -64,7 +64,14 @@ export default function App() {
       },
       onEvent: (evt) => {
         const action = toAction(evt as PiEvent);
-        if (action) dispatch(action);
+        if (!action) return;
+        // R23 F5：高频流式事件（text_delta/thinking_delta/tool_update）包 transition，
+        // 避免每 delta 同步渲染阻塞输入/滚动；消息边界保持同步
+        if (isTransitionalAction(action)) {
+          startTransition(() => dispatch(action));
+        } else {
+          dispatch(action);
+        }
       },
     });
     rpcRef.current = client;

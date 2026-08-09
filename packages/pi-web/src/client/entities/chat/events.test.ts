@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { toAction } from "./events";
+import { isTransitionalAction, toAction } from "./events";
+import type { StreamAction } from "./stream";
 
 describe("toAction：服务器 pi:event → reducer action 映射", () => {
   it("R20 回归：session_before_compact / session_compact 不再被丢弃", () => {
@@ -39,5 +40,35 @@ describe("toAction：服务器 pi:event → reducer action 映射", () => {
 
   it("未知事件 → null（丢弃）", () => {
     expect(toAction({ type: "unknown_event" } as never)).toBeNull();
+  });
+});
+
+describe("R23 F5 isTransitionalAction", () => {
+  it("高频流式事件为 true", () => {
+    expect(isTransitionalAction({ type: "message_update", event: { type: "text_delta", delta: "a" } })).toBe(true);
+    expect(isTransitionalAction({ type: "message_update", event: { type: "thinking_delta", delta: "a" } })).toBe(true);
+    expect(isTransitionalAction({ type: "tool_update", toolCallId: "t", partialResult: null })).toBe(true);
+  });
+
+  it("消息边界/连接/历史等事件为 false", () => {
+    for (const action of [
+      { type: "message_start", message: {} },
+      { type: "message_end", message: {} },
+      { type: "turn_start" },
+      { type: "turn_end" },
+      { type: "history", messages: [] },
+      { type: "conn", state: "open" },
+      { type: "agent_start" },
+      { type: "agent_end", willRetry: false },
+      { type: "queue_update", steering: [], followUp: [] },
+      { type: "state", state: {} },
+      { type: "session_start" },
+      { type: "notify", message: "x", notifyType: "info" },
+      { type: "setStatus", statusKey: "k", statusText: "v" },
+      { type: "setWidget", widgetKey: "k", widgetLines: null },
+      { type: "message_update", event: { type: "text_start", contentIndex: 0 } },
+    ] satisfies StreamAction[]) {
+      expect(isTransitionalAction(action)).toBe(false);
+    }
   });
 });
