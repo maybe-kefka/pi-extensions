@@ -42,6 +42,7 @@ packages/pi-web/
 - **运行时依赖仅 `@earendil-works/pi-tui`**；`@earendil-works/pi-coding-agent` 仅作类型导入（devDependency）
 - 改动代码后必须跑 `npm test` 和 `npm run typecheck`
 - **构建产物不提交 git**（`dist/` 全局忽略）：发布时 `prepublishOnly` 构建进 npm 包
+- **vite 8 已验证**（2026-08，WSL2 + rolldown 新版无 SIGBUS——旧"vite 7.3.6 锁定"约束作废）
 - **发布（publish）必须用户明确指示后才能执行**：用户没说"发布/推送 npm"，一律不自行 `npm publish`、不 bump 版本号；实施完成后只汇报结果，把发布作为待办等用户开口
 - **不擅自 bump 版本或 push `main`**：`main` 推送会触发 CI 自动发布（见下），bump 过的包会被直接发到 npm——发版动作只有用户明确要求（如"bump 并发布"）时才做
 
