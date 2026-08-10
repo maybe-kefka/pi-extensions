@@ -201,6 +201,7 @@ export function EditorPane({ file, request, onReload }: EditorPaneProps) {
         {file.mode === "text" ? (
           <CodeMirror
             value={edit.content}
+            theme="none"
             height="100%"
             style={{ height: "100%", fontSize: 13 }}
             extensions={[langExt(langForFile(file.name)), createEditorTheme()]}

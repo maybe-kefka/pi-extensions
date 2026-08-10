@@ -37,7 +37,9 @@ const highlight = HighlightStyle.define([
 ]);
 
 const viewTheme = EditorView.theme({
-  "&": {
+  // "&" 仅生成 .ͼN（与 @uiw 默认 light 主题的 & 同特异性，DOM 注入顺序不稳定时会被 #fff 覆盖）；
+  // "&.cm-editor" 特异性更高（0,2,0），确保编辑器根背景始终跟随语义变量。
+  "&.cm-editor": {
     backgroundColor: "var(--background)",
     color: "var(--foreground)",
   },
