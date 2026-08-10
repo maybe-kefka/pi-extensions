@@ -22,6 +22,7 @@ import {
   type WorkspaceState,
 } from "@/entities/workspace/tabs";
 import type { EditorPaneHandle } from "@/features/files/EditorPane";
+import { clampPanelWidth, loadPanelWidth, savePanelWidth } from "@/entities/workspace/layout";
 import { ActivityBar, type ActivityPanel } from "@/features/activity-bar/ActivityBar";
 import { SessionPanel } from "@/features/sessions/SessionPanel";
 import { SettingsPanel } from "@/features/settings/SettingsPanel";
@@ -72,6 +73,29 @@ export default function App() {
   const [pendingSaving, setPendingSaving] = useState(false);
   // 保存成功 → 递增（文件面板 git 状态联动刷新）
   const [gitRefreshKey, setGitRefreshKey] = useState(0);
+  // 侧边栏宽度（拖拽调整 + localStorage 持久化）
+  const [panelWidth, setPanelWidth] = useState(() => loadPanelWidth(window.localStorage));
+  const dragState = useRef<{ startX: number; startWidth: number } | null>(null);
+
+  const onResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    dragState.current = { startX: e.clientX, startWidth: panelWidth };
+    const onMove = (ev: MouseEvent) => {
+      if (!dragState.current) return;
+      setPanelWidth(clampPanelWidth(dragState.current.startWidth + ev.clientX - dragState.current.startX));
+    };
+    const onUp = () => {
+      dragState.current = null;
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      setPanelWidth((w) => {
+        savePanelWidth(window.localStorage, w);
+        return w;
+      });
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }, [panelWidth]);
   const editorRefs = useRef<Record<string, EditorPaneHandle | null>>({});
   // vscode-align：工作区 tab 状态（文件 tab + 聊天 tab）
   const [workspace, dispatchWs] = useReducer(
@@ -414,7 +438,13 @@ export default function App() {
           }}
         />
         {panel !== null && (
-          <aside className="w-64 shrink-0 border-r">
+          <aside className="relative shrink-0 border-r" style={{ width: panelWidth }}>
+            <div
+              className="hover:bg-primary/30 absolute top-0 right-0 z-10 h-full w-1 cursor-col-resize"
+              title="拖拽调整宽度"
+              onMouseDown={onResizeStart}
+            />
+
             {panel === "files" && (
               <FilesTree
                 request={getRequest()}
