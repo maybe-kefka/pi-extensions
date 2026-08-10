@@ -54,6 +54,8 @@ export interface EditorPaneProps {
   request: RpcClient["request"];
   /** 编辑/保存状态变化上报（tab 条 dirty 圆点） */
   onDirtyChange?: (path: string, dirty: boolean) => void;
+  /** 保存成功回调（git 状态联动刷新） */
+  onSaved?: (path: string) => void;
 }
 
 export interface EditorPaneHandle {
@@ -94,7 +96,7 @@ function fmtSize(n: number): string {
 
 const EMPTY: OpenedFile = { path: "", name: "", content: "", mode: "text", size: 0, mtimeMs: 0, hash: "" };
 
-export const EditorPane = forwardRef<EditorPaneHandle, EditorPaneProps>(function EditorPane({ path, request, onDirtyChange }, ref) {
+export const EditorPane = forwardRef<EditorPaneHandle, EditorPaneProps>(function EditorPane({ path, request, onDirtyChange, onSaved }, ref) {
   const [file, setFile] = useState<OpenedFile | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [edit, dispatch] = useReducer(reducer, EMPTY, initialEditState);
@@ -158,6 +160,7 @@ export const EditorPane = forwardRef<EditorPaneHandle, EditorPaneProps>(function
           const nextFile: OpenedFile = { ...file, hash: fresh.hash, mtimeMs: fresh.mtimeMs, content: state.content };
           setFile(nextFile);
           onDirtyChange?.(file.path, false);
+          onSaved?.(file.path);
           void loadDiff(file.path); // 保存后刷新 diff
           return true;
         } else if (r.reason === "conflict" && r.current) {
@@ -171,7 +174,7 @@ export const EditorPane = forwardRef<EditorPaneHandle, EditorPaneProps>(function
       }
       return false;
     },
-    [file, request, onDirtyChange],
+    [file, request, onDirtyChange, onSaved],
   );
 
   // 显式保存：Ctrl+S（CodeMirror keymap）——闭包引用最新状态

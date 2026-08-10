@@ -49,6 +49,10 @@ export interface FsLike {
   stat(path: string): Promise<FsStat>;
   readFile(path: string): Promise<Buffer>;
   writeFile(path: string, content: Buffer): Promise<void>;
+  mkdir(path: string): Promise<void>;
+  rename(from: string, to: string): Promise<void>;
+  /** recursive=true 时递归删除（目录） */
+  rm(path: string, recursive: boolean): Promise<void>;
 }
 
 /** 默认排除目录 */
@@ -203,4 +207,90 @@ export async function writeFileText(
     return { ok: false, reason: "io" };
   }
   return { ok: true };
+}
+
+/** 文件名合法性：非空、无路径分隔符、非 . / ..、首尾无空白 */
+export function validName(name: string): boolean {
+  if (name === "" || name === "." || name === "..") return false;
+  if (name !== name.trim()) return false;
+  return !name.includes("/") && !name.includes("\\");
+}
+
+export type FileOpResult = { ok: true } | { ok: false; reason: "denied" | "not-found" | "exists" | "invalid-name" | "io" };
+
+/** 新建目录（单级名字，父目录须存在）；越权优先于非法名 */
+export async function mkdirPath(root: string, relPath: string, fs: FsLike): Promise<FileOpResult> {
+  const abs = resolveWithinRoot(root, relPath);
+  if (!abs) return { ok: false, reason: "denied" };
+  if (!validName(relPath)) return { ok: false, reason: "invalid-name" };
+  try {
+    await fs.mkdir(abs);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, reason: (e as NodeJS.ErrnoException).code === "EEXIST" ? "exists" : "io" };
+  }
+}
+
+/** 重命名（同级）：newName 仅名字（无路径分隔符） */
+export async function renamePath(root: string, relPath: string, newName: string, fs: FsLike): Promise<FileOpResult> {
+  if (!validName(newName)) return { ok: false, reason: "invalid-name" };
+  const abs = resolveWithinRoot(root, relPath);
+  if (!abs) return { ok: false, reason: "denied" };
+  const dir = abs.slice(0, Math.max(abs.lastIndexOf(sep), 0)) || root;
+  const to = join(dir, newName);
+  try {
+    await fs.rename(abs, to);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, reason: (e as NodeJS.ErrnoException).code === "ENOENT" ? "not-found" : "io" };
+  }
+}
+
+/** 递归删除（目录或文件），返回删除项数（含自身） */
+export async function deletePath(
+  root: string,
+  relPath: string,
+  fs: FsLike,
+): Promise<{ ok: true; removedCount: number } | { ok: false; reason: "denied" | "not-found" | "io" }> {
+  const abs = resolveWithinRoot(root, relPath);
+  if (!abs) return { ok: false, reason: "denied" };
+  let count = 0;
+  const countTree = async (p: string): Promise<void> => {
+    count += 1;
+    let names: string[];
+    try {
+      names = await fs.readdir(p);
+    } catch {
+      return; // 文件：无子项
+    }
+    for (const name of names) {
+      await countTree(join(p, name));
+    }
+  };
+  try {
+    await countTree(abs);
+    await fs.rm(abs, true);
+    return { ok: true, removedCount: count };
+  } catch (e) {
+    return { ok: false, reason: (e as NodeJS.ErrnoException).code === "ENOENT" ? "not-found" : "io" };
+  }
+}
+
+/** 新建空文件（路径白名单内；已存在拒绝） */
+export async function touchPath(root: string, relPath: string, fs: FsLike): Promise<FileOpResult> {
+  const abs = resolveWithinRoot(root, relPath);
+  if (!abs) return { ok: false, reason: "denied" };
+  if (!validName(relPath)) return { ok: false, reason: "invalid-name" };
+  try {
+    await fs.stat(abs);
+    return { ok: false, reason: "exists" };
+  } catch {
+    // 不存在 → 创建（writeFile 对已存在文件覆盖，需先 stat 保证"新建"语义）
+  }
+  try {
+    await fs.writeFile(abs, Buffer.alloc(0));
+    return { ok: true };
+  } catch {
+    return { ok: false, reason: "io" };
+  }
 }

@@ -1,10 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
   checkConflict,
+  deletePath,
   listDir,
+  mkdirPath,
   readFileText,
+  renamePath,
   resolveWithinRoot,
   sniffBinary,
+  touchPath,
+  validName,
   writeFileText,
   type FsLike,
 } from "./files.js";
@@ -55,6 +60,34 @@ function memFs(files: Record<string, string | Buffer>, symlinks: string[] = []):
     },
     async writeFile(path, content) {
       store[path] = content.toString();
+    },
+    async mkdir(path) {
+      if (all().has(path)) {
+        const err = new Error("EEXIST") as NodeJS.ErrnoException;
+        err.code = "EEXIST";
+        throw err;
+      }
+      store[path] = "";
+    },
+    async rename(from, to) {
+      if (!all().has(from)) {
+        const err = new Error("ENOENT") as NodeJS.ErrnoException;
+        err.code = "ENOENT";
+        throw err;
+      }
+      store[to] = store[from];
+      delete store[from];
+    },
+    async rm(path, recursive) {
+      const keys = all();
+      if (!keys.has(path) && ![...keys].some((p) => p.startsWith(`${path}/`))) {
+        const err = new Error("ENOENT") as NodeJS.ErrnoException;
+        err.code = "ENOENT";
+        throw err;
+      }
+      for (const p of [...keys]) {
+        if (p === path || p.startsWith(`${path}/`)) delete store[p];
+      }
     },
     readFileSync(path) {
       return typeof store[path] === "string" ? (store[path] as string) : "<buffer>";
@@ -263,5 +296,54 @@ describe("writeFileText", () => {
     const fs = memFs({});
     const r = await writeFileText("/repo", "nope.ts", "x", { hash: null, mtimeMs: null }, fs);
     if (r && !r.ok) expect(r.reason).toBe("not-found");
+  });
+});
+
+describe("validName / mkdir / rename / delete", () => {
+  it("validName：拒绝空/分隔符/点目录", () => {
+    expect(validName("a.ts")).toBe(true);
+    expect(validName("")).toBe(false);
+    expect(validName("a/b")).toBe(false);
+    expect(validName("a\\b")).toBe(false);
+    expect(validName(".")).toBe(false);
+    expect(validName("..")).toBe(false);
+    expect(validName(" a ")).toBe(false);
+  });
+
+  it("mkdir 创建目录；非法名/越权/已存在拒绝", async () => {
+    const fs = memFs({ "/repo/a.txt": "x" });
+    expect(await mkdirPath("/repo", "newdir", fs)).toEqual({ ok: true });
+    expect(await mkdirPath("/repo", "a/b", fs)).toEqual({ ok: false, reason: "invalid-name" });
+    expect(await mkdirPath("/repo", "../x", fs)).toEqual({ ok: false, reason: "denied" });
+    expect(await mkdirPath("/repo", "a.txt", fs)).toEqual({ ok: false, reason: "exists" });
+  });
+
+  it("rename 重命名文件；非法名/越权/不存在拒绝", async () => {
+    const fs = memFs({ "/repo/a.txt": "x" });
+    expect(await renamePath("/repo", "a.txt", "b.txt", fs)).toEqual({ ok: true });
+    expect(fs.readFileSync("/repo/b.txt")).toBe("x");
+    expect(await renamePath("/repo", "b.txt", "c/d", fs)).toEqual({ ok: false, reason: "invalid-name" });
+    expect(await renamePath("/repo", "../a", "x", fs)).toEqual({ ok: false, reason: "denied" });
+    expect(await renamePath("/repo", "nope.txt", "x.txt", fs)).toEqual({ ok: false, reason: "not-found" });
+  });
+
+  it("delete 递归删除并返回项数；不存在/越权拒绝", async () => {
+    const fs = memFs({ "/repo/dir/a.ts": "1", "/repo/dir/sub/b.ts": "2", "/repo/dir/c.ts": "3", "/repo/keep.txt": "k" });
+    const r = await deletePath("/repo", "dir", fs);
+    expect(r).toEqual({ ok: true, removedCount: 5 }); // dir + a + sub + b + c
+    expect(fs.readFileSync("/repo/keep.txt")).toBe("k");
+    expect(await deletePath("/repo", "dir", fs)).toEqual({ ok: false, reason: "not-found" });
+    expect(await deletePath("/repo", "../x", fs)).toEqual({ ok: false, reason: "denied" });
+  });
+});
+
+describe("touchPath", () => {
+  it("新建空文件；已存在/非法名/越权拒绝", async () => {
+    const fs = memFs({ "/repo/a.txt": "x" });
+    expect(await touchPath("/repo", "new.ts", fs)).toEqual({ ok: true });
+    expect(fs.readFileSync("/repo/new.ts")).toBe("");
+    expect(await touchPath("/repo", "a.txt", fs)).toEqual({ ok: false, reason: "exists" });
+    expect(await touchPath("/repo", "a/b", fs)).toEqual({ ok: false, reason: "invalid-name" });
+    expect(await touchPath("/repo", "../x", fs)).toEqual({ ok: false, reason: "denied" });
   });
 });

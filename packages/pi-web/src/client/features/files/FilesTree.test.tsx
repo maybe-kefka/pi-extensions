@@ -4,8 +4,8 @@
 vi.mock("@uiw/react-codemirror", () => ({
   default: ({ value }: { value: string }) => <div data-testid="cm">{value}</div>,
 }));
-import { describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { FilesTree } from "./FilesTree";
 import type { RpcClient } from "@/shared/api/rpc";
@@ -42,6 +42,8 @@ function fakeRequest(files: Record<string, string>): RpcClient["request"] {
   }) as RpcClient["request"];
 }
 
+afterEach(cleanup);
+
 describe("FilesTree", () => {
   it("首屏加载根目录并显示条目", async () => {
     render(<FilesTree request={fakeRequest({ "README.md": "hi", "src/main.ts": "x" })} onOpenFile={vi.fn()} activePath={null} />);
@@ -72,5 +74,60 @@ describe("FilesTree", () => {
     }) as RpcClient["request"];
     render(<FilesTree request={request} onOpenFile={vi.fn()} activePath={null} />);
     expect(await screen.findByText(/目录不存在或越权/)).toBeTruthy();
+  });
+});
+
+describe("FilesTree 文件操作", () => {
+  afterEach(cleanup);
+
+  function opRequest(calls: string[]): RpcClient["request"] {
+    return (async (method: string, params: Record<string, unknown> = {}) => {
+      calls.push(`${method}:${JSON.stringify(params)}`);
+      if (method === "pi:listDir") {
+        const path = (params.path as string) ?? "";
+        const name = path === "" ? "a.txt" : path.split("/").pop()!;
+        return { entries: [{ name, type: "file", size: 1, mtimeMs: 1 }] };
+      }
+      if (method === "pi:gitInfo") return { isRepo: false };
+      if (method === "pi:gitStatus") return { isRepo: false, aggregated: {} };
+      if (method === "pi:delete") return { removedCount: 2 };
+      if (method === "pi:touch" || method === "pi:mkdir" || method === "pi:rename") return { ok: true };
+      throw new Error(`unexpected ${method}`);
+    }) as RpcClient["request"];
+  }
+
+  it("新建文件：弹窗输入 → pi:touch 调用 → onOpenFile", async () => {
+    const user = userEvent.setup();
+    const calls: string[] = [];
+    const onOpenFile = vi.fn();
+    render(<FilesTree request={opRequest(calls)} onOpenFile={onOpenFile} activePath={null} />);
+    await screen.findByText("a.txt"); // 确保树加载
+    const row = screen.getByText("（cwd）").closest(".group")!;
+    fireEvent.mouseEnter(row);
+    const newBtn = row.querySelector('button[title="新建文件"]');
+    expect(newBtn).toBeTruthy();
+    fireEvent.click(newBtn!);
+    const input = await screen.findByPlaceholderText("名称");
+    fireEvent.change(input, { target: { value: "new.ts" } });
+    fireEvent.click(screen.getByText("创建"));
+    await waitFor(() => {
+      expect(calls.some((c) => c.startsWith("pi:touch") && c.includes("new.ts"))).toBe(true);
+    });
+    expect(onOpenFile).toHaveBeenCalledWith("new.ts", "new.ts");
+  });
+
+  it("删除：确认弹窗 → pi:delete 调用", async () => {
+    const user = userEvent.setup();
+    const calls: string[] = [];
+    render(<FilesTree request={opRequest(calls)} onOpenFile={vi.fn()} activePath={null} />);
+    await user.click(await screen.findByText("a.txt"));
+    const row = screen.getByText("a.txt").closest(".group");
+    fireEvent.mouseEnter(row!);
+    fireEvent.click(row!.querySelector('button[title="删除"]')!);
+    expect(await screen.findByText(/删除 a\.txt/)).toBeTruthy();
+    fireEvent.click(screen.getByText("删除"));
+    await waitFor(() => {
+      expect(calls.some((c) => c.startsWith("pi:delete"))).toBe(true);
+    });
   });
 });

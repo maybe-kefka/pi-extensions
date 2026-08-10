@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assertReadOnlyGit, fileDiff, parseGitDiff, repoInfo, type GitRunner } from "./git.js";
+import { aggregateStatus, assertReadOnlyGit, fileDiff, parseGitDiff, parsePorcelain, repoInfo, type GitRunner } from "./git.js";
 
 describe("assertReadOnlyGit 白名单", () => {
   it("允许只读查询命令", () => {
@@ -213,5 +213,55 @@ describe("fileDiff", () => {
     const r = await fileDiff("/repo", "../etc/passwd", git);
     expect(r.isRepo).toBe(true);
     if (r.isRepo) expect(r.diff).toBeNull();
+  });
+});
+
+describe("parsePorcelain", () => {
+  it("解析 XY 双列状态（staged/工作区分开）", () => {
+    const out = [
+      " M src/a.ts",       // 工作区修改
+      "M  src/b.ts",       // 已暂存修改
+      "MM src/c.ts",       // 暂存 + 工作区都改
+      "?? new-file.ts",    // 未跟踪
+      " D deleted.ts",     // 工作区删除
+      "D  staged-del.ts",  // 暂存删除
+      "R  old.ts -> new.ts", // 重命名
+    ].join("\n");
+    const entries = parsePorcelain(out);
+    expect(entries).toEqual([
+      { path: "src/a.ts", status: "M", staged: false },
+      { path: "src/b.ts", status: "M", staged: true },
+      { path: "src/c.ts", status: "M", staged: true },
+      { path: "new-file.ts", status: "??", staged: false },
+      { path: "deleted.ts", status: "D", staged: false },
+      { path: "staged-del.ts", status: "D", staged: true },
+      { path: "new.ts", status: "R", staged: true },
+    ]);
+  });
+
+  it("空输出返回空数组；非 git 目录（fatal）返回空", () => {
+    expect(parsePorcelain("")).toEqual([]);
+    expect(parsePorcelain("fatal: not a git repository")).toEqual([]);
+  });
+});
+
+describe("aggregateStatus", () => {
+  it("目录聚合：父目录含改动则标记（不存在的父目录也聚合）", () => {
+    const map = aggregateStatus([
+      { path: "src/a.ts", status: "M", staged: false },
+      { path: "src/deep/b.ts", status: "??", staged: false },
+      { path: "README.md", status: "M", staged: false },
+    ]);
+    expect(map.get("src/a.ts")).toBe("M");
+    expect(map.get("src")).toBe("M");
+    expect(map.get("src/deep")).toBe("??");
+    expect(map.get("src/deep/b.ts")).toBe("??");
+    expect(map.get("README.md")).toBe("M");
+    expect(map.get("other.ts")).toBeUndefined();
+  });
+
+  it("目录内均为未跟踪时父目录也标 ??（聚合取子级状态）", () => {
+    const map = aggregateStatus([{ path: "new/a.ts", status: "??", staged: false }]);
+    expect(map.get("new")).toBe("??");
   });
 });

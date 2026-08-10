@@ -26,4 +26,13 @@ export const realFs: FsLike = {
   writeFile(path, content) {
     return fsp.writeFile(path, content);
   },
+  mkdir(path) {
+    return fsp.mkdir(path);
+  },
+  rename(from, to) {
+    return fsp.rename(from, to);
+  },
+  rm(path, recursive) {
+    return fsp.rm(path, { recursive });
+  },
 };

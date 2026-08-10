@@ -141,3 +141,47 @@ export async function fileDiff(cwd: string, relPath: string, git: GitRunner): Pr
   if (out.trim() === "") return { isRepo: true, diff: null };
   return { isRepo: true, diff: parseGitDiff(out) };
 }
+
+/** porcelain 条目（XY 双列：X=staged 位 / Y=工作区位；?? 未跟踪） */
+export interface PorcelainEntry {
+  path: string;
+  status: string;
+  staged: boolean;
+}
+
+/** git status --porcelain=v1 解析；非仓库/空输出 → [] */
+export function parsePorcelain(stdout: string): PorcelainEntry[] {
+  const entries: PorcelainEntry[] = [];
+  for (const raw of stdout.split("\n")) {
+    if (raw.trim() === "" || raw.startsWith("fatal:")) continue;
+    const x = raw[0];
+    const y = raw[1];
+    const rest = raw.slice(3);
+    if (x === undefined || y === undefined || rest === undefined) continue;
+    // 重命名/复制格式 "R  old -> new"（含引号转义）——取目标路径
+    let path = rest;
+    const arrow = path.indexOf(" -> ");
+    if (arrow !== -1) path = path.slice(arrow + 4);
+    // 状态码：?? 未跟踪；U 冲突；X 位（staged）优先；否则 Y 位
+    let status: string;
+    if (x === "?") status = "??";
+    else if (x === "U" || y === "U") status = "U";
+    else if (x !== " " && x !== ".") status = x;
+    else status = y;
+    entries.push({ path, status, staged: x !== " " && x !== "?" && x !== "." });
+  }
+  return entries;
+}
+
+/** 目录聚合：文件 → 自身 + 所有祖先目录（目录标记取首个子级状态） */
+export function aggregateStatus(entries: PorcelainEntry[]): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const e of entries) {
+    const parts = e.path.split("/");
+    for (let i = 1; i <= parts.length; i++) {
+      const key = parts.slice(0, i).join("/");
+      if (!map.has(key)) map.set(key, e.status);
+    }
+  }
+  return map;
+}

@@ -22,8 +22,8 @@ import { truncateTree } from "../domain/tree.js";
 import { deleteSessionFile } from "../infrastructure/session-files.js";
 import { realFs } from "../infrastructure/real-fs.js";
 import { createGitRunner } from "../infrastructure/git-runner.js";
-import { listDir, readFileText, writeFileText } from "../domain/files.js";
-import { fileDiff, repoInfo } from "../domain/git.js";
+import { deletePath, listDir, mkdirPath, readFileText, renamePath, touchPath, writeFileText } from "../domain/files.js";
+import { aggregateStatus, fileDiff, parsePorcelain, repoInfo } from "../domain/git.js";
 import { messageTextOf, messageThinkingOf, messageToolCalls } from "../infrastructure/http-util.js";
 import { THINKING_LEVELS, SessionManager, type BuildSystemPromptOptions, type WebConsole } from "../application/web-console.js";
 
@@ -321,6 +321,55 @@ async function handleRequest(
       // files 迭代：repo 根/分支/worktree 标记（只读 rev-parse 查询）
       const ctx = requireCtxOf();
       return repoInfo(ctx.cwd, createGitRunner(ctx.cwd));
+    }
+
+    case "pi:mkdir": {
+      // files 迭代：新建目录（单级名字，路径白名单）
+      const ctx = requireCtxOf();
+      const relPath = typeof params.path === "string" ? params.path : "";
+      const result = await mkdirPath(ctx.cwd, relPath, realFs);
+      if (!result.ok) throw new WebServerError(-32602, `新建目录失败：${result.reason}`);
+      return { ok: true };
+    }
+
+    case "pi:touch": {
+      // files 迭代：新建空文件（路径白名单）
+      const ctx = requireCtxOf();
+      const relPath = typeof params.path === "string" ? params.path : "";
+      const result = await touchPath(ctx.cwd, relPath, realFs);
+      if (!result.ok) throw new WebServerError(-32602, `新建文件失败：${result.reason}`);
+      return { ok: true };
+    }
+
+    case "pi:rename": {
+      const ctx = requireCtxOf();
+      const relPath = typeof params.path === "string" ? params.path : "";
+      const newName = typeof params.newName === "string" ? params.newName : "";
+      const result = await renamePath(ctx.cwd, relPath, newName, realFs);
+      if (!result.ok) throw new WebServerError(-32602, `重命名失败：${result.reason}`);
+      return { ok: true };
+    }
+
+    case "pi:delete": {
+      const ctx = requireCtxOf();
+      const relPath = typeof params.path === "string" ? params.path : "";
+      const result = await deletePath(ctx.cwd, relPath, realFs);
+      if (!result.ok) throw new WebServerError(-32602, `删除失败：${result.reason}`);
+      return result;
+    }
+
+    case "pi:gitStatus": {
+      // files 迭代：porcelain 全量解析 + 目录聚合（树状态标记）
+      const ctx = requireCtxOf();
+      const git = createGitRunner(ctx.cwd);
+      const probe = await git(["rev-parse", "--is-inside-work-tree"]);
+      if (probe.code !== 0 || probe.stdout.trim() !== "true") {
+        return { isRepo: false, entries: [] };
+      }
+      const r = await git(["status", "--porcelain=v1", "--no-renames"]);
+      const entries = parsePorcelain(r.stdout);
+      const aggregated = aggregateStatus(entries);
+      return { isRepo: true, entries, aggregated: Object.fromEntries(aggregated) };
     }
 
     case "pi:gitDiff": {

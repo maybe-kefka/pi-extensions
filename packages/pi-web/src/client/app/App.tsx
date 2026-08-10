@@ -69,6 +69,8 @@ export default function App() {
   // 关闭 dirty tab 确认（vscode-align 02：三选）
   const [pendingClose, setPendingClose] = useState<string | null>(null);
   const [pendingSaving, setPendingSaving] = useState(false);
+  // 保存成功 → 递增（文件面板 git 状态联动刷新）
+  const [gitRefreshKey, setGitRefreshKey] = useState(0);
   const editorRefs = useRef<Record<string, EditorPaneHandle | null>>({});
   // vscode-align：工作区 tab 状态（文件 tab + 聊天 tab）
   const [workspace, dispatchWs] = useReducer(
@@ -406,6 +408,7 @@ export default function App() {
                 request={getRequest()}
                 onOpenFile={(path, name) => dispatchWs({ kind: "open", path, name })}
                 activePath={workspace.active === "chat" || workspace.active === "files" ? null : workspace.active}
+                gitRefreshKey={gitRefreshKey}
               />
             )}
             {panel === "git" && <GitPanel />}
@@ -476,6 +479,7 @@ export default function App() {
                     editorRefs.current[t.path] = h;
                   }}
                   onDirtyChange={(path, dirty) => dispatchWs({ kind: "dirty", path, dirty })}
+                  onSaved={() => setGitRefreshKey((k) => k + 1)}
                 />
               </div>
             ))}
