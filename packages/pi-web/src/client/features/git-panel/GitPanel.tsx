@@ -1,7 +1,15 @@
 import { useCallback, useEffect, useState } from "react";
-import { ChevronDown, ChevronRight, GitBranch, MoreHorizontal, RefreshCw } from "lucide-react";
+import { ArrowDownToLine, ArrowUpFromLine, ChevronDown, ChevronRight, CirclePlus, GitBranch, MoreHorizontal, RefreshCw } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/shared/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/shared/ui/dialog";
 import type { RpcClient } from "@/shared/api/rpc";
+
+export interface GitStatusEntry {
+  path: string;
+  status: string;
+  staged: boolean;
+}
 
 export interface GitPanelProps {
   request: RpcClient["request"];
@@ -29,6 +37,28 @@ export function RepoItem({
 }) {
   const [expanded, setExpanded] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [status, setStatus] = useState<GitStatusEntry[]>([]);
+  const [loadingStatus, setLoadingStatus] = useState(false);
+  const [commitMessage, setCommitMessage] = useState("");
+  const [committing, setCommitting] = useState(false);
+  const [confirmAll, setConfirmAll] = useState(false);
+
+  const refreshStatus = useCallback(async () => {
+    setLoadingStatus(true);
+    try {
+      const r = await request<{ isRepo: boolean; entries: GitStatusEntry[] }>("pi:gitStatus", { repoRoot: repo.root });
+      setStatus(r.entries ?? []);
+    } catch {
+      setStatus([]);
+    } finally {
+      setLoadingStatus(false);
+    }
+  }, [request, repo.root]);
+
+  // 展开时拉取工作区状态（折叠再展开重拉）
+  useEffect(() => {
+    if (expanded) void refreshStatus();
+  }, [expanded, refreshStatus]);
 
   const refreshBrief = useCallback(async () => {
     setRefreshing(true);
@@ -48,6 +78,65 @@ export function RepoItem({
     // 强制重渲染（repo 对象就地更新）
     setExpanded((e) => e);
   }, [request, repo]);
+
+  const stagePath = useCallback(
+    async (path: string | null) => {
+      try {
+        await request("pi:gitStage", path ? { path, repoRoot: repo.root } : { all: true, repoRoot: repo.root });
+        await refreshStatus();
+        await refreshBrief();
+      } catch (e) {
+        toast.error(`暂存失败：${e instanceof Error ? e.message : String(e)}`);
+      }
+    },
+    [request, repo.root, refreshStatus, refreshBrief],
+  );
+
+  const unstagePath = useCallback(
+    async (path: string) => {
+      try {
+        await request("pi:gitUnstage", { path, repoRoot: repo.root });
+        await refreshStatus();
+        await refreshBrief();
+      } catch (e) {
+        toast.error(`取消暂存失败：${e instanceof Error ? e.message : String(e)}`);
+      }
+    },
+    [request, repo.root, refreshStatus, refreshBrief],
+  );
+
+  const commit = useCallback(
+    async (forceAll: boolean) => {
+      const message = commitMessage.trim();
+      if (message === "" || committing) return;
+      const staged = status.filter((s) => s.staged);
+      if (staged.length === 0 && !forceAll) {
+        setConfirmAll(true);
+        return;
+      }
+      setCommitting(true);
+      try {
+        if (staged.length === 0) {
+          // 无 staged：确认后提交全部工作区文件
+          await request("pi:gitStage", { all: true, repoRoot: repo.root });
+        }
+        await request("pi:gitCommit", { message, repoRoot: repo.root });
+        toast.success("已提交");
+        setCommitMessage("");
+        setConfirmAll(false);
+        await refreshStatus();
+        await refreshBrief();
+      } catch (e) {
+        toast.error(`提交失败：${e instanceof Error ? e.message : String(e)}`);
+      } finally {
+        setCommitting(false);
+      }
+    },
+    [commitMessage, committing, status, request, repo.root, refreshStatus, refreshBrief],
+  );
+
+  const unstaged = status.filter((s) => !s.staged);
+  const staged = status.filter((s) => s.staged);
 
   return (
     <div className="border-border border-b">
@@ -81,9 +170,102 @@ export function RepoItem({
       </div>
       {expanded && (
         <div className="pb-2 pl-7 pr-2">
-          <div className="text-muted-foreground py-1 text-[11px]">加载中…（工作区变更区：04）</div>
+          {(staged.length > 0 || unstaged.length > 0) && (
+            <div className="mb-1.5 flex items-center gap-1.5">
+              <textarea
+                value={commitMessage}
+                onChange={(e) => setCommitMessage(e.target.value)}
+                placeholder="提交信息（Ctrl+Enter）"
+                rows={2}
+                className="border-input bg-background text-foreground placeholder:text-muted-foreground min-h-0 flex-1 resize-none rounded border px-2 py-1 text-[11px] outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) void commit(false);
+                }}
+              />
+              <Button
+                size="sm"
+                className="h-7 shrink-0 text-[11px]"
+                disabled={commitMessage.trim() === "" || committing}
+                onClick={() => void commit(false)}
+              >
+                {committing ? "提交中…" : "提交"}
+              </Button>
+            </div>
+          )}
+
+          {loadingStatus && <div className="text-muted-foreground py-1 text-[11px]">加载中…</div>}
+          {!loadingStatus && status.length === 0 && (
+            <div className="text-muted-foreground py-1 text-[11px]">工作区干净</div>
+          )}
+
+          {unstaged.length > 0 && (
+            <div className="mb-1">
+              <div className="text-muted-foreground flex items-center gap-1 py-0.5 text-[10px] font-semibold tracking-wide uppercase">
+                未暂存（{unstaged.length}）
+                <button className="hover:text-foreground ml-auto cursor-pointer" title="全部暂存" onClick={() => void stagePath(null)}>
+                  <CirclePlus className="size-3" />
+                </button>
+              </div>
+              {unstaged.map((e) => (
+                <div key={e.path} className="group flex items-center gap-1.5 py-0.5 text-[11px]">
+                  <span className="text-muted-foreground w-3 shrink-0 font-mono text-[10px]">M</span>
+                  <span
+                    className="hover:text-primary min-w-0 flex-1 cursor-pointer truncate"
+                    title={e.path}
+                    onClick={() => onOpenFile?.(e.path)}
+                  >
+                    {e.path}
+                  </span>
+                  <button title="暂存" className="hover:text-foreground text-muted-foreground shrink-0 cursor-pointer p-0.5" onClick={() => void stagePath(e.path)}>
+                    <ArrowUpFromLine className="size-3" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {staged.length > 0 && (
+            <div>
+              <div className="text-muted-foreground flex items-center gap-1 py-0.5 text-[10px] font-semibold tracking-wide uppercase">
+                已暂存（{staged.length}）
+                <button className="hover:text-foreground ml-auto cursor-pointer" title="全部取消暂存" onClick={() => void unstagePath(".")}>
+                  <ArrowDownToLine className="size-3" />
+                </button>
+              </div>
+              {staged.map((e) => (
+                <div key={e.path} className="group flex items-center gap-1.5 py-0.5 text-[11px]">
+                  <span className="text-primary w-3 shrink-0 font-mono text-[10px]">A</span>
+                  <span
+                    className="hover:text-primary min-w-0 flex-1 cursor-pointer truncate"
+                    title={e.path}
+                    onClick={() => onOpenFile?.(e.path)}
+                  >
+                    {e.path}
+                  </span>
+                  <button title="取消暂存" className="hover:text-foreground text-muted-foreground shrink-0 cursor-pointer p-0.5" onClick={() => void unstagePath(e.path)}>
+                    <ArrowDownToLine className="size-3" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
+
+      <Dialog open={confirmAll} onOpenChange={(open) => !open && setConfirmAll(false)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>提交所有工作区文件？</DialogTitle>
+            <DialogDescription>没有已暂存的文件——将先把所有未暂存改动加入暂存区再提交。</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmAll(false)}>
+              取消
+            </Button>
+            <Button onClick={() => void commit(true)}>确认提交全部</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

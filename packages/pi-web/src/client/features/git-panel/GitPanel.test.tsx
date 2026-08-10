@@ -2,7 +2,7 @@
 // GitPanel 多仓库列表测试：空态/多项/brief 徽标/展开折叠/刷新
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { GitPanel, RepoItem, type RepoInfo } from "./GitPanel";
+import { GitPanel, RepoItem, type GitStatusEntry, type RepoInfo } from "./GitPanel";
 import type { RpcClient } from "@/shared/api/rpc";
 
 const REPOS: RepoInfo[] = [
@@ -17,6 +17,7 @@ function makeRequest(repos: RepoInfo[] | null, calls: string[] = []) {
       if (repos === null) throw new Error("boom");
       return { repos };
     }
+    if (method === "pi:gitStatus") return { isRepo: true, entries: [], aggregated: {} };
     throw new Error(`unexpected ${method}`);
   }) as RpcClient["request"];
   return { request, calls };
@@ -53,7 +54,7 @@ describe("GitPanel 多仓库列表", () => {
     await screen.findByText("pi-extensions");
     const row = screen.getByText("pi-extensions").closest(".group, div")!;
     fireEvent.click(row.querySelector('button[title="展开"]')!);
-    expect(screen.getByText(/工作区变更区/)).toBeTruthy();
+    expect(await screen.findByText("工作区干净")).toBeTruthy();
   });
 
   it("刷新按钮触发重扫", async () => {
@@ -79,5 +80,108 @@ describe("RepoItem", () => {
     expect(screen.getByTitle("展开")).toBeTruthy();
     expect(screen.getByTitle("更多操作")).toBeTruthy();
     expect(screen.getByTitle("刷新")).toBeTruthy();
+  });
+});
+
+describe("RepoItem 展开区", () => {
+  afterEach(cleanup);
+
+  function wsRequest(calls: string[], entries: GitStatusEntry[] = []) {
+    const request = (async (method: string, params: Record<string, unknown> = {}) => {
+      calls.push(`${method}:${JSON.stringify(params)}`);
+      if (method === "pi:gitRepos") return { repos: REPOS };
+      if (method === "pi:gitStatus") return { isRepo: true, entries, aggregated: {} };
+      if (method === "pi:gitStage" || method === "pi:gitUnstage" || method === "pi:gitCommit") return { ok: true };
+      throw new Error(`unexpected ${method}`);
+    }) as RpcClient["request"];
+    return { request, calls };
+  }
+
+  const entries: GitStatusEntry[] = [
+    { path: "staged.ts", status: "M", staged: true },
+    { path: "work.ts", status: "M", staged: false },
+    { path: "new.ts", status: "??", staged: false },
+  ];
+
+  it("展开显示两区与文件行", async () => {
+    const { request } = wsRequest([], entries);
+    render(<GitPanel request={request} />);
+    await screen.findByText("pi-extensions");
+    fireEvent.click(screen.getAllByTitle("展开")[0]);
+    expect(await screen.findByText("未暂存（2）")).toBeTruthy();
+    expect(screen.getByText("已暂存（1）")).toBeTruthy();
+    expect(screen.getByText("work.ts")).toBeTruthy();
+    expect(screen.getByText("staged.ts")).toBeTruthy();
+  });
+
+  it("暂存文件 → pi:gitStage（带 repoRoot）", async () => {
+    const calls: string[] = [];
+    const { request } = wsRequest(calls, entries);
+    render(<GitPanel request={request} />);
+    await screen.findByText("pi-extensions");
+    fireEvent.click(screen.getAllByTitle("展开")[0]);
+    await screen.findByText("work.ts");
+    const row = screen.getByText("work.ts").closest(".group, div")!;
+    fireEvent.click(row.querySelector('button[title="暂存"]')!);
+    await waitFor(() => {
+      expect(calls.some((c) => c.startsWith("pi:gitStage") && c.includes("work.ts"))).toBe(true);
+    });
+  });
+
+  it("取消暂存 → pi:gitUnstage", async () => {
+    const calls: string[] = [];
+    const { request } = wsRequest(calls, entries);
+    render(<GitPanel request={request} />);
+    await screen.findByText("pi-extensions");
+    fireEvent.click(screen.getAllByTitle("展开")[0]);
+    await screen.findByText("staged.ts");
+    const row = screen.getByText("staged.ts").closest(".group, div")!;
+    fireEvent.click(row.querySelector('button[title="取消暂存"]')!);
+    await waitFor(() => {
+      expect(calls.some((c) => c.startsWith("pi:gitUnstage") && c.includes("staged.ts"))).toBe(true);
+    });
+  });
+
+  it("有 staged：输入 message 提交（不弹确认）", async () => {
+    const calls: string[] = [];
+    const { request } = wsRequest(calls, entries);
+    render(<GitPanel request={request} />);
+    await screen.findByText("pi-extensions");
+    fireEvent.click(screen.getAllByTitle("展开")[0]);
+    await screen.findByText("staged.ts");
+    fireEvent.change(screen.getByPlaceholderText(/提交信息/), { target: { value: "feat: x" } });
+    fireEvent.click(screen.getByText("提交"));
+    await waitFor(() => {
+      expect(calls.some((c) => c.startsWith("pi:gitCommit") && c.includes("feat: x"))).toBe(true);
+    });
+    expect(screen.queryByText("提交所有工作区文件？")).toBeNull();
+  });
+
+  it("无 staged：提交弹确认 → 确认后 stage 全部再提交", async () => {
+    const calls: string[] = [];
+    const { request } = wsRequest(calls, [{ path: "work.ts", status: "M", staged: false }]);
+    render(<GitPanel request={request} />);
+    await screen.findByText("pi-extensions");
+    fireEvent.click(screen.getAllByTitle("展开")[0]);
+    await screen.findByText("work.ts");
+    fireEvent.change(screen.getByPlaceholderText(/提交信息/), { target: { value: "feat: all" } });
+    fireEvent.click(screen.getByText("提交"));
+    expect(await screen.findByText("提交所有工作区文件？")).toBeTruthy();
+    fireEvent.click(screen.getByText("确认提交全部"));
+    await waitFor(() => {
+      expect(calls.some((c) => c.startsWith("pi:gitStage") && c.includes('"all":true'))).toBe(true);
+      expect(calls.some((c) => c.startsWith("pi:gitCommit"))).toBe(true);
+    });
+  });
+
+  it("点击文件行 → onOpenFile", async () => {
+    const { request } = wsRequest([], entries);
+    const onOpenFile = vi.fn();
+    render(<GitPanel request={request} onOpenFile={onOpenFile} />);
+    await screen.findByText("pi-extensions");
+    fireEvent.click(screen.getAllByTitle("展开")[0]);
+    await screen.findByText("work.ts");
+    fireEvent.click(screen.getByText("work.ts"));
+    expect(onOpenFile).toHaveBeenCalledWith("work.ts");
   });
 });
