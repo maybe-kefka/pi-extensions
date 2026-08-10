@@ -1,3 +1,4 @@
+import { useCallback, useEffect, useReducer, useRef } from "react";
 import CodeMirror from "@uiw/react-codemirror";
 import { css } from "@codemirror/lang-css";
 import { html } from "@codemirror/lang-html";
@@ -6,9 +7,23 @@ import { json } from "@codemirror/lang-json";
 import { markdown } from "@codemirror/lang-markdown";
 import { python } from "@codemirror/lang-python";
 import { AlertTriangle, FileLock2 } from "lucide-react";
+import { toast } from "sonner";
 import { Badge } from "@/shared/ui/badge";
+import { Button } from "@/shared/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/shared/ui/dialog";
+import type { RpcClient } from "@/shared/api/rpc";
 import { langForFile, type SupportedLang } from "@/entities/files/lang";
-import type { OpenedFile } from "@/entities/files/editor";
+import { isEditable, type OpenedFile } from "@/entities/files/editor";
+import {
+  editContent,
+  initialEditState,
+  markConflict,
+  markSaved,
+  markSaving,
+  reloadFromDisk,
+  resolveConflictOverwrite,
+  type EditState,
+} from "@/entities/files/save-state";
 
 function langExt(lang: SupportedLang | null) {
   switch (lang) {
@@ -31,8 +46,37 @@ function langExt(lang: SupportedLang | null) {
 
 export interface EditorPaneProps {
   file: OpenedFile | null;
-  /** Ticket 02 前恒只读；此后由 dirty/保存状态驱动 */
-  readOnly?: boolean;
+  request: RpcClient["request"];
+  /** 磁盘重新加载后父级更新打开文件快照（放弃/重新加载/保存后刷新） */
+  onReload: (file: OpenedFile) => void;
+}
+
+/** 防抖保存间隔（ms） */
+const SAVE_DEBOUNCE_MS = 800;
+
+type SaveAction =
+  | { kind: "content"; content: string }
+  | { kind: "saving" }
+  | { kind: "saved"; hash: string; mtimeMs: number }
+  | { kind: "conflict"; hash: string; mtimeMs: number }
+  | { kind: "reload"; file: OpenedFile }
+  | { kind: "dismiss" };
+
+function reducer(state: EditState, action: SaveAction): EditState {
+  switch (action.kind) {
+    case "content":
+      return editContent(state, action.content);
+    case "saving":
+      return markSaving(state);
+    case "saved":
+      return markSaved(state, { hash: action.hash, mtimeMs: action.mtimeMs });
+    case "conflict":
+      return markConflict(state, { hash: action.hash, mtimeMs: action.mtimeMs });
+    case "reload":
+      return reloadFromDisk(state, action.file);
+    case "dismiss":
+      return { ...state, conflict: null };
+  }
 }
 
 function fmtSize(n: number): string {
@@ -41,7 +85,70 @@ function fmtSize(n: number): string {
   return `${(n / 1024 / 1024).toFixed(1)} MB`;
 }
 
-export function EditorPane({ file, readOnly = true }: EditorPaneProps) {
+export function EditorPane({ file, request, onReload }: EditorPaneProps) {
+  const EMPTY: OpenedFile = { path: "", name: "", content: "", mode: "text", size: 0, mtimeMs: 0, hash: "" };
+  const [edit, dispatch] = useReducer(reducer, file ?? EMPTY, initialEditState);
+  const filePathRef = useRef<string | null>(file?.path ?? null);
+
+  // 打开新文件 → 重置编辑状态（防抖窗口内的未保存编辑随切换丢弃）
+  useEffect(() => {
+    if (file && file.path !== filePathRef.current) {
+      filePathRef.current = file.path;
+      dispatch({ kind: "reload", file });
+    }
+  }, [file]);
+
+  const doSave = useCallback(
+    async (state: EditState) => {
+      if (!file) return;
+      dispatch({ kind: "saving" });
+      try {
+        const r = await request<{ ok: boolean; reason?: string; current?: { hash: string; mtimeMs: number } }>("pi:writeFile", {
+          path: file.path,
+          content: state.content,
+          expectedHash: state.savedHash,
+          expectedMtimeMs: state.savedMtimeMs,
+        });
+        if (r.ok) {
+          // 磁盘已更新：重读快照（新 hash/mtime），供下次保存与 diff 刷新使用
+          const fresh = await request<{ hash: string; mtimeMs: number; content: string; mode: string; size: number }>("pi:readFile", {
+            path: file.path,
+          });
+          dispatch({ kind: "saved", hash: fresh.hash, mtimeMs: fresh.mtimeMs });
+          const nextFile: OpenedFile = { ...file, hash: fresh.hash, mtimeMs: fresh.mtimeMs, content: state.content };
+          onReload(nextFile);
+        } else if (r.reason === "conflict" && r.current) {
+          dispatch({ kind: "conflict", hash: r.current.hash, mtimeMs: r.current.mtimeMs });
+        } else {
+          toast.error(`保存失败：${r.reason ?? "未知错误"}`);
+          dispatch({ kind: "reload", file });
+        }
+      } catch (e) {
+        toast.error(`保存失败：${e instanceof Error ? e.message : String(e)}`);
+      }
+    },
+    [file, request, onReload],
+  );
+
+  // 防抖自动保存：dirty 且非保存中 → 800ms 后保存
+  useEffect(() => {
+    if (!edit.dirty || edit.saving) return;
+    const t = setTimeout(() => void doSave(edit), SAVE_DEBOUNCE_MS);
+    return () => clearTimeout(t);
+  }, [edit, doSave]);
+
+  const reloadFromDisk = useCallback(async () => {
+    if (!file) return;
+    try {
+      const r = await request<OpenedFile>("pi:readFile", { path: file.path });
+      const next: OpenedFile = { ...file, ...r };
+      dispatch({ kind: "reload", file: next });
+      onReload(next);
+    } catch (e) {
+      toast.error(`重新加载失败：${e instanceof Error ? e.message : String(e)}`);
+    }
+  }, [file, request, onReload]);
+
   if (!file) {
     return (
       <div className="text-muted-foreground flex h-full items-center justify-center text-sm">
@@ -49,6 +156,8 @@ export function EditorPane({ file, readOnly = true }: EditorPaneProps) {
       </div>
     );
   }
+
+  const editable = isEditable(file.mode);
   const modeNote =
     file.mode === "binary" ? (
       <Badge variant="secondary">
@@ -63,18 +172,21 @@ export function EditorPane({ file, readOnly = true }: EditorPaneProps) {
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex items-center gap-2 border-b px-3 py-1.5">
+        {edit.dirty && <span className="text-primary">●</span>}
         <span className="truncate font-mono text-xs">{file.path}</span>
         <span className="text-muted-foreground text-xs tabular-nums">{fmtSize(file.size)}</span>
+        {edit.saving && <Badge variant="secondary">保存中…</Badge>}
         {modeNote}
       </div>
       <div className="min-h-0 flex-1 overflow-hidden">
         {file.mode === "text" ? (
           <CodeMirror
-            value={file.content}
+            value={edit.content}
             height="100%"
             style={{ height: "100%", fontSize: 13 }}
             extensions={[langExt(langForFile(file.name))]}
-            readOnly={readOnly}
+            readOnly={!editable}
+            onChange={(v) => dispatch({ kind: "content", content: v })}
             basicSetup={{ lineNumbers: true, foldGutter: true, highlightActiveLine: false }}
           />
         ) : (
@@ -83,6 +195,49 @@ export function EditorPane({ file, readOnly = true }: EditorPaneProps) {
           </div>
         )}
       </div>
+      <Dialog
+        open={edit.conflict !== null}
+        onOpenChange={(open) => {
+          if (!open) dispatch({ kind: "dismiss" });
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>文件已被外部修改</DialogTitle>
+            <DialogDescription>
+              磁盘上的内容与打开时不同（可能是 pi 会话或其它工具改的）。请选择如何处理你的编辑：
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                void reloadFromDisk();
+              }}
+            >
+              放弃编辑
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => {
+                void reloadFromDisk();
+              }}
+            >
+              重新加载
+            </Button>
+            <Button
+              onClick={() => {
+                if (edit.conflict) {
+                  const s = resolveConflictOverwrite(edit);
+                  void doSave(s);
+                }
+              }}
+            >
+              覆盖保存
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

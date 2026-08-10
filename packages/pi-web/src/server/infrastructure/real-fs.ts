@@ -23,4 +23,7 @@ export const realFs: FsLike = {
   readFile(path) {
     return fsp.readFile(path);
   },
+  writeFile(path, content) {
+    return fsp.writeFile(path, content);
+  },
 };

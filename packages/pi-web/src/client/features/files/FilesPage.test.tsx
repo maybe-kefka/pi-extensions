@@ -23,7 +23,7 @@ function fakeRequest(files: Record<string, string>): RpcClient["request"] {
       if (!list.includes(name)) list.push(name);
     }
   }
-  return async (method, params = {}) => {
+  return (async (method: string, params: Record<string, unknown> = {}): Promise<unknown> => {
     if (method === "pi:listDir") {
       const path = (params.path as string) ?? "";
       const names = dirs.get(path) ?? [];
@@ -39,7 +39,7 @@ function fakeRequest(files: Record<string, string>): RpcClient["request"] {
       return { content, mode: "text", size: content.length, mtimeMs: 1, hash: "h" };
     }
     throw new Error(`unexpected method ${method}`);
-  };
+  }) as RpcClient["request"];
 }
 
 describe("FilesPage", () => {

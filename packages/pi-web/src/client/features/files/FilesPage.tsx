@@ -149,7 +149,7 @@ export function FilesPage({ request }: { request: RpcClient["request"] }) {
           <TreeView nodes={tree.nodes} selectedPath={selected?.path ?? null} onToggleDir={toggleDir} onOpenFile={openFile} />
         </aside>
         <main className="min-w-0 flex-1">
-          <EditorPane file={selected} />
+          <EditorPane file={selected} request={request} onReload={setSelected} />
         </main>
       </div>
     </div>

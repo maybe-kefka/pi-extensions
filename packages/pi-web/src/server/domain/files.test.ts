@@ -5,18 +5,21 @@ import {
   readFileText,
   resolveWithinRoot,
   sniffBinary,
+  writeFileText,
   type FsLike,
 } from "./files.js";
 
-/** 内存假 fs（lstat 语义：symlink 不跟随，直接报 isSymbolicLink） */
-function memFs(files: Record<string, string | Buffer>, symlinks: string[] = []): FsLike {
-  const all = new Set(Object.keys(files));
+/** 内存假 fs（lstat 语义：symlink 不跟随，直接报 isSymbolicLink）；writeFile 后内容可变 */
+function memFs(files: Record<string, string | Buffer>, symlinks: string[] = []): FsLike & { readFileSync(path: string): string } {
+  const store: Record<string, string | Buffer> = { ...files };
+  const all = () => new Set(Object.keys(store));
   return {
     async readdir(dir) {
+      const keys = all();
       const prefix = dir.endsWith("/") ? dir : `${dir}/`;
-      if (!all.has(dir) && ![...all].some((p) => p.startsWith(prefix))) throw new Error(`ENOENT ${dir}`);
+      if (!keys.has(dir) && ![...keys].some((p) => p.startsWith(prefix))) throw new Error(`ENOENT ${dir}`);
       const names = new Set<string>();
-      for (const p of all) {
+      for (const p of keys) {
         if (!p.startsWith(prefix)) continue;
         const rest = p.slice(prefix.length);
         const first = rest.split("/")[0];
@@ -25,16 +28,17 @@ function memFs(files: Record<string, string | Buffer>, symlinks: string[] = []):
       return [...names].sort();
     },
     async stat(path) {
+      const keys = all();
       if (symlinks.includes(path)) {
         return { isDirectory: () => false, isFile: () => false, isSymbolicLink: () => true, size: 0, mtimeMs: 0 };
       }
       // 目录 stat：路径是某键的祖先（如 /repo/src 之于 /repo/src/main.ts）
-      const isDir = [...all].some((p) => p.startsWith(`${path}/`));
+      const isDir = [...keys].some((p) => p.startsWith(`${path}/`));
       if (isDir) {
         return { isDirectory: () => true, isFile: () => false, isSymbolicLink: () => false, size: 0, mtimeMs: 1000 };
       }
-      if (!all.has(path)) throw new Error(`ENOENT ${path}`);
-      const content = files[path];
+      if (!keys.has(path)) throw new Error(`ENOENT ${path}`);
+      const content = store[path];
       return {
         isDirectory: () => false,
         isFile: () => true,
@@ -44,9 +48,16 @@ function memFs(files: Record<string, string | Buffer>, symlinks: string[] = []):
       };
     },
     async readFile(path) {
-      if (!all.has(path)) throw new Error(`ENOENT ${path}`);
-      const content = files[path];
+      const keys = all();
+      if (!keys.has(path)) throw new Error(`ENOENT ${path}`);
+      const content = store[path];
       return typeof content === "string" ? Buffer.from(content) : content;
+    },
+    async writeFile(path, content) {
+      store[path] = content.toString();
+    },
+    readFileSync(path) {
+      return typeof store[path] === "string" ? (store[path] as string) : "<buffer>";
     },
   };
 }
@@ -214,5 +225,43 @@ describe("checkConflict", () => {
 
   it("缺少期望快照（首次打开旧文件）→ 视为冲突", () => {
     expect(checkConflict(null, null, "abc", 1000)).toBe(true);
+  });
+});
+
+describe("writeFileText", () => {
+  it("快照一致时写入成功", async () => {
+    const fs = memFs({ "/repo/a.ts": "old" });
+    const snap = await readFileText("/repo", "a.ts", fs);
+    const r = await writeFileText("/repo", "a.ts", "new", { hash: snap!.hash, mtimeMs: snap!.mtimeMs }, fs);
+    expect(r?.ok).toBe(true);
+    expect(fs.readFileSync("/repo/a.ts")).toBe("new");
+  });
+
+  it("快照不一致返回 conflict（不写入）", async () => {
+    const fs = memFs({ "/repo/a.ts": "old" });
+    const r = await writeFileText("/repo", "a.ts", "new", { hash: "wrong", mtimeMs: 1000 }, fs);
+    expect(r?.ok).toBe(false);
+    if (r && !r.ok) expect(r.reason).toBe("conflict");
+    expect(fs.readFileSync("/repo/a.ts")).toBe("old");
+  });
+
+  it("mtime 不一致也判 conflict", async () => {
+    const fs = memFs({ "/repo/a.ts": "old" });
+    const snap = await readFileText("/repo", "a.ts", fs);
+    const r = await writeFileText("/repo", "a.ts", "new", { hash: snap!.hash, mtimeMs: snap!.mtimeMs + 1 }, fs);
+    if (r && !r.ok) expect(r.reason).toBe("conflict");
+  });
+
+  it("越权路径返回 denied（不抛错）", async () => {
+    const fs = memFs({ "/repo/a.ts": "old" });
+    const r = await writeFileText("/repo", "../a.ts", "new", { hash: "h", mtimeMs: 1000 }, fs);
+    expect(r?.ok).toBe(false);
+    if (r && !r.ok) expect(r.reason).toBe("denied");
+  });
+
+  it("不存在的文件返回 not-found", async () => {
+    const fs = memFs({});
+    const r = await writeFileText("/repo", "nope.ts", "x", { hash: null, mtimeMs: null }, fs);
+    if (r && !r.ok) expect(r.reason).toBe("not-found");
   });
 });

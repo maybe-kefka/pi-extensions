@@ -21,7 +21,7 @@ import { resolveUserEntryId } from "../domain/fork-util.js";
 import { truncateTree } from "../domain/tree.js";
 import { deleteSessionFile } from "../infrastructure/session-files.js";
 import { realFs } from "../infrastructure/real-fs.js";
-import { listDir, readFileText } from "../domain/files.js";
+import { listDir, readFileText, writeFileText } from "../domain/files.js";
 import { messageTextOf, messageThinkingOf, messageToolCalls } from "../infrastructure/http-util.js";
 import { THINKING_LEVELS, SessionManager, type BuildSystemPromptOptions, type WebConsole } from "../application/web-console.js";
 
@@ -295,6 +295,24 @@ async function handleRequest(
         throw new WebServerError(-32602, `文件不存在或越权：${relPath}`);
       }
       return result;
+    }
+
+    case "pi:writeFile": {
+      // files 迭代：带快照冲突检测的写入（expected 来自客户端打开/保存时的快照）
+      const ctx = requireCtxOf();
+      const relPath = typeof params.path === "string" ? params.path : "";
+      const content = typeof params.content === "string" ? params.content : "";
+      const expectedHash = typeof params.expectedHash === "string" ? params.expectedHash : null;
+      const expectedMtimeMs = typeof params.expectedMtimeMs === "number" ? params.expectedMtimeMs : null;
+      const result = await writeFileText(
+        ctx.cwd,
+        relPath,
+        content,
+        { hash: expectedHash, mtimeMs: expectedMtimeMs },
+        realFs,
+      );
+      if (result.ok) return { ok: true };
+      return { ok: false, reason: result.reason, current: result.current ?? undefined };
     }
 
     case "pi:listModels": {

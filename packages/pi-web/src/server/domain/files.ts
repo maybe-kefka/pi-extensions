@@ -48,6 +48,7 @@ export interface FsLike {
   /** lstat 语义 */
   stat(path: string): Promise<FsStat>;
   readFile(path: string): Promise<Buffer>;
+  writeFile(path: string, content: Buffer): Promise<void>;
 }
 
 /** 默认排除目录 */
@@ -160,4 +161,46 @@ export function checkConflict(
 ): boolean {
   if (expectedHash === null || expectedMtimeMs === null) return true;
   return expectedHash !== currentHash || expectedMtimeMs !== currentMtimeMs;
+}
+
+export interface WriteFileExpected {
+  hash: string | null;
+  mtimeMs: number | null;
+}
+
+export type WriteFileResult =
+  | { ok: true }
+  | { ok: false; reason: "conflict" | "denied" | "not-found" | "readonly" | "io"; current?: { hash: string; mtimeMs: number } };
+
+/**
+ * 写入文件（带冲突检测）：快照（hash + mtime）与磁盘不一致 → conflict（附 current 快照供覆盖）。
+ * 只允许 text 模式；越权 denied；不存在 not-found；写失败 io。
+ */
+export async function writeFileText(
+  root: string,
+  relPath: string,
+  content: string,
+  expected: WriteFileExpected,
+  fs: FsLike,
+): Promise<WriteFileResult> {
+  const abs = resolveWithinRoot(root, relPath);
+  if (!abs) return { ok: false, reason: "denied" };
+  let cur: Buffer;
+  let st: FsStat;
+  try {
+    [cur, st] = await Promise.all([fs.readFile(abs), fs.stat(abs)]);
+  } catch {
+    return { ok: false, reason: "not-found" };
+  }
+  if (classifyFile(st.size, cur) !== "text") return { ok: false, reason: "readonly" };
+  const curHash = createHash("sha256").update(cur).digest("hex");
+  if (checkConflict(expected.hash, expected.mtimeMs, curHash, st.mtimeMs)) {
+    return { ok: false, reason: "conflict", current: { hash: curHash, mtimeMs: st.mtimeMs } };
+  }
+  try {
+    await fs.writeFile(abs, Buffer.from(content, "utf8"));
+  } catch {
+    return { ok: false, reason: "io" };
+  }
+  return { ok: true };
 }
