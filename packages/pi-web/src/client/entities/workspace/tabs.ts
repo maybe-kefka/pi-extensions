@@ -4,7 +4,7 @@
  */
 
 export type WorkspaceTab =
-  | { kind: "file"; path: string; name: string; dirty: boolean }
+  | { kind: "file"; path: string; name: string; dirty: boolean; preview: boolean }
   | { kind: "chat" };
 
 export interface WorkspaceState {
@@ -25,12 +25,38 @@ export function initialState(): WorkspaceState {
   return { tabs: [{ kind: "chat" }], active: CHAT_TAB_ID };
 }
 
-/** 打开文件：已打开仅激活；否则追加并激活 */
-export function openFile(state: WorkspaceState, path: string, name: string): WorkspaceState {
-  if (state.tabs.some((t) => t.kind === "file" && t.path === path)) {
-    return { ...state, active: path };
+export interface OpenFileOptions {
+  /** 预览模式：已有预览 tab 时先关闭（全局唯一）；已打开的 preview 文件 → promote */
+  preview?: boolean;
+}
+
+/** 打开文件：已打开仅激活（preview 请求且已打开 → promote）；否则追加并激活 */
+export function openFile(state: WorkspaceState, path: string, name: string, opts: OpenFileOptions = {}): WorkspaceState {
+  const existing = state.tabs.find((t) => t.kind === "file" && t.path === path);
+  if (existing) {
+    const next =
+      existing.kind === "file" && !opts.preview && existing.preview
+        ? { ...existing, preview: false }
+        : existing;
+    return {
+      ...state,
+      tabs: state.tabs.map((t) => (t.kind === "file" && t.path === path ? next : t)),
+      active: path,
+    };
   }
-  return { tabs: [...state.tabs, { kind: "file", path, name, dirty: false }], active: path };
+  if (opts.preview) {
+    // 预览模式：关闭已有预览 tab（全局唯一）
+    const tabs = state.tabs.filter((t) => !(t.kind === "file" && t.preview));
+    return { tabs: [...tabs, { kind: "file", path, name, dirty: false, preview: true }], active: path };
+  }
+  return { tabs: [...state.tabs, { kind: "file", path, name, dirty: false, preview: false }], active: path };
+}
+
+/** 预览 → 正式（preview 置 false）；不存在/非 preview 忽略 */
+export function promotePreview(state: WorkspaceState, path: string): WorkspaceState {
+  const t = state.tabs.find((x) => x.kind === "file" && x.path === path);
+  if (!t || t.kind !== "file" || !t.preview) return state;
+  return { ...state, tabs: state.tabs.map((x) => (x.kind === "file" && x.path === path ? { ...x, preview: false } : x)) };
 }
 
 /** 激活任意 tab（chat / 文件路径 / 文件浏览态） */

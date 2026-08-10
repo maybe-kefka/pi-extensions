@@ -9,8 +9,8 @@ afterEach(cleanup);
 
 const tabs: WorkspaceTab[] = [
   { kind: "chat" },
-  { kind: "file", path: "a.ts", name: "a.ts", dirty: false },
-  { kind: "file", path: "b.ts", name: "b.ts", dirty: false },
+  { kind: "file", path: "a.ts", name: "a.ts", dirty: false, preview: false },
+  { kind: "file", path: "b.ts", name: "b.ts", dirty: false, preview: false },
 ];
 
 describe("TabsBar", () => {
@@ -57,7 +57,7 @@ describe("TabsBar dirty 与保存", () => {
 
   const dirtyTabs: WorkspaceTab[] = [
     { kind: "chat" },
-    { kind: "file", path: "a.ts", name: "a.ts", dirty: true },
+    { kind: "file", path: "a.ts", name: "a.ts", dirty: true, preview: false },
   ];
 
   it("dirty 文件 tab 显示圆点（title=未保存）", () => {

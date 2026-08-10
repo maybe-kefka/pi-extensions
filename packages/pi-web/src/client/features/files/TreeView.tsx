@@ -11,7 +11,8 @@ export interface TreeViewProps {
   /** 当前内联重命名的路径 */
   renamingPath: string | null;
   onToggleDir: (path: string) => void;
-  onOpenFile: (path: string) => void;
+  /** 打开文件（preview: 单击预览 / false: 双击与 Enter 正式打开） */
+  onOpenFile: (path: string, preview: boolean) => void;
   onRenameStart: (path: string) => void;
   onRenameCommit: (path: string, newName: string) => void;
   onRenameCancel: () => void;
@@ -41,7 +42,7 @@ function Row({
   renaming: boolean;
   gitStatus?: Map<string, string>;
   onToggleDir: (path: string) => void;
-  onOpenFile: (path: string) => void;
+  onOpenFile: (path: string, preview: boolean) => void;
   onRenameStart: (path: string) => void;
   onRenameCommit: (path: string, newName: string) => void;
   onRenameCancel: () => void;
@@ -84,7 +85,8 @@ function Row({
             selected ? "bg-primary/15 text-primary" : "hover:bg-muted/60"
           }`}
           style={{ paddingLeft: `${8 + depth * 14}px` }}
-          onClick={() => (isDir ? onToggleDir(node.path) : onOpenFile(node.path))}
+          onClick={() => (isDir ? onToggleDir(node.path) : onOpenFile(node.path, true))}
+          onDoubleClick={() => (isDir ? undefined : onOpenFile(node.path, false))}
           title={node.path === "" ? "工作目录（cwd）" : node.path}
         >
           {isDir ? (
@@ -181,12 +183,12 @@ export function TreeView(props: TreeViewProps) {
         if (e.key === "ArrowDown" && idx >= 0 && idx < all.length - 1) {
           e.preventDefault();
           const next = all[idx + 1];
-          if (next.type === "file") onOpenFile(next.path);
+          if (next.type === "file") onOpenFile(next.path, false);
           else onToggleDir(next.path);
         } else if (e.key === "ArrowUp" && idx > 0) {
           e.preventDefault();
           const prev = all[idx - 1];
-          if (prev.type === "file") onOpenFile(prev.path);
+          if (prev.type === "file") onOpenFile(prev.path, false);
           else onToggleDir(prev.path);
         } else if (e.key === "Delete" && selectedPath) {
           e.preventDefault();

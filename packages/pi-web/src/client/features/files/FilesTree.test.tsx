@@ -58,12 +58,15 @@ describe("FilesTree", () => {
     expect(await screen.findByText("main.ts")).toBeTruthy();
   });
 
-  it("点击文件回调 onOpenFile（含文件名）", async () => {
+  it("单击文件回调 onOpenFile（preview）；双击正式打开", async () => {
     const user = userEvent.setup();
     const onOpenFile = vi.fn();
     render(<FilesTree request={fakeRequest({ "a.txt": "hello world" })} onOpenFile={onOpenFile} activePath={null} />);
-    await user.click(await screen.findByText("a.txt"));
-    expect(onOpenFile).toHaveBeenCalledWith("a.txt", "a.txt");
+    const row = await screen.findByText("a.txt");
+    await user.click(row);
+    expect(onOpenFile).toHaveBeenLastCalledWith("a.txt", "a.txt", true); // 单击 preview
+    await user.dblClick(row);
+    expect(onOpenFile).toHaveBeenLastCalledWith("a.txt", "a.txt", false); // 双击 permanent
   });
 
   it("listDir 失败显示错误提示", async () => {
@@ -113,7 +116,7 @@ describe("FilesTree 文件操作", () => {
     await waitFor(() => {
       expect(calls.some((c) => c.startsWith("pi:touch") && c.includes("new.ts"))).toBe(true);
     });
-    expect(onOpenFile).toHaveBeenCalledWith("new.ts", "new.ts");
+    expect(onOpenFile).toHaveBeenCalledWith("new.ts", "new.ts", false);
   });
 
   it("删除：确认弹窗 → pi:delete 调用", async () => {

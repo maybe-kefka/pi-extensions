@@ -6,6 +6,7 @@ import {
   hasDirty,
   initialState,
   openFile,
+  promotePreview,
   setDirty,
   tabDirty,
   type WorkspaceState,
@@ -96,7 +97,7 @@ describe("dirty 状态", () => {
   it("新开文件 tab 不脏；编辑上报后脏", () => {
     const s = openFile(initialState(), "a.ts", "a.ts");
     expect(tabDirty(s, "a.ts")).toBe(false);
-    expect(setDirty(s, "a.ts", true).tabs).toContainEqual({ kind: "file", path: "a.ts", name: "a.ts", dirty: true });
+    expect(setDirty(s, "a.ts", true).tabs).toContainEqual({ kind: "file", path: "a.ts", name: "a.ts", dirty: true, preview: false });
   });
 
   it("保存后清除 dirty；重复上报不产生新引用", () => {
@@ -120,5 +121,52 @@ describe("dirty 状态", () => {
   it("不存在路径的 dirty 上报被忽略", () => {
     const s = openFile(initialState(), "a.ts", "a.ts");
     expect(setDirty(s, "nope.ts", true)).toBe(s);
+  });
+});
+
+describe("preview 模型", () => {
+  it("预览打开：标记 preview；再预览其他文件 → 关闭旧预览（全局唯一）", () => {
+    const s1 = openFile(initialState(), "a.ts", "a.ts", { preview: true });
+    const a = s1.tabs.find((t) => t.kind === "file" && t.path === "a.ts");
+    expect(a && a.kind === "file" && a.preview).toBe(true);
+    const s2 = openFile(s1, "b.ts", "b.ts", { preview: true });
+    expect(s2.tabs.filter((t) => t.kind === "file")).toHaveLength(1); // a 被替换，仅 b
+    expect(s2.tabs.some((t) => t.kind === "file" && t.path === "a.ts")).toBe(false);
+    expect(s2.active).toBe("b.ts");
+  });
+
+  it("promotePreview：预览 → 正式（正体）", () => {
+    const s1 = openFile(initialState(), "a.ts", "a.ts", { preview: true });
+    const s2 = promotePreview(s1, "a.ts");
+    const a = s2.tabs.find((t) => t.kind === "file" && t.path === "a.ts");
+    expect(a && a.kind === "file" && a.preview).toBe(false);
+  });
+
+  it("打开已存在的 preview 文件（单击幂等）：不替换自身", () => {
+    const s1 = openFile(initialState(), "a.ts", "a.ts", { preview: true });
+    const s2 = openFile(s1, "a.ts", "a.ts", { preview: true });
+    expect(s2.tabs.filter((t) => t.kind === "file")).toHaveLength(1);
+    expect(s2.active).toBe("a.ts");
+  });
+
+  it("双击（preview:false）已有 preview 文件 → 转正（promote）", () => {
+    const s1 = openFile(initialState(), "a.ts", "a.ts", { preview: true });
+    const s2 = openFile(s1, "a.ts", "a.ts", { preview: false });
+    const a = s2.tabs.find((t) => t.kind === "file" && t.path === "a.ts");
+    expect(a && a.kind === "file" && a.preview).toBe(false);
+  });
+
+  it("preview 文件被替换时其 dirty 状态一并移除（tab 关闭）", () => {
+    let s = openFile(initialState(), "a.ts", "a.ts", { preview: true });
+    s = setDirty(s, "a.ts", true);
+    const s2 = openFile(s, "b.ts", "b.ts", { preview: true });
+    expect(s2.tabs.some((t) => t.kind === "file" && t.path === "a.ts")).toBe(false);
+    expect(s2.tabs.some((t) => t.kind === "file" && t.path === "b.ts" && t.dirty === false)).toBe(true);
+  });
+
+  it("默认打开（无 preview 参数）= permanent（兼容既有行为）", () => {
+    const s = openFile(initialState(), "a.ts", "a.ts");
+    const a = s.tabs.find((t) => t.kind === "file" && t.path === "a.ts");
+    expect(a && a.kind === "file" && a.preview).toBe(false);
   });
 });

@@ -19,8 +19,8 @@ import { TreeView } from "./TreeView";
 
 export interface FilesTreeProps {
   request: RpcClient["request"];
-  /** 打开文件（App 层进入 tab 系统） */
-  onOpenFile: (path: string, name: string) => void;
+  /** 打开文件（App 层进入 tab 系统；preview=单击预览） */
+  onOpenFile: (path: string, name: string, preview: boolean) => void;
   /** 当前激活文件（树高亮） */
   activePath: string | null;
   /** 外部刷新信号（保存文件后递增，联动刷新 git 状态） */
@@ -166,7 +166,7 @@ export function FilesTree({ request, onOpenFile, activePath, gitRefreshKey = 0 }
       } else {
         const path = newTarget.dir === "" ? name : `${newTarget.dir}/${name}`;
         await request("pi:touch", { path });
-        onOpenFile(path, name);
+        onOpenFile(path, name, false);
       }
       void loadDir(newTarget.dir, tree);
       void loadGitStatus();
@@ -226,7 +226,7 @@ export function FilesTree({ request, onOpenFile, activePath, gitRefreshKey = 0 }
           gitStatus={gitStatus}
           renamingPath={renaming}
           onToggleDir={toggleDir}
-          onOpenFile={(path) => onOpenFile(path, path.split("/").pop() ?? path)}
+          onOpenFile={(path, preview) => onOpenFile(path, path.split("/").pop() ?? path, preview)}
           onRenameStart={(path) => setRenaming(path)}
           onRenameCommit={(path, name) => void commitRename(path, name)}
           onRenameCancel={() => setRenaming(null)}

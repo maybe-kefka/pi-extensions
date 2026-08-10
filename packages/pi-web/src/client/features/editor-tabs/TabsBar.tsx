@@ -33,7 +33,7 @@ export function TabsBar({ tabs, active, sessionName, onActivate, onClose, onSave
           >
             {tab.kind === "chat" && <MessageSquareText className="size-3.5 shrink-0" />}
             {tab.kind === "file" && tab.dirty && <span className="bg-primary size-1.5 shrink-0 rounded-full" title="未保存" />}
-            <span className="truncate">{label}</span>
+            <span className={`truncate ${tab.kind === "file" && tab.preview ? "italic" : ""}`}>{label}</span>
             {tab.kind === "file" && (
               <button
                 className="hover:bg-muted text-muted-foreground hover:text-foreground ml-0.5 flex size-4 shrink-0 items-center justify-center rounded"

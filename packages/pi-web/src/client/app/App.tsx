@@ -16,6 +16,7 @@ import {
   closeTab,
   initialState as initialWorkspace,
   openFile,
+  promotePreview,
   setDirty,
   tabDirty,
   type WorkspaceState,
@@ -76,17 +77,19 @@ export default function App() {
   const [workspace, dispatchWs] = useReducer(
     (
       s: WorkspaceState,
-      a: { kind: "open"; path: string; name: string } | { kind: "activate"; id: string } | { kind: "close"; id: string } | { kind: "dirty"; path: string; dirty: boolean },
+      a: { kind: "open"; path: string; name: string; preview?: boolean } | { kind: "activate"; id: string } | { kind: "close"; id: string } | { kind: "dirty"; path: string; dirty: boolean } | { kind: "promote"; path: string },
     ): WorkspaceState => {
       switch (a.kind) {
         case "open":
-          return openFile(s, a.path, a.name);
+          return openFile(s, a.path, a.name, { preview: a.preview });
         case "activate":
           return activateTab(s, a.id);
         case "close":
           return closeTab(s, a.id);
         case "dirty":
           return setDirty(s, a.path, a.dirty);
+        case "promote":
+          return promotePreview(s, a.path);
       }
     },
     undefined,
@@ -415,12 +418,12 @@ export default function App() {
             {panel === "files" && (
               <FilesTree
                 request={getRequest()}
-                onOpenFile={(path, name) => dispatchWs({ kind: "open", path, name })}
+                onOpenFile={(path, name, preview) => dispatchWs({ kind: "open", path, name, preview })}
                 activePath={workspace.active === "chat" || workspace.active === "files" ? null : workspace.active}
                 gitRefreshKey={gitRefreshKey}
               />
             )}
-            {panel === "git" && <GitPanel request={getRequest()} onOpenFile={(path) => dispatchWs({ kind: "open", path, name: path.split("/").pop() ?? path })} />}
+            {panel === "git" && <GitPanel request={getRequest()} onOpenFile={(path) => dispatchWs({ kind: "open", path, name: path.split("/").pop() ?? path, preview: false })} />}
             {panel === "sessions" && <SessionPanel {...sessionPanelProps} />}
             {panel === "settings" && <SettingsPanel {...settingsPanelProps} />}
           </aside>
@@ -479,7 +482,10 @@ export default function App() {
                   ref={(h) => {
                     editorRefs.current[t.path] = h;
                   }}
-                  onDirtyChange={(path, dirty) => dispatchWs({ kind: "dirty", path, dirty })}
+                  onDirtyChange={(path, dirty) => {
+                    dispatchWs({ kind: "dirty", path, dirty });
+                    if (dirty) dispatchWs({ kind: "promote", path }); // 编辑自动转正式
+                  }}
                   onSaved={() => setGitRefreshKey((k) => k + 1)}
                 />
               </div>
