@@ -1,4 +1,4 @@
-import { PanelLeftClose, PanelLeftOpen, SlidersHorizontal } from "lucide-react";
+
 import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/shared/ui/popover";
@@ -14,17 +14,11 @@ function fmt(n: number | null): string {
 export function Header({
   conn,
   state,
-  sidebarCollapsed,
-  onToggleSidebar,
-  onOpenDrawer,
   onCompact,
   getRequest,
 }: {
   conn: StreamState["conn"];
   state: StreamState;
-  sidebarCollapsed: boolean;
-  onToggleSidebar: () => void;
-  onOpenDrawer: () => void;
   onCompact: () => void;
   getRequest: () => RpcClient["request"];
 }) {
@@ -56,20 +50,6 @@ export function Header({
             <ContextPanel getRequest={getRequest} onCompact={onCompact} />
           </PopoverContent>
         </Popover>
-        {/* 窄屏：打开抽屉 */}
-        <Button variant="ghost" size="icon" className="size-8 lg:hidden" onClick={onOpenDrawer} title="面板">
-          <SlidersHorizontal />
-        </Button>
-        {/* 宽屏：折叠/展开侧栏 */}
-        <Button
-          variant="ghost"
-          size="icon"
-          className="hidden size-8 lg:inline-flex"
-          onClick={onToggleSidebar}
-          title={sidebarCollapsed ? "展开侧栏" : "折叠侧栏"}
-        >
-          {sidebarCollapsed ? <PanelLeftOpen /> : <PanelLeftClose />}
-        </Button>
       </div>
     </header>
   );

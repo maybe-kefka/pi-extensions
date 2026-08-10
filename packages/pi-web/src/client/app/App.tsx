@@ -21,7 +21,10 @@ import {
   type WorkspaceState,
 } from "@/entities/workspace/tabs";
 import type { EditorPaneHandle } from "@/features/files/EditorPane";
-import { Sidebar, SidebarSheet, type SidebarContentProps } from "@/features/sessions/Sidebar";
+import { ActivityBar, type ActivityPanel } from "@/features/activity-bar/ActivityBar";
+import { SessionPanel } from "@/features/sessions/SessionPanel";
+import { SettingsPanel } from "@/features/settings/SettingsPanel";
+import { GitPanel } from "@/features/git-panel/GitPanel";
 import { InputBar } from "@/features/input-bar/InputBar";
 import { DisconnectBanner } from "@/app/ui/DisconnectBanner";
 import { TreeDialog } from "@/features/sessions/TreeDialog";
@@ -37,8 +40,6 @@ import {
 } from "@/entities/theme/theme";
 
 
-const SidebarMemo = memo(Sidebar);
-const SidebarSheetMemo = memo(SidebarSheet);
 const InputBarMemo = memo(InputBar);
 const DisconnectBannerMemo = memo(DisconnectBanner);
 
@@ -63,8 +64,8 @@ export default function App() {
   const [degraded, setDegraded] = useState(false);
   const rpcRef = useRef<RpcClient | null>(null);
   const [booted, setBooted] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [drawerOpen, setDrawerOpen] = useState(false);
+  // vscode-align 03：activity bar 面板（null = 收起）
+  const [panel, setPanel] = useState<ActivityPanel | null>(null);
   // 关闭 dirty tab 确认（vscode-align 02：三选）
   const [pendingClose, setPendingClose] = useState<string | null>(null);
   const [pendingSaving, setPendingSaving] = useState(false);
@@ -368,70 +369,87 @@ export default function App() {
     [switchSession, newSession, deleteSession, renameSession, clone, openTree, refreshSessions],
   );
 
-  const sidebarProps = useMemo<SidebarContentProps>(
+  const sessionPanelProps = useMemo(
     () => ({
       sessions,
       currentSessionFile: state.sessionFile,
+      bridge: state.bridge,
+      sessionDegraded: degraded,
+      sessionActions,
+    }),
+    [sessions, state.sessionFile, state.bridge, degraded, sessionActions],
+  );
+
+  const settingsPanelProps = useMemo(
+    () => ({
       models,
       currentModel: state.model ? `${state.model.provider}/${state.model.id}` : null,
       thinkingLevel: state.thinkingLevel,
       thinkingLevels: state.availableThinkingLevels,
-      bridge: state.bridge,
-      sessionDegraded: degraded,
-      sessionActions,
       onSetModel: setModel,
       onSetThinking: setThinking,
       themePreference: themePref,
       onThemeChange,
     }),
-    [sessions, state.sessionFile, state.model, state.thinkingLevel, state.availableThinkingLevels, state.bridge, models, degraded, sessionActions, setModel, setThinking, themePref, onThemeChange],
+    [models, state.model, state.thinkingLevel, state.availableThinkingLevels, setModel, setThinking, themePref, onThemeChange],
   );
 
   return (
     <div className="flex h-dvh flex-col bg-background text-foreground">
-      <Header
-        conn={conn}
-        state={state}
-        sidebarCollapsed={sidebarCollapsed}
-        onToggleSidebar={() => setSidebarCollapsed((c) => !c)}
-        onOpenDrawer={() => setDrawerOpen(true)}
-        onCompact={compact}
-        getRequest={getRequest}
-      />
-      <TabsBar
-        tabs={workspace.tabs}
-        active={workspace.active}
-        sessionName={state.sessionName ?? "聊天"}
-        onActivate={(id) => dispatchWs({ kind: "activate", id })}
-        onClose={(id) => {
-          if (id !== "chat" && tabDirty(workspace, id)) {
-            setPendingClose(id);
-          } else {
-            dispatchWs({ kind: "close", id });
-          }
-        }}
-        onOpenFiles={() => {
-          const files = workspace.tabs.filter((t) => t.kind === "file");
-          dispatchWs({ kind: "activate", id: files.length > 0 ? files[files.length - 1].path : "files" });
-        }}
-        onSave={() => {
-          const active = workspace.active;
-          if (active !== "chat" && active !== "files") void editorRefs.current[active]?.save();
-        }}
-      />
+      <Header conn={conn} state={state} onCompact={compact} getRequest={getRequest} />
+      <div className="flex min-h-0 flex-1">
+        <ActivityBar active={panel} onSelect={setPanel} />
+        {panel !== null && (
+          <aside className="w-64 shrink-0 border-r">
+            {panel === "files" && (
+              <FilesTree
+                request={getRequest()}
+                onOpenFile={(path, name) => dispatchWs({ kind: "open", path, name })}
+                activePath={workspace.active === "chat" || workspace.active === "files" ? null : workspace.active}
+              />
+            )}
+            {panel === "git" && <GitPanel />}
+            {panel === "sessions" && <SessionPanel {...sessionPanelProps} />}
+            {panel === "settings" && <SettingsPanel {...settingsPanelProps} />}
+          </aside>
+        )}
+        <main className="flex min-w-0 flex-1 flex-col">
+          <TabsBar
+            tabs={workspace.tabs}
+            active={workspace.active}
+            sessionName={state.sessionName ?? "聊天"}
+            onActivate={(id) => dispatchWs({ kind: "activate", id })}
+            onClose={(id) => {
+              if (id !== "chat" && tabDirty(workspace, id)) {
+                setPendingClose(id);
+              } else {
+                dispatchWs({ kind: "close", id });
+              }
+            }}
+            onOpenFiles={() => {
+              const files = workspace.tabs.filter((t) => t.kind === "file");
+              if (files.length > 0) dispatchWs({ kind: "activate", id: files[files.length - 1].path });
+              else {
+                dispatchWs({ kind: "activate", id: "files" });
+                setPanel("files");
+              }
+            }}
+            onSave={() => {
+              const active = workspace.active;
+              if (active !== "chat" && active !== "files") void editorRefs.current[active]?.save();
+            }}
+          />
       {workspace.active === "chat" ? (
         <>
           <DisconnectBannerMemo conn={conn} />
-          <div className="flex min-h-0 flex-1">
+          <div className="min-h-0 flex-1">
             <Chat
               state={state}
               dispatch={dispatch}
               onFork={fork}
               onAnswerAsk={answerAsk}
             />
-            <SidebarMemo collapsed={sidebarCollapsed} {...sidebarProps} />
           </div>
-          <SidebarSheetMemo open={drawerOpen} onOpenChange={setDrawerOpen} {...sidebarProps} />
           <InputBarMemo
             busy={state.streaming}
             queue={state.queue}
@@ -446,37 +464,30 @@ export default function App() {
           />
         </>
       ) : (
-        <div className="flex min-h-0 flex-1">
-          <aside className="w-60 shrink-0 border-r">
-            <FilesTree
-              request={getRequest()}
-              onOpenFile={(path, name) => dispatchWs({ kind: "open", path, name })}
-              activePath={workspace.active === "chat" || workspace.active === "files" ? null : workspace.active}
-            />
-          </aside>
-          <main className="min-w-0 flex-1">
-            {workspace.tabs
-              .filter((t) => t.kind === "file")
-              .map((t) => (
-                <div key={t.path} className={workspace.active === t.path ? "h-full" : "hidden"}>
-                  <EditorPane
-                    path={t.path}
-                    request={getRequest()}
-                    ref={(h) => {
-                      editorRefs.current[t.path] = h;
-                    }}
-                    onDirtyChange={(path, dirty) => dispatchWs({ kind: "dirty", path, dirty })}
-                  />
-                </div>
-              ))}
-            {workspace.active === "files" && (
-              <div className="text-muted-foreground flex h-full items-center justify-center text-sm">
-                从左侧选择文件打开
+        <div className="min-h-0 flex-1">
+          {workspace.tabs
+            .filter((t) => t.kind === "file")
+            .map((t) => (
+              <div key={t.path} className={workspace.active === t.path ? "h-full" : "hidden"}>
+                <EditorPane
+                  path={t.path}
+                  request={getRequest()}
+                  ref={(h) => {
+                    editorRefs.current[t.path] = h;
+                  }}
+                  onDirtyChange={(path, dirty) => dispatchWs({ kind: "dirty", path, dirty })}
+                />
               </div>
-            )}
-          </main>
+            ))}
+          {workspace.active === "files" && (
+            <div className="text-muted-foreground flex h-full items-center justify-center text-sm">
+              从左侧选择文件打开
+            </div>
+          )}
         </div>
       )}
+      </main>
+      </div>
       <Dialog
         open={pendingClose !== null}
         onOpenChange={(open) => {
