@@ -590,7 +590,7 @@ export function Chat({
   const rowsCacheRef = useRef(new Map<string, ToolRow[]>());
 
   return (
-    <main className="relative min-w-0 flex-1">
+    <main className="relative flex min-h-0 min-w-0 flex-1 flex-col">
       <MessageScrollerProvider autoScroll>
         <MessageScroller className="min-h-0 flex-1">
           <MessageScrollerViewport>

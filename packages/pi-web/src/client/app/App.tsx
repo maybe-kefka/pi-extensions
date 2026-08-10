@@ -425,7 +425,7 @@ export default function App() {
             {panel === "settings" && <SettingsPanel {...settingsPanelProps} />}
           </aside>
         )}
-        <main className="flex min-w-0 flex-1 flex-col">
+        <main className="flex min-h-0 min-w-0 flex-1 flex-col">
           <TabsBar
             tabs={workspace.tabs}
             active={workspace.active}
