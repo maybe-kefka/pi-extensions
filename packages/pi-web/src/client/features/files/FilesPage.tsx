@@ -12,6 +12,7 @@ import {
 } from "@/entities/files/tree";
 import type { DirEntryDto } from "@/entities/files/tree";
 import type { OpenedFile } from "@/entities/files/editor";
+import { gitStatusLabel, type GitInfoDto } from "@/entities/files/git-info";
 import { TreeView } from "./TreeView";
 import { EditorPane } from "./EditorPane";
 
@@ -26,6 +27,7 @@ interface ReadFileResult {
 export function FilesPage({ request }: { request: RpcClient["request"] }) {
   const [tree, setTree] = useState<TreeState>(() => createRootTree({ showExcluded: false, showHidden: false }));
   const [selected, setSelected] = useState<OpenedFile | null>(null);
+  const [gitInfo, setGitInfo] = useState<GitInfoDto | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inflight = useRef(new Set<string>());
@@ -52,9 +54,12 @@ export function FilesPage({ request }: { request: RpcClient["request"] }) {
     [request],
   );
 
-  // 首屏加载根目录
+  // 首屏加载根目录 + git 状态
   useEffect(() => {
     void loadDir("", tree);
+    request<GitInfoDto>("pi:gitInfo")
+      .then(setGitInfo)
+      .catch(() => setGitInfo({ isRepo: false }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -118,6 +123,9 @@ export function FilesPage({ request }: { request: RpcClient["request"] }) {
         <FolderTree className="text-muted-foreground size-4" />
         <span className="text-sm font-semibold">文件浏览</span>
         <span className="text-muted-foreground hidden truncate text-xs md:inline">{statusLine}</span>
+        <span className="bg-muted text-muted-foreground hidden truncate rounded px-1.5 py-0.5 font-mono text-[11px] lg:inline">
+          {gitStatusLabel(gitInfo)}
+        </span>
         <div className="ml-auto flex items-center gap-1.5">
           <Button
             variant={tree.showExcluded ? "secondary" : "ghost"}

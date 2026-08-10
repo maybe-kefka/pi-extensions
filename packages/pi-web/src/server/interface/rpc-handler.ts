@@ -21,7 +21,9 @@ import { resolveUserEntryId } from "../domain/fork-util.js";
 import { truncateTree } from "../domain/tree.js";
 import { deleteSessionFile } from "../infrastructure/session-files.js";
 import { realFs } from "../infrastructure/real-fs.js";
+import { createGitRunner } from "../infrastructure/git-runner.js";
 import { listDir, readFileText, writeFileText } from "../domain/files.js";
+import { repoInfo } from "../domain/git.js";
 import { messageTextOf, messageThinkingOf, messageToolCalls } from "../infrastructure/http-util.js";
 import { THINKING_LEVELS, SessionManager, type BuildSystemPromptOptions, type WebConsole } from "../application/web-console.js";
 
@@ -313,6 +315,12 @@ async function handleRequest(
       );
       if (result.ok) return { ok: true };
       return { ok: false, reason: result.reason, current: result.current ?? undefined };
+    }
+
+    case "pi:gitInfo": {
+      // files 迭代：repo 根/分支/worktree 标记（只读 rev-parse 查询）
+      const ctx = requireCtxOf();
+      return repoInfo(ctx.cwd, createGitRunner(ctx.cwd));
     }
 
     case "pi:listModels": {
