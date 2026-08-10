@@ -6,6 +6,7 @@ import { isTransitionalAction, toAction } from "@/entities/chat/events";
 import type { CommandInfo, FileGroup, HistoryMessage, ModelInfo, PiEvent, SessionInfo, SkillInfo, TreeNode, WebState } from "@/entities/chat/types";
 import { Header } from "@/app/ui/Header";
 import { Chat } from "@/features/chat-stream/Chat";
+import { FilesPage } from "@/features/files/FilesPage";
 import { Sidebar, SidebarSheet, type SidebarContentProps } from "@/features/sessions/Sidebar";
 import { InputBar } from "@/features/input-bar/InputBar";
 import { DisconnectBanner } from "@/app/ui/DisconnectBanner";
@@ -50,6 +51,8 @@ export default function App() {
   const [booted, setBooted] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  // files 迭代：全屏视图切换（会话页 / 文件浏览页）
+  const [view, setView] = useState<"chat" | "files">("chat");
   // R26：主题偏好（localStorage 持久化）+ 系统深浅（toast 联动）
   const [themePref, setThemePref] = useState<ThemePreference>(() => loadPreference(window.localStorage));
   const [systemScheme, setSystemScheme] = useState<Scheme>(() =>
@@ -358,30 +361,40 @@ export default function App() {
         onOpenDrawer={() => setDrawerOpen(true)}
         onCompact={compact}
         getRequest={getRequest}
+        view={view}
+        onViewChange={setView}
       />
-      <DisconnectBannerMemo conn={conn} />
-      <div className="flex min-h-0 flex-1">
-        <Chat
-          state={state}
-          dispatch={dispatch}
-          onFork={fork}
-          onAnswerAsk={answerAsk}
-        />
-        <SidebarMemo collapsed={sidebarCollapsed} {...sidebarProps} />
-      </div>
-      <SidebarSheetMemo open={drawerOpen} onOpenChange={setDrawerOpen} {...sidebarProps} />
-      <InputBarMemo
-        busy={state.streaming}
-        queue={state.queue}
-        conn={conn}
-        skills={skills}
-        commands={commands}
-        files={files}
-        pickerLoading={pickerLoading}
-        onSend={send}
-        onAbort={abort}
-        onPickerOpen={refreshPicker}
-      />
+      {view === "files" ? (
+        <main className="min-h-0 flex-1">
+          <FilesPage request={getRequest()} />
+        </main>
+      ) : (
+        <>
+          <DisconnectBannerMemo conn={conn} />
+          <div className="flex min-h-0 flex-1">
+            <Chat
+              state={state}
+              dispatch={dispatch}
+              onFork={fork}
+              onAnswerAsk={answerAsk}
+            />
+            <SidebarMemo collapsed={sidebarCollapsed} {...sidebarProps} />
+          </div>
+          <SidebarSheetMemo open={drawerOpen} onOpenChange={setDrawerOpen} {...sidebarProps} />
+          <InputBarMemo
+            busy={state.streaming}
+            queue={state.queue}
+            conn={conn}
+            skills={skills}
+            commands={commands}
+            files={files}
+            pickerLoading={pickerLoading}
+            onSend={send}
+            onAbort={abort}
+            onPickerOpen={refreshPicker}
+          />
+        </>
+      )}
       <TreeDialog
         open={treeOpen}
         onOpenChange={setTreeOpen}

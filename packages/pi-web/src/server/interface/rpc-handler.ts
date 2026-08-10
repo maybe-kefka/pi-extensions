@@ -20,6 +20,8 @@ import { listFiles } from "../domain/file-lister.js";
 import { resolveUserEntryId } from "../domain/fork-util.js";
 import { truncateTree } from "../domain/tree.js";
 import { deleteSessionFile } from "../infrastructure/session-files.js";
+import { realFs } from "../infrastructure/real-fs.js";
+import { listDir, readFileText } from "../domain/files.js";
 import { messageTextOf, messageThinkingOf, messageToolCalls } from "../infrastructure/http-util.js";
 import { THINKING_LEVELS, SessionManager, type BuildSystemPromptOptions, type WebConsole } from "../application/web-console.js";
 
@@ -270,6 +272,29 @@ async function handleRequest(
       const maxDepth = typeof params.maxDepth === "number" ? params.maxDepth : 3;
       const limit = typeof params.limit === "number" ? params.limit : 200;
       return listFiles(ctx.cwd, { maxDepth, limit });
+    }
+
+    case "pi:listDir": {
+      // files 迭代：单目录列举（按需展开），路径白名单由安全域校验
+      const ctx = requireCtxOf();
+      const relPath = typeof params.path === "string" ? params.path : "";
+      const showExcluded = params.showExcluded === true;
+      const showHidden = params.showHidden === true;
+      const entries = await listDir(ctx.cwd, relPath, { showExcluded, showHidden }, realFs);
+      if (entries === null) {
+        throw new WebServerError(-32602, `目录不存在或越权：${relPath || "(根)"}`);
+      }
+      return { entries };
+    }
+
+    case "pi:readFile": {
+      const ctx = requireCtxOf();
+      const relPath = typeof params.path === "string" ? params.path : "";
+      const result = await readFileText(ctx.cwd, relPath, realFs);
+      if (result === null) {
+        throw new WebServerError(-32602, `文件不存在或越权：${relPath}`);
+      }
+      return result;
     }
 
     case "pi:listModels": {
