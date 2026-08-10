@@ -32,8 +32,11 @@ import {
   listBranches,
   mergeBranch,
   stageFiles,
+  stashOp,
   unstageFiles,
   parsePorcelain,
+  pullBranch,
+  pushBranch,
   rebaseBranch,
   repoInfo,
   switchBranch,
@@ -460,6 +463,33 @@ async function handleRequest(
       const ctx = requireCtxOf();
       const message = typeof params.message === "string" ? params.message : "";
       const res = await commitChanges(ctx.cwd, message, createGitRunner(ctx.cwd));
+      if (!res.ok) throw new WebServerError(-32603, res.error);
+      return { ok: true };
+    }
+
+    case "pi:gitPush": {
+      // vscode-align 05c：推送当前分支（--force 已被白名单拒绝）
+      const ctx = requireCtxOf();
+      const res = await pushBranch(ctx.cwd, createGitRunner(ctx.cwd));
+      if (!res.ok) throw new WebServerError(-32603, res.error);
+      return { ok: true };
+    }
+
+    case "pi:gitPull": {
+      const ctx = requireCtxOf();
+      const res = await pullBranch(ctx.cwd, createGitRunner(ctx.cwd));
+      if (!res.ok) throw new WebServerError(-32603, res.error);
+      return { ok: true };
+    }
+
+    case "pi:gitStash": {
+      const ctx = requireCtxOf();
+      const action = typeof params.action === "string" ? params.action : "push";
+      const message = typeof params.message === "string" ? params.message : undefined;
+      if (action !== "push" && action !== "pop" && action !== "apply" && action !== "drop") {
+        throw new WebServerError(-32602, `未知 stash 动作：${action}`);
+      }
+      const res = await stashOp(ctx.cwd, action, message, createGitRunner(ctx.cwd));
       if (!res.ok) throw new WebServerError(-32603, res.error);
       return { ok: true };
     }

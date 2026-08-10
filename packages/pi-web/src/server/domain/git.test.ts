@@ -10,8 +10,11 @@ import {
   commitChanges,
   parseGitDiff,
   parsePorcelain,
+  pullBranch,
+  pushBranch,
   repoInfo,
   stageFiles,
+  stashOp,
   switchBranch,
   unstageFiles,
   type GitRunner,
@@ -385,5 +388,52 @@ describe("staging / commit 编排", () => {
       "commit -m msg": { code: 128, stderr: "Author identity unknown" },
     });
     expect(await commitChanges("/repo", "msg", git)).toEqual({ ok: false, error: expect.stringContaining("Author identity") });
+  });
+});
+
+describe("push/pull/stash 编排", () => {
+  it("pushBranch 调 git push；失败 stderr 透传", async () => {
+    const calls: string[][] = [];
+    const ok = (async (args: string[]) => {
+      calls.push(args);
+      return { code: 0, stdout: "", stderr: "" };
+    }) as GitRunner;
+    expect(await pushBranch("/repo", ok)).toEqual({ ok: true });
+    expect(calls).toEqual([["push"]]);
+    const err = (async () => ({ code: 1, stdout: "", stderr: "fatal: could not read Username" })) as GitRunner;
+    expect(await pushBranch("/repo", err)).toEqual({ ok: false, error: expect.stringContaining("Username") });
+  });
+
+  it("pullBranch 调 git pull", async () => {
+    const calls: string[][] = [];
+    const git = (async (args: string[]) => {
+      calls.push(args);
+      return { code: 0, stdout: "", stderr: "" };
+    }) as GitRunner;
+    expect(await pullBranch("/repo", git)).toEqual({ ok: true });
+    expect(calls).toEqual([["pull"]]);
+  });
+
+  it("stashOp push 带 message；pop/apply/drop", async () => {
+    const calls: string[][] = [];
+    const git = (async (args: string[]) => {
+      calls.push(args);
+      return { code: 0, stdout: "", stderr: "" };
+    }) as GitRunner;
+    expect(await stashOp("/repo", "push", "wip", git)).toEqual({ ok: true });
+    expect(await stashOp("/repo", "pop", undefined, git)).toEqual({ ok: true });
+    expect(await stashOp("/repo", "apply", undefined, git)).toEqual({ ok: true });
+    expect(await stashOp("/repo", "drop", undefined, git)).toEqual({ ok: true });
+    expect(calls).toEqual([
+      ["stash", "push", "-m", "wip"],
+      ["stash", "pop"],
+      ["stash", "apply"],
+      ["stash", "drop"],
+    ]);
+  });
+
+  it("stash push 失败（无改动）透传", async () => {
+    const git = (async () => ({ code: 1, stdout: "", stderr: "No local changes to save" })) as GitRunner;
+    expect(await stashOp("/repo", "push", undefined, git)).toEqual({ ok: false, error: expect.stringContaining("No local changes") });
   });
 });

@@ -231,6 +231,7 @@ export function assertGitOp(args: string[]): GitOpAllow {
       if (cmd === "push" && (arg === "-u" || arg === "--set-upstream")) continue;
       if (cmd === "stash" && (arg === "push" || arg === "pop" || arg === "apply" || arg === "drop" || arg === "list" || arg === "show")) continue;
       if (cmd === "commit" && arg === "-m") continue;
+      if (cmd === "stash" && arg === "-m") continue;
       return { ok: false, error: `标志不在白名单：${arg}` };
     }
   }
@@ -298,4 +299,22 @@ export async function unstageFiles(cwd: string, paths: string[], git: GitRunner)
 export async function commitChanges(cwd: string, message: string, git: GitRunner): Promise<GitOpResult> {
   if (message.trim() === "") return { ok: false, error: "commit message 不能为空" };
   return runOp(["commit", "-m", message], cwd, git);
+}
+
+/** 推送当前分支（git push；--force 已被白名单拒绝） */
+export async function pushBranch(cwd: string, git: GitRunner): Promise<GitOpResult> {
+  return runOp(["push"], cwd, git);
+}
+
+/** 拉取（git pull） */
+export async function pullBranch(cwd: string, git: GitRunner): Promise<GitOpResult> {
+  return runOp(["pull"], cwd, git);
+}
+
+export type StashAction = "push" | "pop" | "apply" | "drop";
+
+/** stash 操作（push 可带 message；其余无参） */
+export async function stashOp(cwd: string, action: StashAction, message: string | undefined, git: GitRunner): Promise<GitOpResult> {
+  const args = action === "push" ? ["stash", "push", ...(message ? ["-m", message] : [])] : ["stash", action];
+  return runOp(args, cwd, git);
 }

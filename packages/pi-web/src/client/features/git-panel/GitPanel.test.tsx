@@ -188,3 +188,49 @@ describe("GitPanel staging/commit", () => {
     expect(onOpenFile).toHaveBeenCalledWith("work.ts");
   });
 });
+
+describe("GitPanel push/pull/stash", () => {
+  afterEach(cleanup);
+
+  function psRequest(calls: string[]) {
+    const request = (async (method: string, params: Record<string, unknown> = {}) => {
+      calls.push(`${method}:${JSON.stringify(params)}`);
+      if (method === "pi:gitBranches") return { isRepo: true, current: "main", branches: ["main"] };
+      if (method === "pi:gitStatus") return { isRepo: true, entries: [], aggregated: {} };
+      if (method === "pi:gitPush" || method === "pi:gitPull" || method === "pi:gitStash") return { ok: true };
+      throw new Error(`unexpected ${method}`);
+    }) as RpcClient["request"];
+    return { request, calls };
+  }
+
+  it("push/pull 按钮触发 RPC", async () => {
+    const calls: string[] = [];
+    const { request } = psRequest(calls);
+    render(<GitPanel request={request} />);
+    await screen.findByTitle("推送");
+    fireEvent.click(screen.getByTitle("推送"));
+    fireEvent.click(screen.getByTitle("拉取"));
+    await waitFor(() => {
+      expect(calls.some((c) => c.startsWith("pi:gitPush"))).toBe(true);
+      expect(calls.some((c) => c.startsWith("pi:gitPull"))).toBe(true);
+    });
+  });
+
+  it("stash 四按钮触发对应动作", async () => {
+    const calls: string[] = [];
+    const { request } = psRequest(calls);
+    render(<GitPanel request={request} />);
+    await screen.findByTitle("推送");
+    fireEvent.click(screen.getByTitle("暂存全部改动"));
+    fireEvent.click(screen.getByText("Pop"));
+    fireEvent.click(screen.getByText("Apply"));
+    fireEvent.click(screen.getByText("Drop"));
+    await waitFor(() => {
+      expect(calls.filter((c) => c.startsWith("pi:gitStash")).length).toBe(4);
+      expect(calls.some((c) => c.includes('"action":"push"'))).toBe(true);
+      expect(calls.some((c) => c.includes('"action":"pop"'))).toBe(true);
+      expect(calls.some((c) => c.includes('"action":"apply"'))).toBe(true);
+      expect(calls.some((c) => c.includes('"action":"drop"'))).toBe(true);
+    });
+  });
+});

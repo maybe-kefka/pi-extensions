@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { ArrowDownToLine, ArrowUpFromLine, Check, CirclePlus, GitBranch, GitMerge, GitPullRequest, Plus, Trash2 } from "lucide-react";
+import { ArrowDownToLine, ArrowUpFromLine, ArrowUpCircle, Check, CirclePlus, GitBranch, GitMerge, GitPullRequest, PackageOpen, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/shared/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/shared/ui/dialog";
@@ -116,6 +116,38 @@ export function GitPanel({ request, onOpenFile }: GitPanelProps) {
     }
   }, [request, refresh]);
 
+  const doPush = useCallback(async () => {
+    try {
+      await request("pi:gitPush");
+      toast.success("已推送");
+    } catch (e) {
+      toast.error(`推送失败：${e instanceof Error ? e.message : String(e)}`);
+    }
+  }, [request]);
+
+  const doPull = useCallback(async () => {
+    try {
+      await request("pi:gitPull");
+      toast.success("已拉取");
+      void refresh();
+    } catch (e) {
+      toast.error(`拉取失败：${e instanceof Error ? e.message : String(e)}`);
+    }
+  }, [request, refresh]);
+
+  const doStash = useCallback(
+    async (action: "push" | "pop" | "apply" | "drop") => {
+      try {
+        await request("pi:gitStash", action === "push" ? { action, message: `stash ${new Date().toISOString().slice(0, 16)}` } : { action });
+        toast.success(action === "push" ? "已暂存改动" : `已 ${action}`);
+        void refresh();
+      } catch (e) {
+        toast.error(`stash ${action} 失败：${e instanceof Error ? e.message : String(e)}`);
+      }
+    },
+    [request, refresh],
+  );
+
   const commit = useCallback(async () => {
     const message = commitMessage.trim();
     if (message === "" || committing) return;
@@ -166,7 +198,13 @@ export function GitPanel({ request, onOpenFile }: GitPanelProps) {
         <GitBranch className="text-muted-foreground size-4" />
         <span className="text-sm font-semibold">git 控制</span>
         <span className="bg-muted text-muted-foreground truncate rounded px-1.5 py-0.5 font-mono text-[11px]">{current}</span>
-        <Button variant="ghost" size="icon" className="ml-auto size-7" title="新建分支" onClick={() => setCreating(true)}>
+        <Button variant="ghost" size="icon" className="ml-auto size-7" title="拉取" onClick={() => void doPull()}>
+          <ArrowDownToLine />
+        </Button>
+        <Button variant="ghost" size="icon" className="size-7" title="推送" onClick={() => void doPush()}>
+          <ArrowUpCircle />
+        </Button>
+        <Button variant="ghost" size="icon" className="size-7" title="新建分支" onClick={() => setCreating(true)}>
           <Plus />
         </Button>
       </div>
@@ -238,6 +276,23 @@ export function GitPanel({ request, onOpenFile }: GitPanelProps) {
             </div>
           ))}
         </div>
+      </div>
+
+      <div className="flex items-center gap-1 border-t px-3 py-1.5">
+        <span className="text-xs font-semibold">stash</span>
+        <Button variant="ghost" size="sm" className="ml-auto h-6 px-2 text-[11px]" title="暂存全部改动" onClick={() => void doStash("push")}>
+          <PackageOpen className="mr-1 size-3" />
+          暂存
+        </Button>
+        <Button variant="ghost" size="sm" className="h-6 px-2 text-[11px]" title="恢复并删除最新 stash" onClick={() => void doStash("pop")}>
+          Pop
+        </Button>
+        <Button variant="ghost" size="sm" className="h-6 px-2 text-[11px]" title="恢复最新 stash（保留）" onClick={() => void doStash("apply")}>
+          Apply
+        </Button>
+        <Button variant="ghost" size="sm" className="h-6 px-2 text-[11px]" title="删除最新 stash" onClick={() => void doStash("drop")}>
+          Drop
+        </Button>
       </div>
 
       <div className="flex flex-col gap-2 border-t p-3">
