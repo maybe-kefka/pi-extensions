@@ -1,8 +1,25 @@
 import { useCallback, useEffect, useState } from "react";
-import { ArrowDownToLine, ArrowUpFromLine, ChevronDown, ChevronRight, CirclePlus, GitBranch, MoreHorizontal, RefreshCw } from "lucide-react";
+import {
+  ArrowDownToLine,
+  ArrowUpCircle,
+  ArrowUpFromLine,
+  Check,
+  ChevronDown,
+  ChevronRight,
+  CirclePlus,
+  GitBranch,
+  GitMerge,
+  GitPullRequest,
+  MoreHorizontal,
+  PackageOpen,
+  Plus,
+  RefreshCw,
+  Trash2,
+} from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/shared/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/shared/ui/dialog";
+import { Popover, PopoverContent, PopoverTrigger } from "@/shared/ui/popover";
 import type { RpcClient } from "@/shared/api/rpc";
 
 export interface GitStatusEntry {
@@ -42,23 +59,12 @@ export function RepoItem({
   const [commitMessage, setCommitMessage] = useState("");
   const [committing, setCommitting] = useState(false);
   const [confirmAll, setConfirmAll] = useState(false);
-
-  const refreshStatus = useCallback(async () => {
-    setLoadingStatus(true);
-    try {
-      const r = await request<{ isRepo: boolean; entries: GitStatusEntry[] }>("pi:gitStatus", { repoRoot: repo.root });
-      setStatus(r.entries ?? []);
-    } catch {
-      setStatus([]);
-    } finally {
-      setLoadingStatus(false);
-    }
-  }, [request, repo.root]);
-
-  // 展开时拉取工作区状态（折叠再展开重拉）
-  useEffect(() => {
-    if (expanded) void refreshStatus();
-  }, [expanded, refreshStatus]);
+  const [branches, setBranches] = useState<string[]>([]);
+  const [currentBranch, setCurrentBranch] = useState<string | null>(null);
+  const [creatingBranch, setCreatingBranch] = useState(false);
+  const [newBranchName, setNewBranchName] = useState("");
+  const [confirmOp, setConfirmOp] = useState<{ kind: "merge" | "rebase" | "delete"; branch: string } | null>(null);
+  const [toolOpen, setToolOpen] = useState(false);
 
   const refreshBrief = useCallback(async () => {
     setRefreshing(true);
@@ -78,6 +84,103 @@ export function RepoItem({
     // 强制重渲染（repo 对象就地更新）
     setExpanded((e) => e);
   }, [request, repo]);
+
+  const loadBranches = useCallback(async () => {
+    try {
+      const r = await request<{ isRepo: boolean; current: string | null; branches: string[] }>("pi:gitBranches", { repoRoot: repo.root });
+      setCurrentBranch(r.current);
+      setBranches(r.branches);
+    } catch {
+      setBranches([]);
+    }
+  }, [request, repo.root]);
+
+  const switchBranch = useCallback(
+    async (branch: string) => {
+      try {
+        await request("pi:gitSwitch", { branch, repoRoot: repo.root });
+        toast.success(`已切换到 ${branch}`);
+        await Promise.all([loadBranches(), refreshBrief()]);
+      } catch (e) {
+        toast.error(`切换失败：${e instanceof Error ? e.message : String(e)}`);
+      }
+    },
+    [request, repo.root, loadBranches, refreshBrief],
+  );
+
+  const createBranch = useCallback(async () => {
+    const name = newBranchName.trim();
+    setCreatingBranch(false);
+    setNewBranchName("");
+    if (name === "") return;
+    try {
+      await request("pi:gitBranchCreate", { name, repoRoot: repo.root });
+      toast.success(`已创建分支 ${name}`);
+      await loadBranches();
+    } catch (e) {
+      toast.error(`创建失败：${e instanceof Error ? e.message : String(e)}`);
+    }
+  }, [newBranchName, request, repo.root, loadBranches]);
+
+  const runBranchOp = useCallback(async () => {
+    if (!confirmOp) return;
+    const { kind, branch } = confirmOp;
+    setConfirmOp(null);
+    try {
+      await request(kind === "merge" ? "pi:gitMerge" : kind === "rebase" ? "pi:gitRebase" : "pi:gitBranchDelete", { branch, repoRoot: repo.root });
+      toast.success(`${kind === "merge" ? "已合并" : kind === "rebase" ? "已 rebase" : "已删除分支"} ${branch}`);
+      await Promise.all([loadBranches(), refreshBrief()]);
+    } catch (e) {
+      toast.error(`${kind === "merge" ? "合并" : kind === "rebase" ? "Rebase" : "删除"}失败：${e instanceof Error ? e.message : String(e)}`);
+    }
+  }, [confirmOp, request, repo.root, loadBranches, refreshBrief]);
+
+  const runRemote = useCallback(
+    async (kind: "push" | "pull") => {
+      try {
+        await request(kind === "push" ? "pi:gitPush" : "pi:gitPull", { repoRoot: repo.root });
+        toast.success(kind === "push" ? "已推送" : "已拉取");
+        await refreshBrief();
+      } catch (e) {
+        toast.error(`${kind === "push" ? "推送" : "拉取"}失败：${e instanceof Error ? e.message : String(e)}`);
+      }
+    },
+    [request, repo.root, refreshBrief],
+  );
+
+  const runStash = useCallback(
+    async (action: "push" | "pop" | "apply" | "drop") => {
+      try {
+        await request(
+          "pi:gitStash",
+          action === "push" ? { action, message: `stash ${new Date().toISOString().slice(0, 16)}`, repoRoot: repo.root } : { action, repoRoot: repo.root },
+        );
+        toast.success(action === "push" ? "已暂存改动" : `已 ${action}`);
+        await refreshBrief();
+      } catch (e) {
+        toast.error(`stash ${action} 失败：${e instanceof Error ? e.message : String(e)}`);
+      }
+    },
+    [request, repo.root, refreshBrief],
+  );
+
+  const refreshStatus = useCallback(async () => {
+    setLoadingStatus(true);
+    try {
+      const r = await request<{ isRepo: boolean; entries: GitStatusEntry[] }>("pi:gitStatus", { repoRoot: repo.root });
+      setStatus(r.entries ?? []);
+    } catch {
+      setStatus([]);
+    } finally {
+      setLoadingStatus(false);
+    }
+  }, [request, repo.root]);
+
+  // 展开时拉取工作区状态（折叠再展开重拉）
+  useEffect(() => {
+    if (expanded) void refreshStatus();
+  }, [expanded, refreshStatus]);
+
 
   const stagePath = useCallback(
     async (path: string | null) => {
@@ -164,9 +267,96 @@ export function RepoItem({
         <button className="hover:bg-muted cursor-pointer rounded p-0.5" title="刷新" onClick={() => void refreshBrief()}>
           <RefreshCw className={refreshing ? "animate-spin" : ""} />
         </button>
-        <button className="hover:bg-muted cursor-pointer rounded p-0.5" title="更多操作">
-          <MoreHorizontal />
-        </button>
+        <Popover
+          open={toolOpen}
+          onOpenChange={(open) => {
+            setToolOpen(open);
+            if (open) void loadBranches();
+          }}
+        >
+          <PopoverTrigger asChild>
+            <button className="hover:bg-muted cursor-pointer rounded p-0.5" title="更多操作">
+              <MoreHorizontal />
+            </button>
+          </PopoverTrigger>
+          <PopoverContent align="end" side="right" className="w-64 p-2">
+            <div className="mb-1 text-[10px] font-semibold tracking-wide uppercase">分支</div>
+            <div className="scrollbar-thin mb-1 max-h-40 overflow-y-auto">
+              {branches.map((branch) => {
+                const isCurrent = branch === currentBranch;
+                return (
+                  <div
+                    key={branch}
+                    className={`flex cursor-pointer items-center gap-1.5 rounded px-1.5 py-1 text-[11px] ${isCurrent ? "bg-primary/10 text-primary" : "hover:bg-muted"}`}
+                    onClick={() => !isCurrent && void switchBranch(branch)}
+                    title={isCurrent ? "当前分支" : `切换到 ${branch}`}
+                  >
+                    {isCurrent ? <Check className="size-3 shrink-0" /> : <GitBranch className="text-muted-foreground size-3 shrink-0" />}
+                    <span className="min-w-0 flex-1 truncate">{branch}</span>
+                    {!isCurrent && (
+                      <span className="hidden shrink-0 items-center gap-0.5 group-hover:flex">
+                        <button title="合并到当前分支" className="cursor-pointer p-0.5" onClick={(e) => { e.stopPropagation(); setConfirmOp({ kind: "merge", branch }); }}>
+                          <GitMerge className="size-3" />
+                        </button>
+                        <button title="rebase 到当前分支" className="cursor-pointer p-0.5" onClick={(e) => { e.stopPropagation(); setConfirmOp({ kind: "rebase", branch }); }}>
+                          <GitPullRequest className="size-3" />
+                        </button>
+                        <button title="删除分支" className="cursor-pointer p-0.5" onClick={(e) => { e.stopPropagation(); setConfirmOp({ kind: "delete", branch }); }}>
+                          <Trash2 className="size-3" />
+                        </button>
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
+              {branches.length === 0 && <div className="text-muted-foreground px-1.5 py-1 text-[11px]">无分支</div>}
+            </div>
+            <div className="mb-2 flex items-center gap-1">
+              <input
+                value={newBranchName}
+                onChange={(e) => setNewBranchName(e.target.value)}
+                placeholder="新分支名"
+                className="border-input bg-background min-w-0 flex-1 rounded border px-1.5 py-0.5 text-[11px] outline-none"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") void createBranch();
+                }}
+              />
+              <Button size="sm" className="h-6 shrink-0 px-1.5 text-[10px]" disabled={newBranchName.trim() === ""} onClick={() => void createBranch()}>
+                <Plus className="size-3" />
+                新建
+              </Button>
+            </div>
+
+            <div className="mb-1 text-[10px] font-semibold tracking-wide uppercase">远程</div>
+            <div className="mb-2 flex gap-1">
+              <Button size="sm" variant="outline" className="h-6 flex-1 text-[11px]" onClick={() => void runRemote("pull")}>
+                <ArrowDownToLine className="size-3" />
+                拉取
+              </Button>
+              <Button size="sm" variant="outline" className="h-6 flex-1 text-[11px]" onClick={() => void runRemote("push")}>
+                <ArrowUpCircle className="size-3" />
+                推送
+              </Button>
+            </div>
+
+            <div className="mb-1 text-[10px] font-semibold tracking-wide uppercase">stash</div>
+            <div className="flex flex-wrap gap-1">
+              <Button size="sm" variant="outline" className="h-6 text-[10px]" title="暂存全部改动" onClick={() => void runStash("push")}>
+                <PackageOpen className="mr-0.5 size-3" />
+                暂存
+              </Button>
+              <Button size="sm" variant="outline" className="h-6 text-[10px]" onClick={() => void runStash("pop")}>
+                Pop
+              </Button>
+              <Button size="sm" variant="outline" className="h-6 text-[10px]" onClick={() => void runStash("apply")}>
+                Apply
+              </Button>
+              <Button size="sm" variant="outline" className="h-6 text-[10px]" onClick={() => void runStash("drop")}>
+                Drop
+              </Button>
+            </div>
+          </PopoverContent>
+        </Popover>
       </div>
       {expanded && (
         <div className="pb-2 pl-7 pr-2">
@@ -251,6 +441,31 @@ export function RepoItem({
           )}
         </div>
       )}
+
+      <Dialog open={confirmOp !== null} onOpenChange={(open) => !open && setConfirmOp(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {confirmOp?.kind === "merge"
+                ? `将 ${confirmOp.branch} 合并到 ${currentBranch ?? "当前分支"}？`
+                : confirmOp?.kind === "rebase"
+                  ? `将当前分支 rebase 到 ${confirmOp.branch}？`
+                  : `删除分支 ${confirmOp?.branch}？`}
+            </DialogTitle>
+            <DialogDescription>
+              {confirmOp?.kind === "delete" ? "未合并的分支将被 git 拒绝。" : "此操作将改动分支历史。"}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmOp(null)}>
+              取消
+            </Button>
+            <Button variant={confirmOp?.kind === "delete" ? "destructive" : "default"} onClick={() => void runBranchOp()}>
+              确认
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={confirmAll} onOpenChange={(open) => !open && setConfirmAll(false)}>
         <DialogContent>

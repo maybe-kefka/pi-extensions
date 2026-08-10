@@ -185,3 +185,65 @@ describe("RepoItem 展开区", () => {
     expect(onOpenFile).toHaveBeenCalledWith("work.ts");
   });
 });
+
+describe("RepoItem popover 工具栏", () => {
+  afterEach(cleanup);
+
+  function toolRequest(calls: string[]) {
+    const request = (async (method: string, params: Record<string, unknown> = {}) => {
+      calls.push(`${method}:${JSON.stringify(params)}`);
+      if (method === "pi:gitRepos") return { repos: REPOS };
+      if (method === "pi:gitStatus") return { isRepo: true, entries: [], aggregated: {} };
+      if (method === "pi:gitBranches") return { isRepo: true, current: "main", branches: ["main", "feat"] };
+      if (method === "pi:gitSwitch" || method === "pi:gitBranchCreate" || method === "pi:gitBranchDelete" || method === "pi:gitMerge" || method === "pi:gitRebase" || method === "pi:gitPush" || method === "pi:gitPull" || method === "pi:gitStash") {
+        return { ok: true };
+      }
+      throw new Error(`unexpected ${method}`);
+    }) as RpcClient["request"];
+    return { request, calls };
+  }
+
+  it("⋮ 打开 popover：三分区渲染（分支/远程/stash）", async () => {
+    const { request } = toolRequest([]);
+    render(<GitPanel request={request} />);
+    await screen.findByText("pi-extensions");
+    fireEvent.click(screen.getAllByTitle("更多操作")[0]);
+    expect(await screen.findByText("feat")).toBeTruthy();
+    expect(screen.getByText("远程")).toBeTruthy();
+    expect(screen.getByText("stash")).toBeTruthy();
+    expect(screen.getByText("拉取")).toBeTruthy();
+    expect(screen.getByTitle("暂存全部改动")).toBeTruthy();
+  });
+
+  it("popover 中切换分支 → pi:gitSwitch（带 repoRoot）", async () => {
+    const calls: string[] = [];
+    const { request } = toolRequest(calls);
+    render(<GitPanel request={request} />);
+    await screen.findByText("pi-extensions");
+    fireEvent.click(screen.getAllByTitle("更多操作")[0]);
+    await screen.findByText("feat");
+    // 多个 feat（repo-b 分支徽标 + popover 列表）——点 popover 里的（最后一个）
+    const feats = screen.getAllByText("feat");
+    fireEvent.click(feats[feats.length - 1]);
+    await waitFor(() => {
+      expect(calls.some((c) => c.startsWith("pi:gitSwitch") && c.includes("feat"))).toBe(true);
+    });
+  });
+
+  it("push/pull/stash 按钮触发对应 RPC", async () => {
+    const calls: string[] = [];
+    const { request } = toolRequest(calls);
+    render(<GitPanel request={request} />);
+    await screen.findByText("pi-extensions");
+    fireEvent.click(screen.getAllByTitle("更多操作")[0]);
+    await screen.findByText("远程");
+    fireEvent.click(screen.getByText("拉取"));
+    fireEvent.click(screen.getByText("推送"));
+    fireEvent.click(screen.getByTitle("暂存全部改动"));
+    await waitFor(() => {
+      expect(calls.some((c) => c.startsWith("pi:gitPull"))).toBe(true);
+      expect(calls.some((c) => c.startsWith("pi:gitPush"))).toBe(true);
+      expect(calls.some((c) => c.startsWith("pi:gitStash"))).toBe(true);
+    });
+  });
+});
