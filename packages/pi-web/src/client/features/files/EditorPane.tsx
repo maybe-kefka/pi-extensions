@@ -13,6 +13,7 @@ import { Button } from "@/shared/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/shared/ui/dialog";
 import type { RpcClient } from "@/shared/api/rpc";
 import { langForFile, type SupportedLang } from "@/entities/files/lang";
+import { createEditorTheme } from "@/entities/files/editor-theme";
 import { isEditable, type OpenedFile } from "@/entities/files/editor";
 import type { DiffHunkDto } from "@/entities/files/diff";
 import {
@@ -202,7 +203,7 @@ export function EditorPane({ file, request, onReload }: EditorPaneProps) {
             value={edit.content}
             height="100%"
             style={{ height: "100%", fontSize: 13 }}
-            extensions={[langExt(langForFile(file.name))]}
+            extensions={[langExt(langForFile(file.name)), createEditorTheme()]}
             readOnly={!editable}
             onChange={(v) => dispatch({ kind: "content", content: v })}
             basicSetup={{ lineNumbers: true, foldGutter: true, highlightActiveLine: false }}
