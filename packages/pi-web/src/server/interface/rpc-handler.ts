@@ -23,7 +23,7 @@ import { deleteSessionFile } from "../infrastructure/session-files.js";
 import { realFs } from "../infrastructure/real-fs.js";
 import { createGitRunner } from "../infrastructure/git-runner.js";
 import { listDir, readFileText, writeFileText } from "../domain/files.js";
-import { repoInfo } from "../domain/git.js";
+import { fileDiff, repoInfo } from "../domain/git.js";
 import { messageTextOf, messageThinkingOf, messageToolCalls } from "../infrastructure/http-util.js";
 import { THINKING_LEVELS, SessionManager, type BuildSystemPromptOptions, type WebConsole } from "../application/web-console.js";
 
@@ -321,6 +321,13 @@ async function handleRequest(
       // files 迭代：repo 根/分支/worktree 标记（只读 rev-parse 查询）
       const ctx = requireCtxOf();
       return repoInfo(ctx.cwd, createGitRunner(ctx.cwd));
+    }
+
+    case "pi:gitDiff": {
+      // files 迭代：单文件 vs HEAD diff（只读白名单内）
+      const ctx = requireCtxOf();
+      const relPath = typeof params.path === "string" ? params.path : "";
+      return fileDiff(ctx.cwd, relPath, createGitRunner(ctx.cwd));
     }
 
     case "pi:listModels": {

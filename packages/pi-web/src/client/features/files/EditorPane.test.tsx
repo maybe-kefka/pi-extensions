@@ -27,7 +27,7 @@ const FILE: OpenedFile = {
   hash: "h1",
 };
 
-function makeRequest(overrides: Partial<Record<"writeFile" | "readFile", (params: Record<string, unknown>) => unknown>> = {}) {
+function makeRequest(overrides: Partial<Record<"writeFile" | "readFile" | "gitDiff", (params: Record<string, unknown>) => unknown>> = {}) {
   const calls: string[] = [];
   const request = (async (method: string, params: Record<string, unknown> = {}) => {
     calls.push(`${method}:${JSON.stringify(params)}`);
@@ -38,6 +38,10 @@ function makeRequest(overrides: Partial<Record<"writeFile" | "readFile", (params
     if (method === "pi:readFile") {
       if (overrides.readFile) return overrides.readFile(params);
       return { content: "new", mode: "text", size: 3, mtimeMs: 200, hash: "h2" };
+    }
+    if (method === "pi:gitDiff") {
+      if (overrides.gitDiff) return overrides.gitDiff(params);
+      return { isRepo: false, diff: null };
     }
     throw new Error(`unexpected ${method}`);
   }) as RpcClient["request"];
@@ -141,5 +145,68 @@ describe("EditorPane 防抖保存", () => {
     expect((screen.getByTestId("cm") as HTMLTextAreaElement).value).toBe("external");
     expect(screen.queryByText("●")).toBeNull();
     expect(onReload).toHaveBeenCalledWith(expect.objectContaining({ hash: "hE" }));
+  });
+});
+
+describe("EditorPane diff 视图", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    cleanup();
+    vi.useRealTimers();
+  });
+
+  it("打开文件加载 gitDiff 并渲染行级标记", async () => {
+    const { request, calls } = makeRequest({
+      gitDiff: () => ({
+        isRepo: true,
+        diff: [
+          {
+            header: "@@ -1 +1 @@",
+            lines: [
+              { type: "del", text: "old" },
+              { type: "add", text: "new" },
+            ],
+          },
+        ],
+      }),
+    });
+    render(<EditorPane file={FILE} request={request} onReload={vi.fn()} />);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(calls.some((c) => c.startsWith("pi:gitDiff"))).toBe(true);
+    expect(screen.getByText("diff vs HEAD")).toBeTruthy();
+    expect(screen.getAllByText("old").length).toBeGreaterThan(0);
+    expect(screen.getByText("new")).toBeTruthy();
+    expect(screen.getByText("+1")).toBeTruthy();
+  });
+
+  it("非 git 仓库显示占位", async () => {
+    const { request } = makeRequest({ gitDiff: () => ({ isRepo: false, diff: null }) });
+    render(<EditorPane file={FILE} request={request} onReload={vi.fn()} />);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(screen.getByText("非 git 仓库，无 diff")).toBeTruthy();
+  });
+
+  it("保存成功后重新加载 diff", async () => {
+    let diffCalls = 0;
+    const { request, calls } = makeRequest({
+      gitDiff: () => ({ isRepo: true, diff: diffCalls++ === 0 ? [{ header: "@@ -1 +1 @@", lines: [{ type: "del", text: "old" }] }] : null }),
+    });
+    render(<EditorPane file={FILE} request={request} onReload={vi.fn()} />);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    const cm = screen.getByTestId("cm") as HTMLTextAreaElement;
+    fireEvent.change(cm, { target: { value: "old!" } });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(900);
+    });
+    expect(calls.filter((c) => c.startsWith("pi:gitDiff")).length).toBe(2);
+    expect(screen.getByText("无改动（与 HEAD 一致）")).toBeTruthy();
   });
 });

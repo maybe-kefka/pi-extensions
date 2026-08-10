@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useReducer, useRef } from "react";
+import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import CodeMirror from "@uiw/react-codemirror";
 import { css } from "@codemirror/lang-css";
 import { html } from "@codemirror/lang-html";
@@ -14,6 +14,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import type { RpcClient } from "@/shared/api/rpc";
 import { langForFile, type SupportedLang } from "@/entities/files/lang";
 import { isEditable, type OpenedFile } from "@/entities/files/editor";
+import type { DiffHunkDto } from "@/entities/files/diff";
 import {
   editContent,
   initialEditState,
@@ -24,6 +25,7 @@ import {
   resolveConflictOverwrite,
   type EditState,
 } from "@/entities/files/save-state";
+import { DiffView } from "./DiffView";
 
 function langExt(lang: SupportedLang | null) {
   switch (lang) {
@@ -88,15 +90,29 @@ function fmtSize(n: number): string {
 export function EditorPane({ file, request, onReload }: EditorPaneProps) {
   const EMPTY: OpenedFile = { path: "", name: "", content: "", mode: "text", size: 0, mtimeMs: 0, hash: "" };
   const [edit, dispatch] = useReducer(reducer, file ?? EMPTY, initialEditState);
-  const filePathRef = useRef<string | null>(file?.path ?? null);
+  const [diff, setDiff] = useState<{ isRepo: boolean; hunks: DiffHunkDto[] } | null>(null);
+  const filePathRef = useRef<string | null>(null);
 
-  // 打开新文件 → 重置编辑状态（防抖窗口内的未保存编辑随切换丢弃）
+  const loadDiff = useCallback(
+    async (path: string) => {
+      try {
+        const r = await request<{ isRepo: boolean; diff: DiffHunkDto[] | null }>("pi:gitDiff", { path });
+        setDiff({ isRepo: r.isRepo, hunks: r.diff ?? [] });
+      } catch {
+        setDiff({ isRepo: false, hunks: [] });
+      }
+    },
+    [request],
+  );
+
+  // 打开新文件 → 重置编辑状态（防抖窗口内的未保存编辑随切换丢弃）+ 加载 diff
   useEffect(() => {
     if (file && file.path !== filePathRef.current) {
       filePathRef.current = file.path;
       dispatch({ kind: "reload", file });
+      void loadDiff(file.path);
     }
-  }, [file]);
+  }, [file, loadDiff]);
 
   const doSave = useCallback(
     async (state: EditState) => {
@@ -117,6 +133,7 @@ export function EditorPane({ file, request, onReload }: EditorPaneProps) {
           dispatch({ kind: "saved", hash: fresh.hash, mtimeMs: fresh.mtimeMs });
           const nextFile: OpenedFile = { ...file, hash: fresh.hash, mtimeMs: fresh.mtimeMs, content: state.content };
           onReload(nextFile);
+          void loadDiff(file.path); // 保存后刷新 diff
         } else if (r.reason === "conflict" && r.current) {
           dispatch({ kind: "conflict", hash: r.current.hash, mtimeMs: r.current.mtimeMs });
         } else {
@@ -178,6 +195,7 @@ export function EditorPane({ file, request, onReload }: EditorPaneProps) {
         {edit.saving && <Badge variant="secondary">保存中…</Badge>}
         {modeNote}
       </div>
+      {diff && <DiffView hunks={diff.hunks} isRepo={diff.isRepo} />}
       <div className="min-h-0 flex-1 overflow-hidden">
         {file.mode === "text" ? (
           <CodeMirror

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assertReadOnlyGit, parseGitDiff, repoInfo, type GitRunner } from "./git.js";
+import { assertReadOnlyGit, fileDiff, parseGitDiff, repoInfo, type GitRunner } from "./git.js";
 
 describe("assertReadOnlyGit 白名单", () => {
   it("允许只读查询命令", () => {
@@ -168,5 +168,50 @@ describe("repoInfo", () => {
     });
     const info = await repoInfo("/repo", git);
     expect(info.isRepo && info.branch).toBe("HEAD");
+  });
+});
+
+describe("fileDiff", () => {
+  const runner = (responses: Record<string, { code: number; stdout: string }>): GitRunner => {
+    return async (args) => {
+      const key = args.join(" ");
+      const r = responses[key] ?? { code: 1, stdout: "" };
+      return { code: r.code, stdout: r.stdout, stderr: "" };
+    };
+  };
+
+  it("非 git 目录 → isRepo:false", async () => {
+    const git = runner({ "rev-parse --is-inside-work-tree": { code: 1, stdout: "" } });
+    expect(await fileDiff("/x", "a.ts", git)).toEqual({ isRepo: false });
+  });
+
+  it("无改动 → diff:null", async () => {
+    const git = runner({
+      "rev-parse --is-inside-work-tree": { code: 0, stdout: "true\n" },
+      "diff HEAD -- a.ts": { code: 0, stdout: "" },
+    });
+    expect(await fileDiff("/repo", "a.ts", git)).toEqual({ isRepo: true, diff: null });
+  });
+
+  it("有改动 → 解析 hunk", async () => {
+    const git = runner({
+      "rev-parse --is-inside-work-tree": { code: 0, stdout: "true\n" },
+      "diff HEAD -- a.ts": { code: 0, stdout: "@@ -1 +1 @@\n-old\n+new\n" },
+    });
+    const r = await fileDiff("/repo", "a.ts", git);
+    expect(r.isRepo).toBe(true);
+    if (r.isRepo) {
+      expect(r.diff?.[0].lines).toEqual([
+        { type: "del", text: "old" },
+        { type: "add", text: "new" },
+      ]);
+    }
+  });
+
+  it("含危险路径（../）→ 白名单拒绝 → diff:null", async () => {
+    const git = runner({ "rev-parse --is-inside-work-tree": { code: 0, stdout: "true\n" } });
+    const r = await fileDiff("/repo", "../etc/passwd", git);
+    expect(r.isRepo).toBe(true);
+    if (r.isRepo) expect(r.diff).toBeNull();
   });
 });

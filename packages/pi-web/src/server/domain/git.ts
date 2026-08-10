@@ -125,3 +125,19 @@ export async function repoInfo(cwd: string, git: GitRunner): Promise<RepoInfo> {
     worktree: gitDir.stdout.trim() !== commonDir.stdout.trim(),
   };
 }
+
+/** 单文件 vs HEAD diff（只读）：非 git → isRepo:false；无改动 → diff:null */
+export type FileDiffResult = { isRepo: false } | { isRepo: true; diff: DiffHunk[] | null };
+
+export async function fileDiff(cwd: string, relPath: string, git: GitRunner): Promise<FileDiffResult> {
+  const probe = await git(["rev-parse", "--is-inside-work-tree"]);
+  if (probe.code !== 0 || probe.stdout.trim() !== "true") {
+    return { isRepo: false };
+  }
+  const allow = assertReadOnlyGit(["diff", "HEAD", "--", relPath]);
+  if (!allow.ok) return { isRepo: true, diff: null };
+  const r = await git(["diff", "HEAD", "--", relPath]);
+  const out = r.stdout;
+  if (out.trim() === "") return { isRepo: true, diff: null };
+  return { isRepo: true, diff: parseGitDiff(out) };
+}
