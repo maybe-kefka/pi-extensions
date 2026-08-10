@@ -19,8 +19,6 @@ import { parseArgs, USAGE } from "./server/interface/args.js";
 import { createWebConsole } from "./server/application/web-console.js";
 import { registerRpcHandler } from "./server/interface/rpc-handler.js";
 import { askAndWait, askRegistry, WEB_ASK_GUIDELINES } from "./server/domain/web-ask.js";
-import { probePrivileged } from "./server/domain/privilege-probe.js";
-
 const BROADCAST_EVENT_TYPES = [
   "message_start",
   "message_update",

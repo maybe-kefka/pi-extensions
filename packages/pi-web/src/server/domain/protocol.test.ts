@@ -98,4 +98,12 @@ describe("响应/事件构造", () => {
     const parsed = JSON.parse(serialize(cyclic));
     expect(parsed.error?.code).toBe(1);
   });
+
+  it("serialize 兜底保留请求 id（客户端可显示错误而非超时）", () => {
+    const cyclic: Record<string, unknown> = { id: "req-42" };
+    cyclic.self = cyclic;
+    const parsed = JSON.parse(serialize(cyclic));
+    expect(parsed.id).toBe("req-42");
+    expect(parsed.error?.code).toBe(1);
+  });
 });

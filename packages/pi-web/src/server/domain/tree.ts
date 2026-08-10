@@ -1,11 +1,4 @@
-import type { TreeNode } from "../../client/entities/chat/types.js";
-
-/** 截断节点：超深/环路径处 children 清空并标记 truncated（R27 会话树爆栈防线） */
-export interface TruncatedTreeNode extends TreeNode {
-  truncated?: boolean;
-}
-
-/** 最小树形状（SessionTreeNode / TreeNode 均兼容） */
+/** 最小树形状（内核 SessionTreeNode / 前端 TreeNode 均兼容，domain 层不依赖任一侧类型） */
 type TreeLike<T> = { entry: { id: string }; children: T[] };
 
 /**

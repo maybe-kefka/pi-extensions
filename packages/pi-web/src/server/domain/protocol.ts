@@ -95,6 +95,8 @@ export function serialize(msg: unknown): string {
   try {
     return JSON.stringify(msg);
   } catch {
-    return JSON.stringify({ jsonrpc: JSONRPC, error: { code: 1, message: "响应序列化失败（对象过深或含循环引用）" } });
+    // 兜底尽量保留请求 id（客户端能对应到具体 RPC 并显示错误，而非超时）
+    const id = (msg as { id?: string | number | null } | null)?.id ?? null;
+    return JSON.stringify({ jsonrpc: JSONRPC, id, error: { code: 1, message: "响应序列化失败（对象过深或含循环引用）" } });
   }
 }

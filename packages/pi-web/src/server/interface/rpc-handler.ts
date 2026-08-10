@@ -19,12 +19,15 @@ import { readFileSync } from "node:fs";
 import { listFiles } from "../domain/file-lister.js";
 import { resolveUserEntryId } from "../domain/fork-util.js";
 import { truncateTree } from "../domain/tree.js";
-
-/** 会话树最大序列化深度（正常树 < 50；200 已含大量裕度，远低于 V8 递归极限） */
-const TREE_MAX_DEPTH = 200;
 import { deleteSessionFile } from "../infrastructure/session-files.js";
 import { messageTextOf, messageThinkingOf, messageToolCalls } from "../infrastructure/http-util.js";
 import { THINKING_LEVELS, SessionManager, type BuildSystemPromptOptions, type WebConsole } from "../application/web-console.js";
+
+/**
+ * 会话树最大序列化深度。bun（JSC）实测 JSON.stringify 约 20 万层才爆栈；
+ * 正常线性会话每轮 2 条消息（user+assistant），2000 覆盖 1000 轮对话且留 100 倍裕度。
+ */
+const TREE_MAX_DEPTH = 2000;
 
 export function registerRpcHandler(console: WebConsole): void {
   console.handleRequest = (id, method, params) => handleRequest(console, id, method, params);

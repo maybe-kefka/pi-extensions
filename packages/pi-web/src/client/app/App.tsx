@@ -3,7 +3,7 @@ import { toast } from "sonner";
 import { createRpcClient, type RpcClient } from "@/shared/api/rpc";
 import { initialState, streamReducer, type StreamAction } from "@/entities/chat/stream";
 import { isTransitionalAction, toAction } from "@/entities/chat/events";
-import type { CommandInfo, FileGroup, ModelInfo, PiEvent, SessionInfo, SkillInfo, TreeNode, WebState } from "@/entities/chat/types";
+import type { CommandInfo, FileGroup, HistoryMessage, ModelInfo, PiEvent, SessionInfo, SkillInfo, TreeNode, WebState } from "@/entities/chat/types";
 import { Header } from "@/app/ui/Header";
 import { Chat } from "@/features/chat-stream/Chat";
 import { Sidebar, SidebarSheet, type SidebarContentProps } from "@/features/sessions/Sidebar";
@@ -107,15 +107,12 @@ export default function App() {
         // R26 session-follow：会话切换完成 → 列表/高亮/历史跟随（服务端 session_start 广播）
         if (evt.type === "session_switch_ready") {
           refreshSessions();
-          rpcRef.current
-            ?.request<{ messages: { role: string; text: string; thinking?: string; toolCalls?: { id: string; name: string; arguments: unknown; result?: string; isError?: boolean }[]; userIndex?: number }[] }>("pi:getMessages")
-            .then((r) => dispatch({ type: "history", messages: r.messages ?? [] }))
-            .catch(() => undefined);
+          loadHistory(true);
         }
         // R26 session-follow：特权状态广播（TUI 切换 → 立即降级提示；重跑 /web → 自动恢复）
-        if (evt.type === "privilege_status") {
-          // 降级提示由 SessionList 常驻提示条表达（spec 范围）；此处只同步状态
-          setDegraded(!((evt as { ok?: boolean }).ok ?? false));
+        if (action.type === "privilege_status") {
+          // 降级提示由 SessionList 常驻提示条表达（spec 范围）；此处只同步状态（ok 已由 toAction 归一化）
+          setDegraded(!action.ok);
         }
       },
     });
@@ -135,6 +132,16 @@ export default function App() {
       });
   }, []);
 
+  // R26 session-follow：拉取当前会话历史（切换完成时 + 连接建立时共用；失败延迟重试一次）
+  const loadHistory = useCallback((retry = true) => {
+    rpcRef.current
+      ?.request<{ messages: HistoryMessage[] }>("pi:getMessages")
+      .then((r) => dispatch({ type: "history", messages: r.messages ?? [] }))
+      .catch(() => {
+        if (retry) setTimeout(() => loadHistory(false), 400);
+      });
+  }, []);
+
   // 连接建立后拉取初始数据
   useEffect(() => {
     if (conn !== "open" || !rpcRef.current) return;
@@ -142,9 +149,7 @@ export default function App() {
     c.request<WebState>("pi:getState")
       .then((st) => dispatch({ type: "state", state: st as unknown as Record<string, unknown> }))
       .catch((e) => toast.error(`getState: ${e.message}`));
-    c.request<{ messages: { role: string; text: string; thinking?: string; toolCalls?: { id: string; name: string; arguments: unknown; result?: string; isError?: boolean }[]; userIndex?: number }[] }>("pi:getMessages")
-      .then((r) => dispatch({ type: "history", messages: r.messages ?? [] }))
-      .catch(() => undefined);
+    loadHistory(false);
     refreshSessions();
     c.request<ModelInfo[]>("pi:listModels").then(setModels).catch(() => undefined);
   }, [conn, refreshSessions]);
