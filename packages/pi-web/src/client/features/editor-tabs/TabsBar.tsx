@@ -1,4 +1,4 @@
-import { FileCode2, MessageSquareText, X } from "lucide-react";
+import { FileCode2, MessageSquareText, Save, X } from "lucide-react";
 import type { WorkspaceTab } from "@/entities/workspace/tabs";
 
 export interface TabsBarProps {
@@ -10,9 +10,12 @@ export interface TabsBarProps {
   onClose: (id: string) => void;
   /** 文件浏览入口（无文件 tab 时） */
   onOpenFiles: () => void;
+  /** 保存当前文件（激活文件 tab dirty 时显示） */
+  onSave: () => void;
 }
 
-export function TabsBar({ tabs, active, sessionName, onActivate, onClose, onOpenFiles }: TabsBarProps) {
+export function TabsBar({ tabs, active, sessionName, onActivate, onClose, onOpenFiles, onSave }: TabsBarProps) {
+  const activeFileDirty = tabs.some((t) => t.kind === "file" && t.path === active && t.dirty);
   return (
     <div className="scrollbar-none flex h-9 shrink-0 items-stretch overflow-x-auto border-b">
       {tabs.map((tab) => {
@@ -31,6 +34,7 @@ export function TabsBar({ tabs, active, sessionName, onActivate, onClose, onOpen
             title={tab.kind === "chat" ? "聊天" : id}
           >
             {tab.kind === "chat" && <MessageSquareText className="size-3.5 shrink-0" />}
+            {tab.kind === "file" && tab.dirty && <span className="bg-primary size-1.5 shrink-0 rounded-full" title="未保存" />}
             <span className="truncate">{label}</span>
             {tab.kind === "file" && (
               <button
@@ -47,6 +51,16 @@ export function TabsBar({ tabs, active, sessionName, onActivate, onClose, onOpen
           </div>
         );
       })}
+      {activeFileDirty && (
+        <button
+          className="bg-primary/10 text-primary hover:bg-primary/20 ml-1 flex shrink-0 cursor-pointer items-center gap-1 self-center rounded px-2 py-1 text-xs font-medium"
+          onClick={onSave}
+          title="保存当前文件 (Ctrl+S)"
+        >
+          <Save className="size-3.5" />
+          保存
+        </button>
+      )}
       <button
         className="hover:bg-muted text-muted-foreground hover:text-foreground ml-1 flex shrink-0 cursor-pointer items-center gap-1 self-center rounded px-2 py-1 text-xs"
         onClick={onOpenFiles}

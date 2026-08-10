@@ -13,7 +13,8 @@ vi.mock("@uiw/react-codemirror", () => ({
 }));
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { EditorPane } from "./EditorPane";
+import { createRef } from "react";
+import { EditorPane, type EditorPaneHandle } from "./EditorPane";
 import type { OpenedFile } from "@/entities/files/editor";
 import type { RpcClient } from "@/shared/api/rpc";
 
@@ -57,41 +58,46 @@ describe("EditorPane 防抖保存", () => {
     vi.useRealTimers();
   });
 
-  it("编辑后 800ms 自动保存（expected 快照来自打开时）", async () => {
+  it("编辑不自动落盘；显式 save() 落盘（expected 快照来自打开时）", async () => {
     const { request, calls } = makeRequest();
-    render(<EditorPane path="a.ts" request={request} />);
+    const ref = createRef<EditorPaneHandle>();
+    render(<EditorPane path="a.ts" request={request} ref={ref} />);
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
     });
     const cm = screen.getByTestId("cm") as HTMLTextAreaElement;
     fireEvent.change(cm, { target: { value: "old!" } });
     expect(screen.getByText("●")).toBeTruthy(); // 脏标记
+    // 等待任意长也不落盘（无自动保存）
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(900);
+      await vi.advanceTimersByTimeAsync(5000);
+    });
+    expect(calls.some((c) => c.startsWith("pi:writeFile"))).toBe(false);
+    // 显式保存
+    await act(async () => {
+      await ref.current?.save();
     });
     const w = calls.find((c) => c.startsWith("pi:writeFile"));
     expect(w).toContain('"expectedHash":"h1"');
     expect(w).toContain('"expectedMtimeMs":100');
     expect(w).toContain('"content":"old!"');
-    expect(calls.some((c) => c.startsWith("pi:writeFile"))).toBe(true);
   });
 
-  it("连续输入只保存一次（防抖重置）", async () => {
-    const { request, calls } = makeRequest();
-    render(<EditorPane path="a.ts" request={request} />);
+  it("编辑上报 onDirtyChange(true)，保存后上报 false", async () => {
+    const { request } = makeRequest();
+    const onDirty = vi.fn();
+    const ref = createRef<EditorPaneHandle>();
+    render(<EditorPane path="a.ts" request={request} ref={ref} onDirtyChange={onDirty} />);
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
     });
     const cm = screen.getByTestId("cm") as HTMLTextAreaElement;
-    fireEvent.change(cm, { target: { value: "olda" } });
+    fireEvent.change(cm, { target: { value: "old!" } });
+    expect(onDirty).toHaveBeenLastCalledWith("a.ts", true);
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(500);
+      await ref.current?.save();
     });
-    fireEvent.change(cm, { target: { value: "oldb" } });
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(900);
-    });
-    expect(calls.filter((c) => c.startsWith("pi:writeFile")).length).toBe(1);
+    expect(onDirty).toHaveBeenLastCalledWith("a.ts", false);
   });
 
   it("只读文件（binary/too-large）不出现保存路径", async () => {
@@ -113,14 +119,15 @@ describe("EditorPane 防抖保存", () => {
         return { ok: true };
       },
     });
-    render(<EditorPane path="a.ts" request={request} />);
+    const ref = createRef<EditorPaneHandle>();
+    render(<EditorPane path="a.ts" request={request} ref={ref} />);
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
     });
     const cm = screen.getByTestId("cm") as HTMLTextAreaElement;
     fireEvent.change(cm, { target: { value: "old!" } });
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(900);
+      await ref.current?.save();
     });
     expect(screen.getByText("文件已被外部修改")).toBeTruthy();
     fireEvent.click(screen.getByText("覆盖保存"));
@@ -142,14 +149,15 @@ describe("EditorPane 防抖保存", () => {
       },
       readFile: () => ({ content: "external", mode: "text", size: 8, mtimeMs: 500, hash: "hE" }),
     });
-    render(<EditorPane path="a.ts" request={request} />);
+    const ref = createRef<EditorPaneHandle>();
+    render(<EditorPane path="a.ts" request={request} ref={ref} />);
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
     });
     const cm = screen.getByTestId("cm") as HTMLTextAreaElement;
     fireEvent.change(cm, { target: { value: "old!" } });
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(900);
+      await ref.current?.save();
     });
     fireEvent.click(screen.getByText("放弃编辑"));
     await act(async () => {
@@ -210,14 +218,15 @@ describe("EditorPane diff 视图", () => {
     const { request, calls } = makeRequest({
       gitDiff: () => ({ isRepo: true, diff: diffCalls++ === 0 ? [{ header: "@@ -1 +1 @@", lines: [{ type: "del", text: "old" }] }] : null }),
     });
-    render(<EditorPane path="a.ts" request={request} />);
+    const ref = createRef<EditorPaneHandle>();
+    render(<EditorPane path="a.ts" request={request} ref={ref} />);
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
     });
     const cm = screen.getByTestId("cm") as HTMLTextAreaElement;
     fireEvent.change(cm, { target: { value: "old!" } });
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(900);
+      await ref.current?.save();
     });
     expect(calls.filter((c) => c.startsWith("pi:gitDiff")).length).toBe(2);
     expect(screen.getByText("无改动（与 HEAD 一致）")).toBeTruthy();

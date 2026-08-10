@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useReducer, useRef, useState } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useReducer, useRef, useState } from "react";
+import { keymap } from "@codemirror/view";
 import CodeMirror from "@uiw/react-codemirror";
 import { css } from "@codemirror/lang-css";
 import { html } from "@codemirror/lang-html";
@@ -51,10 +52,14 @@ export interface EditorPaneProps {
   /** 文件相对路径（tab 迭代后由父级传 path，EditorPane 自行加载） */
   path: string;
   request: RpcClient["request"];
+  /** 编辑/保存状态变化上报（tab 条 dirty 圆点） */
+  onDirtyChange?: (path: string, dirty: boolean) => void;
 }
 
-/** 防抖保存间隔（ms） */
-const SAVE_DEBOUNCE_MS = 800;
+export interface EditorPaneHandle {
+  /** 显式保存（Ctrl+S / tab 条保存按钮）；返回成功与否 */
+  save: () => Promise<boolean>;
+}
 
 type SaveAction =
   | { kind: "content"; content: string }
@@ -89,7 +94,7 @@ function fmtSize(n: number): string {
 
 const EMPTY: OpenedFile = { path: "", name: "", content: "", mode: "text", size: 0, mtimeMs: 0, hash: "" };
 
-export function EditorPane({ path, request }: EditorPaneProps) {
+export const EditorPane = forwardRef<EditorPaneHandle, EditorPaneProps>(function EditorPane({ path, request, onDirtyChange }, ref) {
   const [file, setFile] = useState<OpenedFile | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [edit, dispatch] = useReducer(reducer, EMPTY, initialEditState);
@@ -134,8 +139,8 @@ export function EditorPane({ path, request }: EditorPaneProps) {
   }, [path, loadFile, loadDiff]);
 
   const doSave = useCallback(
-    async (state: EditState) => {
-      if (!file) return;
+    async (state: EditState): Promise<boolean> => {
+      if (!file) return false;
       dispatch({ kind: "saving" });
       try {
         const r = await request<{ ok: boolean; reason?: string; current?: { hash: string; mtimeMs: number } }>("pi:writeFile", {
@@ -152,7 +157,9 @@ export function EditorPane({ path, request }: EditorPaneProps) {
           dispatch({ kind: "saved", hash: fresh.hash, mtimeMs: fresh.mtimeMs });
           const nextFile: OpenedFile = { ...file, hash: fresh.hash, mtimeMs: fresh.mtimeMs, content: state.content };
           setFile(nextFile);
+          onDirtyChange?.(file.path, false);
           void loadDiff(file.path); // 保存后刷新 diff
+          return true;
         } else if (r.reason === "conflict" && r.current) {
           dispatch({ kind: "conflict", hash: r.current.hash, mtimeMs: r.current.mtimeMs });
         } else {
@@ -162,16 +169,38 @@ export function EditorPane({ path, request }: EditorPaneProps) {
       } catch (e) {
         toast.error(`保存失败：${e instanceof Error ? e.message : String(e)}`);
       }
+      return false;
     },
-    [file, request],
+    [file, request, onDirtyChange],
   );
 
-  // 防抖自动保存：dirty 且非保存中 → 800ms 后保存
+  // 显式保存：Ctrl+S（CodeMirror keymap）——闭包引用最新状态
+  const stateRef = useRef({ doSave, edit });
+  stateRef.current = { doSave, edit };
+  const ctrlSKeymap = useMemo(
+    () =>
+      keymap.of([
+        {
+          key: "Mod-s",
+          run: () => {
+            const { doSave: save, edit: current } = stateRef.current;
+            void save(current);
+            return true;
+          },
+        },
+      ]),
+    [],
+  );
+
+  // 对外暴露 save（tab 条保存按钮 / 关闭三选）
+  useImperativeHandle(ref, () => ({
+    save: () => doSave(stateRef.current.edit),
+  }));
+
+  // 编辑 → 上报 dirty（仅状态变化时）
   useEffect(() => {
-    if (!edit.dirty || edit.saving) return;
-    const t = setTimeout(() => void doSave(edit), SAVE_DEBOUNCE_MS);
-    return () => clearTimeout(t);
-  }, [edit, doSave]);
+    onDirtyChange?.(path, edit.dirty);
+  }, [edit.dirty, path, onDirtyChange]);
 
   const reloadFromDisk = useCallback(async () => {
     if (!file) return;
@@ -222,7 +251,7 @@ export function EditorPane({ path, request }: EditorPaneProps) {
             theme="none"
             height="100%"
             style={{ height: "100%", fontSize: 13 }}
-            extensions={[langExt(langForFile(file.name)), createEditorTheme()]}
+            extensions={[langExt(langForFile(file.name)), createEditorTheme(), ctrlSKeymap]}
             readOnly={!editable}
             onChange={(v) => dispatch({ kind: "content", content: v })}
             basicSetup={{ lineNumbers: true, foldGutter: true, highlightActiveLine: false }}
@@ -278,4 +307,4 @@ export function EditorPane({ path, request }: EditorPaneProps) {
       </Dialog>
     </div>
   );
-}
+});

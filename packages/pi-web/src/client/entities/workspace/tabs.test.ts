@@ -3,8 +3,11 @@ import {
   activateTab,
   chatTab,
   closeTab,
+  hasDirty,
   initialState,
   openFile,
+  setDirty,
+  tabDirty,
   type WorkspaceState,
 } from "./tabs.js";
 
@@ -86,5 +89,36 @@ describe("workspace tab 状态机", () => {
     const s = openFile(initialState(), "a.ts", "a.ts");
     const next = closeTab(s, "nope.ts");
     expect(next).toEqual(s);
+  });
+});
+
+describe("dirty 状态", () => {
+  it("新开文件 tab 不脏；编辑上报后脏", () => {
+    const s = openFile(initialState(), "a.ts", "a.ts");
+    expect(tabDirty(s, "a.ts")).toBe(false);
+    expect(setDirty(s, "a.ts", true).tabs).toContainEqual({ kind: "file", path: "a.ts", name: "a.ts", dirty: true });
+  });
+
+  it("保存后清除 dirty；重复上报不产生新引用", () => {
+    let s = openFile(initialState(), "a.ts", "a.ts");
+    s = setDirty(s, "a.ts", true);
+    const before = s;
+    s = setDirty(s, "a.ts", true);
+    expect(s).toBe(before); // 幂等
+    s = setDirty(s, "a.ts", false);
+    expect(tabDirty(s, "a.ts")).toBe(false);
+  });
+
+  it("hasDirty 汇总", () => {
+    let s = openFile(initialState(), "a.ts", "a.ts");
+    s = openFile(s, "b.ts", "b.ts");
+    expect(hasDirty(s)).toBe(false);
+    s = setDirty(s, "b.ts", true);
+    expect(hasDirty(s)).toBe(true);
+  });
+
+  it("不存在路径的 dirty 上报被忽略", () => {
+    const s = openFile(initialState(), "a.ts", "a.ts");
+    expect(setDirty(s, "nope.ts", true)).toBe(s);
   });
 });

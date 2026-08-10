@@ -9,13 +9,18 @@ import { Chat } from "@/features/chat-stream/Chat";
 import { FilesTree } from "@/features/files/FilesTree";
 import { EditorPane } from "@/features/files/EditorPane";
 import { TabsBar } from "@/features/editor-tabs/TabsBar";
+import { Button } from "@/shared/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/shared/ui/dialog";
 import {
   activateTab,
   closeTab,
   initialState as initialWorkspace,
   openFile,
+  setDirty,
+  tabDirty,
   type WorkspaceState,
 } from "@/entities/workspace/tabs";
+import type { EditorPaneHandle } from "@/features/files/EditorPane";
 import { Sidebar, SidebarSheet, type SidebarContentProps } from "@/features/sessions/Sidebar";
 import { InputBar } from "@/features/input-bar/InputBar";
 import { DisconnectBanner } from "@/app/ui/DisconnectBanner";
@@ -60,9 +65,16 @@ export default function App() {
   const [booted, setBooted] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  // 关闭 dirty tab 确认（vscode-align 02：三选）
+  const [pendingClose, setPendingClose] = useState<string | null>(null);
+  const [pendingSaving, setPendingSaving] = useState(false);
+  const editorRefs = useRef<Record<string, EditorPaneHandle | null>>({});
   // vscode-align：工作区 tab 状态（文件 tab + 聊天 tab）
   const [workspace, dispatchWs] = useReducer(
-    (s: WorkspaceState, a: { kind: "open"; path: string; name: string } | { kind: "activate"; id: string } | { kind: "close"; id: string }): WorkspaceState => {
+    (
+      s: WorkspaceState,
+      a: { kind: "open"; path: string; name: string } | { kind: "activate"; id: string } | { kind: "close"; id: string } | { kind: "dirty"; path: string; dirty: boolean },
+    ): WorkspaceState => {
       switch (a.kind) {
         case "open":
           return openFile(s, a.path, a.name);
@@ -70,6 +82,8 @@ export default function App() {
           return activateTab(s, a.id);
         case "close":
           return closeTab(s, a.id);
+        case "dirty":
+          return setDirty(s, a.path, a.dirty);
       }
     },
     undefined,
@@ -389,10 +403,20 @@ export default function App() {
         active={workspace.active}
         sessionName={state.sessionName ?? "聊天"}
         onActivate={(id) => dispatchWs({ kind: "activate", id })}
-        onClose={(id) => dispatchWs({ kind: "close", id })}
+        onClose={(id) => {
+          if (id !== "chat" && tabDirty(workspace, id)) {
+            setPendingClose(id);
+          } else {
+            dispatchWs({ kind: "close", id });
+          }
+        }}
         onOpenFiles={() => {
           const files = workspace.tabs.filter((t) => t.kind === "file");
           dispatchWs({ kind: "activate", id: files.length > 0 ? files[files.length - 1].path : "files" });
+        }}
+        onSave={() => {
+          const active = workspace.active;
+          if (active !== "chat" && active !== "files") void editorRefs.current[active]?.save();
         }}
       />
       {workspace.active === "chat" ? (
@@ -435,7 +459,14 @@ export default function App() {
               .filter((t) => t.kind === "file")
               .map((t) => (
                 <div key={t.path} className={workspace.active === t.path ? "h-full" : "hidden"}>
-                  <EditorPane path={t.path} request={getRequest()} />
+                  <EditorPane
+                    path={t.path}
+                    request={getRequest()}
+                    ref={(h) => {
+                      editorRefs.current[t.path] = h;
+                    }}
+                    onDirtyChange={(path, dirty) => dispatchWs({ kind: "dirty", path, dirty })}
+                  />
                 </div>
               ))}
             {workspace.active === "files" && (
@@ -446,6 +477,48 @@ export default function App() {
           </main>
         </div>
       )}
+      <Dialog
+        open={pendingClose !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingClose(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>保存对 {pendingClose ? pendingClose.split("/").pop() : ""} 的更改？</DialogTitle>
+            <DialogDescription>文件有未保存的修改，关闭前请选择处理方式。</DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                if (pendingClose) dispatchWs({ kind: "close", id: pendingClose });
+                setPendingClose(null);
+              }}
+            >
+              不保存
+            </Button>
+            <Button
+              disabled={pendingSaving}
+              onClick={async () => {
+                if (!pendingClose) return;
+                setPendingSaving(true);
+                const ok = await editorRefs.current[pendingClose]?.save();
+                setPendingSaving(false);
+                if (ok) {
+                  dispatchWs({ kind: "close", id: pendingClose });
+                  setPendingClose(null);
+                }
+              }}
+            >
+              {pendingSaving ? "保存中…" : "保存"}
+            </Button>
+            <Button variant="secondary" onClick={() => setPendingClose(null)}>
+              取消
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <TreeDialog
         open={treeOpen}
         onOpenChange={setTreeOpen}

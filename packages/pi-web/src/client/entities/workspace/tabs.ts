@@ -4,7 +4,7 @@
  */
 
 export type WorkspaceTab =
-  | { kind: "file"; path: string; name: string }
+  | { kind: "file"; path: string; name: string; dirty: boolean }
   | { kind: "chat" };
 
 export interface WorkspaceState {
@@ -30,7 +30,7 @@ export function openFile(state: WorkspaceState, path: string, name: string): Wor
   if (state.tabs.some((t) => t.kind === "file" && t.path === path)) {
     return { ...state, active: path };
   }
-  return { tabs: [...state.tabs, { kind: "file", path, name }], active: path };
+  return { tabs: [...state.tabs, { kind: "file", path, name, dirty: false }], active: path };
 }
 
 /** 激活任意 tab（chat / 文件路径 / 文件浏览态） */
@@ -52,4 +52,25 @@ export function closeTab(state: WorkspaceState, id: string): WorkspaceState {
     active = next ? (next.kind === "file" ? next.path : CHAT_TAB_ID) : CHAT_TAB_ID;
   }
   return { tabs, active };
+}
+
+/** 标记文件 tab dirty 状态（编辑器编辑/保存后上报）；不存在路径忽略 */
+export function setDirty(state: WorkspaceState, path: string, dirty: boolean): WorkspaceState {
+  const t = state.tabs.find((x) => x.kind === "file" && x.path === path);
+  if (!t || t.kind !== "file" || t.dirty === dirty) return state;
+  return {
+    ...state,
+    tabs: state.tabs.map((x) => (x.kind === "file" && x.path === path ? { ...x, dirty } : x)),
+  };
+}
+
+/** 文件 tab 的 dirty 状态（不存在/非文件返回 false） */
+export function tabDirty(state: WorkspaceState, path: string): boolean {
+  const t = state.tabs.find((x) => x.kind === "file" && x.path === path);
+  return t?.kind === "file" ? t.dirty : false;
+}
+
+/** 是否存在 dirty 文件 tab（关闭确认/保存按钮用） */
+export function hasDirty(state: WorkspaceState): boolean {
+  return state.tabs.some((t) => t.kind === "file" && t.dirty);
 }
