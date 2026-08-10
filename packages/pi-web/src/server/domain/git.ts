@@ -185,3 +185,100 @@ export function aggregateStatus(entries: PorcelainEntry[]): Map<string, string> 
   }
   return map;
 }
+
+/** git 写操作确认类型（前端弹窗第二道闸） */
+export type GitConfirm = "merge" | "rebase" | "delete-branch";
+
+export type GitOpAllow = { ok: true; confirm?: GitConfirm } | { ok: false; error: string };
+
+/** 写命令白名单（vscode-align 05）：放行 + 破坏性拒绝 + 确认分层 */
+const ALLOWED_WRITE_COMMANDS: Record<string, { confirm?: GitConfirm; rejectFlags?: string[] }> = {
+  switch: {},
+  branch: { rejectFlags: ["-D", "--delete --force"] },
+  merge: { confirm: "merge" },
+  rebase: { confirm: "rebase" },
+  commit: { rejectFlags: ["--amend"] },
+  add: {},
+  restore: { rejectFlags: ["--source", "--worktree"] },
+  stash: {},
+  push: { rejectFlags: ["--force", "-f"] },
+  pull: {},
+  rm: {},
+  mv: {},
+};
+
+export function assertGitOp(args: string[]): GitOpAllow {
+  const [cmd, ...rest] = args;
+  if (!cmd) return { ok: false, error: "git 命令为空" };
+  if (cmd === "checkout" || cmd === "reset" || cmd === "clean" || cmd === "revert") {
+    return { ok: false, error: `破坏性命令拒绝：${cmd}` };
+  }
+  const spec = ALLOWED_WRITE_COMMANDS[cmd];
+  if (!spec) return { ok: false, error: `命令不在写白名单：${cmd}` };
+  if (spec.rejectFlags) {
+    for (const flag of spec.rejectFlags) {
+      if (rest.includes(flag) || rest.some((a) => a === flag)) {
+        return { ok: false, error: `标志拒绝：${cmd} ${flag}` };
+      }
+    }
+  }
+  // 自由参数合法性：分支名/路径（非 - 开头）；- 开头参数必须非危险（白名单外 - 参数拒绝）
+  for (const arg of rest) {
+    if (arg.startsWith("-")) {
+      if (cmd === "branch" && (arg === "-d" || arg === "-c" || arg === "-a" || arg === "-r" || arg === "-v" || arg === "--show-current" || arg === "--no-color")) continue;
+      if (cmd === "switch" && arg === "-c") continue;
+      if (cmd === "restore" && arg === "--staged") continue;
+      if (cmd === "push" && (arg === "-u" || arg === "--set-upstream")) continue;
+      if (cmd === "stash" && (arg === "push" || arg === "pop" || arg === "apply" || arg === "drop" || arg === "list" || arg === "show")) continue;
+      return { ok: false, error: `标志不在白名单：${arg}` };
+    }
+  }
+  if (cmd === "branch" && rest.includes("-d")) return { ok: true, confirm: "delete-branch" };
+  return { ok: true, confirm: spec.confirm };
+}
+
+export type GitOpResult = { ok: true } | { ok: false; error: string };
+
+async function runOp(args: string[], cwd: string, git: GitRunner, confirm?: GitConfirm): Promise<GitOpResult> {
+  const allow = assertGitOp(args);
+  if (!allow.ok) return { ok: false, error: allow.error };
+  if (confirm && allow.confirm !== confirm) return { ok: false, error: `需要确认：${allow.confirm}` };
+  const r = await git(args);
+  if (r.code !== 0) return { ok: false, error: r.stderr.trim() || `git ${args[0]} 失败（code ${r.code}）` };
+  return { ok: true };
+}
+
+/** 分支列表（当前分支 + 名称列表） */
+export async function listBranches(cwd: string, git: GitRunner): Promise<{ current: string | null; branches: string[] }> {
+  const r = await git(["branch", "--no-color"]);
+  const branches: string[] = [];
+  let current: string | null = null;
+  for (const line of r.stdout.split("\n")) {
+    const trimmed = line.trim();
+    if (trimmed === "") continue;
+    const name = trimmed.replace(/^\*/, "").trim();
+    if (line.startsWith("*")) current = name;
+    branches.push(name);
+  }
+  return { current, branches };
+}
+
+export async function switchBranch(cwd: string, branch: string, git: GitRunner): Promise<GitOpResult> {
+  return runOp(["switch", branch], cwd, git);
+}
+
+export async function createBranch(cwd: string, name: string, git: GitRunner): Promise<GitOpResult> {
+  return runOp(["branch", name], cwd, git);
+}
+
+export async function deleteBranch(cwd: string, branch: string, git: GitRunner): Promise<GitOpResult> {
+  return runOp(["branch", "-d", branch], cwd, git, "delete-branch");
+}
+
+export async function mergeBranch(cwd: string, branch: string, git: GitRunner): Promise<GitOpResult> {
+  return runOp(["merge", branch], cwd, git, "merge");
+}
+
+export async function rebaseBranch(cwd: string, branch: string, git: GitRunner): Promise<GitOpResult> {
+  return runOp(["rebase", branch], cwd, git, "rebase");
+}

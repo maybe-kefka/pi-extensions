@@ -411,7 +411,7 @@ export default function App() {
                 gitRefreshKey={gitRefreshKey}
               />
             )}
-            {panel === "git" && <GitPanel />}
+            {panel === "git" && <GitPanel request={getRequest()} />}
             {panel === "sessions" && <SessionPanel {...sessionPanelProps} />}
             {panel === "settings" && <SettingsPanel {...settingsPanelProps} />}
           </aside>

@@ -1,5 +1,18 @@
 import { describe, expect, it } from "vitest";
-import { aggregateStatus, assertReadOnlyGit, fileDiff, parseGitDiff, parsePorcelain, repoInfo, type GitRunner } from "./git.js";
+import {
+  aggregateStatus,
+  assertGitOp,
+  assertReadOnlyGit,
+  deleteBranch,
+  fileDiff,
+  listBranches,
+  mergeBranch,
+  parseGitDiff,
+  parsePorcelain,
+  repoInfo,
+  switchBranch,
+  type GitRunner,
+} from "./git.js";
 
 describe("assertReadOnlyGit 白名单", () => {
   it("允许只读查询命令", () => {
@@ -263,5 +276,64 @@ describe("aggregateStatus", () => {
   it("目录内均为未跟踪时父目录也标 ??（聚合取子级状态）", () => {
     const map = aggregateStatus([{ path: "new/a.ts", status: "??", staged: false }]);
     expect(map.get("new")).toBe("??");
+  });
+});
+
+describe("assertGitOp（写操作白名单）", () => {
+  it("分支操作放行（merge/rebase/delete 带 confirm 标记）", () => {
+    expect(assertGitOp(["switch", "main"])).toEqual({ ok: true });
+    expect(assertGitOp(["switch", "-c", "feat"])).toEqual({ ok: true });
+    expect(assertGitOp(["branch", "feat"])).toEqual({ ok: true });
+    expect(assertGitOp(["branch", "-d", "feat"])).toEqual({ ok: true, confirm: "delete-branch" });
+    expect(assertGitOp(["merge", "feat"])).toEqual({ ok: true, confirm: "merge" });
+    expect(assertGitOp(["rebase", "feat"])).toEqual({ ok: true, confirm: "rebase" });
+  });
+
+  it("破坏性命令拒绝", () => {
+    expect(assertGitOp(["reset", "--hard"])).toEqual({ ok: false, error: expect.any(String) });
+    expect(assertGitOp(["clean", "-fd"])).toEqual({ ok: false, error: expect.any(String) });
+    expect(assertGitOp(["push", "--force"])).toEqual({ ok: false, error: expect.any(String) });
+    expect(assertGitOp(["push", "-f"])).toEqual({ ok: false, error: expect.any(String) });
+    expect(assertGitOp(["branch", "-D", "feat"])).toEqual({ ok: false, error: expect.any(String) });
+    expect(assertGitOp(["checkout", "main"])).toEqual({ ok: false, error: expect.any(String) });
+    expect(assertGitOp(["commit", "--amend"])).toEqual({ ok: false, error: expect.any(String) });
+  });
+});
+
+describe("分支操作编排", () => {
+  const runner = (responses: Record<string, { code: number; stdout?: string; stderr?: string }>) => {
+    return (async (args: string[]) => {
+      const r = responses[args.join(" ")] ?? { code: 0, stdout: "" };
+      return { code: r.code, stdout: r.stdout ?? "", stderr: r.stderr ?? "" };
+    }) as GitRunner;
+  };
+
+  it("listBranches 解析当前分支与列表", async () => {
+    const git = runner({
+      "branch --no-color": { code: 0, stdout: "* main\n  feat\n  fix/1\n" },
+    });
+    expect(await listBranches("/repo", git)).toEqual({ current: "main", branches: ["main", "feat", "fix/1"] });
+  });
+
+  it("detached HEAD：branch 输出无 * 行", async () => {
+    const git = runner({ "branch --no-color": { code: 0, stdout: "  main\n  feat\n" } });
+    expect(await listBranches("/repo", git)).toEqual({ current: null, branches: ["main", "feat"] });
+  });
+
+  it("switchBranch 成功/失败（stderr 透传）", async () => {
+    const ok = runner({ "switch feat": { code: 0 } });
+    expect(await switchBranch("/repo", "feat", ok)).toEqual({ ok: true });
+    const err = runner({ "switch feat": { code: 1, stderr: "error: pathspec 'feat' did not match" } });
+    expect(await switchBranch("/repo", "feat", err)).toEqual({ ok: false, error: expect.stringContaining("did not match") });
+  });
+
+  it("deleteBranch 当前分支被 git 拒绝（stderr 透传）", async () => {
+    const git = runner({ "branch -d main": { code: 1, stderr: "error: Cannot delete branch 'main' checked out" } });
+    expect(await deleteBranch("/repo", "main", git)).toEqual({ ok: false, error: expect.stringContaining("Cannot delete") });
+  });
+
+  it("merge/rebase 失败透传 stderr", async () => {
+    const git = runner({ "merge feat": { code: 1, stderr: "CONFLICT (content)" } });
+    expect(await mergeBranch("/repo", "feat", git)).toEqual({ ok: false, error: expect.stringContaining("CONFLICT") });
   });
 });

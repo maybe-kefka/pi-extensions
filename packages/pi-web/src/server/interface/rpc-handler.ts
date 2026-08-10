@@ -23,7 +23,18 @@ import { deleteSessionFile } from "../infrastructure/session-files.js";
 import { realFs } from "../infrastructure/real-fs.js";
 import { createGitRunner } from "../infrastructure/git-runner.js";
 import { deletePath, listDir, mkdirPath, readFileText, renamePath, touchPath, writeFileText } from "../domain/files.js";
-import { aggregateStatus, fileDiff, parsePorcelain, repoInfo } from "../domain/git.js";
+import { createBranch as createBranchOp } from "../domain/git.js";
+import {
+  aggregateStatus,
+  deleteBranch,
+  fileDiff,
+  listBranches,
+  mergeBranch,
+  parsePorcelain,
+  rebaseBranch,
+  repoInfo,
+  switchBranch,
+} from "../domain/git.js";
 import { messageTextOf, messageThinkingOf, messageToolCalls } from "../infrastructure/http-util.js";
 import { THINKING_LEVELS, SessionManager, type BuildSystemPromptOptions, type WebConsole } from "../application/web-console.js";
 
@@ -370,6 +381,59 @@ async function handleRequest(
       const entries = parsePorcelain(r.stdout);
       const aggregated = aggregateStatus(entries);
       return { isRepo: true, entries, aggregated: Object.fromEntries(aggregated) };
+    }
+
+    case "pi:gitBranches": {
+      // vscode-align 05a：分支列表
+      const ctx = requireCtxOf();
+      const r = await listBranches(ctx.cwd, createGitRunner(ctx.cwd));
+      if (r.branches.length === 0 && !r.current) {
+        const probe = await createGitRunner(ctx.cwd)(["rev-parse", "--is-inside-work-tree"]);
+        if (probe.code !== 0) return { isRepo: false };
+      }
+      return { isRepo: true, current: r.current, branches: r.branches };
+    }
+
+    case "pi:gitSwitch": {
+      const ctx = requireCtxOf();
+      const branch = typeof params.branch === "string" ? params.branch : "";
+      if (branch === "") throw new WebServerError(-32602, "branch 必填");
+      const r = await switchBranch(ctx.cwd, branch, createGitRunner(ctx.cwd));
+      if (!r.ok) throw new WebServerError(-32603, r.error);
+      return { ok: true };
+    }
+
+    case "pi:gitBranchCreate": {
+      const ctx = requireCtxOf();
+      const name = typeof params.name === "string" ? params.name : "";
+      if (name === "") throw new WebServerError(-32602, "name 必填");
+      const r = await createBranchOp(ctx.cwd, name, createGitRunner(ctx.cwd));
+      if (!r.ok) throw new WebServerError(-32603, r.error);
+      return { ok: true };
+    }
+
+    case "pi:gitBranchDelete": {
+      const ctx = requireCtxOf();
+      const branch = typeof params.branch === "string" ? params.branch : "";
+      const r = await deleteBranch(ctx.cwd, branch, createGitRunner(ctx.cwd));
+      if (!r.ok) throw new WebServerError(-32603, r.error);
+      return { ok: true };
+    }
+
+    case "pi:gitMerge": {
+      const ctx = requireCtxOf();
+      const branch = typeof params.branch === "string" ? params.branch : "";
+      const r = await mergeBranch(ctx.cwd, branch, createGitRunner(ctx.cwd));
+      if (!r.ok) throw new WebServerError(-32603, r.error);
+      return { ok: true };
+    }
+
+    case "pi:gitRebase": {
+      const ctx = requireCtxOf();
+      const branch = typeof params.branch === "string" ? params.branch : "";
+      const r = await rebaseBranch(ctx.cwd, branch, createGitRunner(ctx.cwd));
+      if (!r.ok) throw new WebServerError(-32603, r.error);
+      return { ok: true };
     }
 
     case "pi:gitDiff": {
