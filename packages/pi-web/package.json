@@ -1,6 +1,6 @@
 {
   "name": "@kefka/pi-web",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "Pi extension: /web command — local web console sharing the TUI session (chat, sessions, models) over WebSocket",
   "type": "module",
   "license": "UNLICENSED",
