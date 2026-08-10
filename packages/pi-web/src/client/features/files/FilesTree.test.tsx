@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-// FilesPage 渲染测试（jsdom）：目录树浏览 + 打开文件 + 错误提示
+// FilesTree 渲染测试（jsdom）：目录树浏览 + 打开文件回调 + 错误提示
 // CodeMirror 在 jsdom 缺 getClientRects —— mock 为纯文本容器（编辑器内部不测）
 vi.mock("@uiw/react-codemirror", () => ({
   default: ({ value }: { value: string }) => <div data-testid="cm">{value}</div>,
@@ -7,7 +7,7 @@ vi.mock("@uiw/react-codemirror", () => ({
 import { describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { FilesPage } from "./FilesPage";
+import { FilesTree } from "./FilesTree";
 import type { RpcClient } from "@/shared/api/rpc";
 
 /** 假 RPC：listDir 返回内存树，readFile 返回内存内容 */
@@ -42,36 +42,35 @@ function fakeRequest(files: Record<string, string>): RpcClient["request"] {
   }) as RpcClient["request"];
 }
 
-describe("FilesPage", () => {
+describe("FilesTree", () => {
   it("首屏加载根目录并显示条目", async () => {
-    render(<FilesPage request={fakeRequest({ "README.md": "hi", "src/main.ts": "x" })} />);
+    render(<FilesTree request={fakeRequest({ "README.md": "hi", "src/main.ts": "x" })} onOpenFile={vi.fn()} activePath={null} />);
     expect(await screen.findByText("README.md")).toBeTruthy();
     expect(screen.getByText("src")).toBeTruthy();
   });
 
   it("展开目录后显示子文件", async () => {
     const user = userEvent.setup();
-    render(<FilesPage request={fakeRequest({ "src/main.ts": "x" })} />);
+    render(<FilesTree request={fakeRequest({ "src/main.ts": "x" })} onOpenFile={vi.fn()} activePath={null} />);
     await user.click(await screen.findByText("src"));
     expect(await screen.findByText("main.ts")).toBeTruthy();
   });
 
-  it("点击文件发起 readFile 并显示内容", async () => {
+  it("点击文件回调 onOpenFile（含文件名）", async () => {
     const user = userEvent.setup();
-    render(<FilesPage request={fakeRequest({ "a.txt": "hello world" })} />);
+    const onOpenFile = vi.fn();
+    render(<FilesTree request={fakeRequest({ "a.txt": "hello world" })} onOpenFile={onOpenFile} activePath={null} />);
     await user.click(await screen.findByText("a.txt"));
-    expect(await screen.findByTestId("cm")).toBeTruthy();
-    expect(screen.getByText("hello world")).toBeTruthy();
+    expect(onOpenFile).toHaveBeenCalledWith("a.txt", "a.txt");
   });
 
-  it("readFile 失败显示错误提示", async () => {
+  it("listDir 失败显示错误提示", async () => {
     const user = userEvent.setup();
     const request = (async (method: string) => {
-      if (method === "pi:listDir") return { entries: [{ name: "secret.txt", type: "file", size: 1, mtimeMs: 1 }] };
-      throw new Error("文件不存在或越权：secret.txt");
+      if (method === "pi:gitInfo") return { isRepo: false };
+      throw new Error("目录不存在或越权");
     }) as RpcClient["request"];
-    render(<FilesPage request={request} />);
-    await user.click(await screen.findByText("secret.txt"));
-    expect(await screen.findByText(/文件不存在或越权/)).toBeTruthy();
+    render(<FilesTree request={request} onOpenFile={vi.fn()} activePath={null} />);
+    expect(await screen.findByText(/目录不存在或越权/)).toBeTruthy();
   });
 });

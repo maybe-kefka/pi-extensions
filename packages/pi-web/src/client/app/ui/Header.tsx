@@ -1,4 +1,4 @@
-import { FileCode2, MessageSquareText, PanelLeftClose, PanelLeftOpen, SlidersHorizontal } from "lucide-react";
+import { PanelLeftClose, PanelLeftOpen, SlidersHorizontal } from "lucide-react";
 import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/shared/ui/popover";
@@ -19,8 +19,6 @@ export function Header({
   onOpenDrawer,
   onCompact,
   getRequest,
-  view,
-  onViewChange,
 }: {
   conn: StreamState["conn"];
   state: StreamState;
@@ -29,8 +27,6 @@ export function Header({
   onOpenDrawer: () => void;
   onCompact: () => void;
   getRequest: () => RpcClient["request"];
-  view: "chat" | "files";
-  onViewChange: (view: "chat" | "files") => void;
 }) {
   const ctx = state.context;
   const percent = ctx.percent ?? 0;
@@ -46,16 +42,6 @@ export function Header({
         {conn === "open" ? "已连接" : conn === "connecting" ? "连接中…" : "未连接"}
       </Badge>
       <div className="ml-auto flex items-center gap-2">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-8 gap-1.5 px-2 text-xs"
-          onClick={() => onViewChange(view === "files" ? "chat" : "files")}
-          title={view === "files" ? "返回会话" : "文件浏览"}
-        >
-          {view === "files" ? <MessageSquareText /> : <FileCode2 />}
-          <span className="hidden sm:inline">{view === "files" ? "会话" : "文件"}</span>
-        </Button>
         <Popover>
           <PopoverTrigger asChild>
             <button

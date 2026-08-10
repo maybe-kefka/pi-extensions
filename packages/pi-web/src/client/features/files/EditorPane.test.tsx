@@ -37,7 +37,7 @@ function makeRequest(overrides: Partial<Record<"writeFile" | "readFile" | "gitDi
     }
     if (method === "pi:readFile") {
       if (overrides.readFile) return overrides.readFile(params);
-      return { content: "new", mode: "text", size: 3, mtimeMs: 200, hash: "h2" };
+      return { content: "old", mode: "text", size: 3, mtimeMs: 100, hash: "h1" };
     }
     if (method === "pi:gitDiff") {
       if (overrides.gitDiff) return overrides.gitDiff(params);
@@ -59,8 +59,10 @@ describe("EditorPane 防抖保存", () => {
 
   it("编辑后 800ms 自动保存（expected 快照来自打开时）", async () => {
     const { request, calls } = makeRequest();
-    const onReload = vi.fn();
-    render(<EditorPane file={FILE} request={request} onReload={onReload} />);
+    render(<EditorPane path="a.ts" request={request} />);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
     const cm = screen.getByTestId("cm") as HTMLTextAreaElement;
     fireEvent.change(cm, { target: { value: "old!" } });
     expect(screen.getByText("●")).toBeTruthy(); // 脏标记
@@ -71,12 +73,15 @@ describe("EditorPane 防抖保存", () => {
     expect(w).toContain('"expectedHash":"h1"');
     expect(w).toContain('"expectedMtimeMs":100');
     expect(w).toContain('"content":"old!"');
-    expect(onReload).toHaveBeenCalled();
+    expect(calls.some((c) => c.startsWith("pi:writeFile"))).toBe(true);
   });
 
   it("连续输入只保存一次（防抖重置）", async () => {
     const { request, calls } = makeRequest();
-    render(<EditorPane file={FILE} request={request} onReload={vi.fn()} />);
+    render(<EditorPane path="a.ts" request={request} />);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
     const cm = screen.getByTestId("cm") as HTMLTextAreaElement;
     fireEvent.change(cm, { target: { value: "olda" } });
     await act(async () => {
@@ -89,9 +94,12 @@ describe("EditorPane 防抖保存", () => {
     expect(calls.filter((c) => c.startsWith("pi:writeFile")).length).toBe(1);
   });
 
-  it("只读文件（binary/too-large）不出现保存路径", () => {
+  it("只读文件（binary/too-large）不出现保存路径", async () => {
     const { request } = makeRequest();
-    render(<EditorPane file={{ ...FILE, mode: "binary", content: "" }} request={request} onReload={vi.fn()} />);
+    render(<EditorPane path="a.ts" request={makeRequest({ readFile: () => ({ content: "", mode: "binary", size: 3, mtimeMs: 100, hash: "h1" }) }).request} />);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
     expect(screen.getByText(/二进制内容不可预览/)).toBeTruthy();
     expect(screen.queryByTestId("cm")).toBeNull();
   });
@@ -105,7 +113,10 @@ describe("EditorPane 防抖保存", () => {
         return { ok: true };
       },
     });
-    render(<EditorPane file={FILE} request={request} onReload={vi.fn()} />);
+    render(<EditorPane path="a.ts" request={request} />);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
     const cm = screen.getByTestId("cm") as HTMLTextAreaElement;
     fireEvent.change(cm, { target: { value: "old!" } });
     await act(async () => {
@@ -124,15 +135,17 @@ describe("EditorPane 防抖保存", () => {
 
   it("冲突 → 放弃 → 重载磁盘内容（编辑丢弃）", async () => {
     let writeCount = 0;
-    const { request } = makeRequest({
+    const { request, calls } = makeRequest({
       writeFile: () => {
         writeCount += 1;
         return { ok: false, reason: "conflict", current: { hash: "hX", mtimeMs: 999 } };
       },
       readFile: () => ({ content: "external", mode: "text", size: 8, mtimeMs: 500, hash: "hE" }),
     });
-    const onReload = vi.fn();
-    render(<EditorPane file={FILE} request={request} onReload={onReload} />);
+    render(<EditorPane path="a.ts" request={request} />);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
     const cm = screen.getByTestId("cm") as HTMLTextAreaElement;
     fireEvent.change(cm, { target: { value: "old!" } });
     await act(async () => {
@@ -144,7 +157,7 @@ describe("EditorPane 防抖保存", () => {
     });
     expect((screen.getByTestId("cm") as HTMLTextAreaElement).value).toBe("external");
     expect(screen.queryByText("●")).toBeNull();
-    expect(onReload).toHaveBeenCalledWith(expect.objectContaining({ hash: "hE" }));
+    expect(calls.some((c) => c.startsWith("pi:readFile"))).toBe(true);
   });
 });
 
@@ -172,7 +185,7 @@ describe("EditorPane diff 视图", () => {
         ],
       }),
     });
-    render(<EditorPane file={FILE} request={request} onReload={vi.fn()} />);
+    render(<EditorPane path="a.ts" request={request} />);
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
     });
@@ -185,7 +198,7 @@ describe("EditorPane diff 视图", () => {
 
   it("非 git 仓库显示占位", async () => {
     const { request } = makeRequest({ gitDiff: () => ({ isRepo: false, diff: null }) });
-    render(<EditorPane file={FILE} request={request} onReload={vi.fn()} />);
+    render(<EditorPane path="a.ts" request={request} />);
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
     });
@@ -197,7 +210,7 @@ describe("EditorPane diff 视图", () => {
     const { request, calls } = makeRequest({
       gitDiff: () => ({ isRepo: true, diff: diffCalls++ === 0 ? [{ header: "@@ -1 +1 @@", lines: [{ type: "del", text: "old" }] }] : null }),
     });
-    render(<EditorPane file={FILE} request={request} onReload={vi.fn()} />);
+    render(<EditorPane path="a.ts" request={request} />);
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
     });

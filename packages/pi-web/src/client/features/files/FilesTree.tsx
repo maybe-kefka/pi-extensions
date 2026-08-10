@@ -8,25 +8,23 @@ import {
   createRootTree,
   findNode,
   setDirState,
+  type DirEntryDto,
   type TreeState,
 } from "@/entities/files/tree";
-import type { DirEntryDto } from "@/entities/files/tree";
-import type { OpenedFile } from "@/entities/files/editor";
 import { gitStatusLabel, type GitInfoDto } from "@/entities/files/git-info";
 import { TreeView } from "./TreeView";
-import { EditorPane } from "./EditorPane";
 
-interface ReadFileResult {
-  content: string;
-  mode: "text" | "binary" | "too-large";
-  size: number;
-  mtimeMs: number;
-  hash: string;
+export interface FilesTreeProps {
+  request: RpcClient["request"];
+  /** 打开文件（App 层进入 tab 系统） */
+  onOpenFile: (path: string, name: string) => void;
+  /** 当前激活文件（树高亮） */
+  activePath: string | null;
 }
 
-export function FilesPage({ request }: { request: RpcClient["request"] }) {
+/** 文件浏览树面板（activity bar 文件面板 / 文件视图左侧；tabs 迭代后编辑器归主区） */
+export function FilesTree({ request, onOpenFile, activePath }: FilesTreeProps) {
   const [tree, setTree] = useState<TreeState>(() => createRootTree({ showExcluded: false, showHidden: false }));
-  const [selected, setSelected] = useState<OpenedFile | null>(null);
   const [gitInfo, setGitInfo] = useState<GitInfoDto | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -62,19 +60,6 @@ export function FilesPage({ request }: { request: RpcClient["request"] }) {
       .catch(() => setGitInfo({ isRepo: false }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  const openFile = useCallback(
-    async (path: string) => {
-      try {
-        const r = await request<ReadFileResult>("pi:readFile", { path });
-        setSelected({ path, name: path.split("/").pop() ?? path, ...r });
-        setError(null);
-      } catch (e) {
-        setError(e instanceof Error ? e.message : String(e));
-      }
-    },
-    [request],
-  );
 
   const toggleDir = useCallback(
     (path: string) => {
@@ -121,12 +106,8 @@ export function FilesPage({ request }: { request: RpcClient["request"] }) {
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex items-center gap-2 border-b px-3 py-1.5">
         <FolderTree className="text-muted-foreground size-4" />
-        <span className="text-sm font-semibold">文件浏览</span>
-        <span className="text-muted-foreground hidden truncate text-xs md:inline">{statusLine}</span>
-        <span className="bg-muted text-muted-foreground hidden truncate rounded px-1.5 py-0.5 font-mono text-[11px] lg:inline">
-          {gitStatusLabel(gitInfo)}
-        </span>
-        <div className="ml-auto flex items-center gap-1.5">
+        <span className="truncate text-sm font-semibold">文件浏览</span>
+        <div className="ml-auto flex items-center gap-1">
           <Button
             variant={tree.showExcluded ? "secondary" : "ghost"}
             size="sm"
@@ -151,14 +132,20 @@ export function FilesPage({ request }: { request: RpcClient["request"] }) {
           </Button>
         </div>
       </div>
+      <div className="flex items-center gap-2 px-3 py-1">
+        <span className="bg-muted text-muted-foreground truncate rounded px-1.5 py-0.5 font-mono text-[11px]">
+          {gitStatusLabel(gitInfo)}
+        </span>
+        <span className="text-muted-foreground truncate text-[11px]">{statusLine}</span>
+      </div>
       {error && <div className="bg-destructive/10 text-destructive px-3 py-1 text-xs">{error}</div>}
-      <div className="flex min-h-0 flex-1">
-        <aside className="w-60 shrink-0 border-r">
-          <TreeView nodes={tree.nodes} selectedPath={selected?.path ?? null} onToggleDir={toggleDir} onOpenFile={openFile} />
-        </aside>
-        <main className="min-w-0 flex-1">
-          <EditorPane file={selected} request={request} onReload={setSelected} />
-        </main>
+      <div className="min-h-0 flex-1">
+        <TreeView
+          nodes={tree.nodes}
+          selectedPath={activePath}
+          onToggleDir={toggleDir}
+          onOpenFile={(path) => onOpenFile(path, path.split("/").pop() ?? path)}
+        />
       </div>
     </div>
   );

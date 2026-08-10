@@ -48,10 +48,9 @@ function langExt(lang: SupportedLang | null) {
 }
 
 export interface EditorPaneProps {
-  file: OpenedFile | null;
+  /** 文件相对路径（tab 迭代后由父级传 path，EditorPane 自行加载） */
+  path: string;
   request: RpcClient["request"];
-  /** 磁盘重新加载后父级更新打开文件快照（放弃/重新加载/保存后刷新） */
-  onReload: (file: OpenedFile) => void;
 }
 
 /** 防抖保存间隔（ms） */
@@ -88,11 +87,30 @@ function fmtSize(n: number): string {
   return `${(n / 1024 / 1024).toFixed(1)} MB`;
 }
 
-export function EditorPane({ file, request, onReload }: EditorPaneProps) {
-  const EMPTY: OpenedFile = { path: "", name: "", content: "", mode: "text", size: 0, mtimeMs: 0, hash: "" };
-  const [edit, dispatch] = useReducer(reducer, file ?? EMPTY, initialEditState);
+const EMPTY: OpenedFile = { path: "", name: "", content: "", mode: "text", size: 0, mtimeMs: 0, hash: "" };
+
+export function EditorPane({ path, request }: EditorPaneProps) {
+  const [file, setFile] = useState<OpenedFile | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [edit, dispatch] = useReducer(reducer, EMPTY, initialEditState);
   const [diff, setDiff] = useState<{ isRepo: boolean; hunks: DiffHunkDto[] } | null>(null);
   const filePathRef = useRef<string | null>(null);
+
+  const loadFile = useCallback(
+    async (p: string) => {
+      try {
+        const r = await request<Omit<OpenedFile, "path" | "name">>("pi:readFile", { path: p });
+        const opened: OpenedFile = { path: p, name: p.split("/").pop() ?? p, ...r };
+        setFile(opened);
+        setLoadError(null);
+        dispatch({ kind: "reload", file: opened });
+      } catch (e) {
+        setLoadError(e instanceof Error ? e.message : String(e));
+        setFile(null);
+      }
+    },
+    [request],
+  );
 
   const loadDiff = useCallback(
     async (path: string) => {
@@ -106,14 +124,14 @@ export function EditorPane({ file, request, onReload }: EditorPaneProps) {
     [request],
   );
 
-  // 打开新文件 → 重置编辑状态（防抖窗口内的未保存编辑随切换丢弃）+ 加载 diff
+  // path 变化（tab 打开/切换实例）→ 加载文件 + diff
   useEffect(() => {
-    if (file && file.path !== filePathRef.current) {
-      filePathRef.current = file.path;
-      dispatch({ kind: "reload", file });
-      void loadDiff(file.path);
+    if (path && path !== filePathRef.current) {
+      filePathRef.current = path;
+      void loadFile(path);
+      void loadDiff(path);
     }
-  }, [file, loadDiff]);
+  }, [path, loadFile, loadDiff]);
 
   const doSave = useCallback(
     async (state: EditState) => {
@@ -133,7 +151,7 @@ export function EditorPane({ file, request, onReload }: EditorPaneProps) {
           });
           dispatch({ kind: "saved", hash: fresh.hash, mtimeMs: fresh.mtimeMs });
           const nextFile: OpenedFile = { ...file, hash: fresh.hash, mtimeMs: fresh.mtimeMs, content: state.content };
-          onReload(nextFile);
+          setFile(nextFile);
           void loadDiff(file.path); // 保存后刷新 diff
         } else if (r.reason === "conflict" && r.current) {
           dispatch({ kind: "conflict", hash: r.current.hash, mtimeMs: r.current.mtimeMs });
@@ -145,7 +163,7 @@ export function EditorPane({ file, request, onReload }: EditorPaneProps) {
         toast.error(`保存失败：${e instanceof Error ? e.message : String(e)}`);
       }
     },
-    [file, request, onReload],
+    [file, request],
   );
 
   // 防抖自动保存：dirty 且非保存中 → 800ms 后保存
@@ -161,16 +179,16 @@ export function EditorPane({ file, request, onReload }: EditorPaneProps) {
       const r = await request<OpenedFile>("pi:readFile", { path: file.path });
       const next: OpenedFile = { ...file, ...r };
       dispatch({ kind: "reload", file: next });
-      onReload(next);
+      setFile(next);
     } catch (e) {
       toast.error(`重新加载失败：${e instanceof Error ? e.message : String(e)}`);
     }
-  }, [file, request, onReload]);
+  }, [file, request]);
 
   if (!file) {
     return (
       <div className="text-muted-foreground flex h-full items-center justify-center text-sm">
-        从左侧选择文件查看内容
+        {loadError ?? "加载中…"}
       </div>
     );
   }

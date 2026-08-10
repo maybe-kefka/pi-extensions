@@ -6,7 +6,16 @@ import { isTransitionalAction, toAction } from "@/entities/chat/events";
 import type { CommandInfo, FileGroup, HistoryMessage, ModelInfo, PiEvent, SessionInfo, SkillInfo, TreeNode, WebState } from "@/entities/chat/types";
 import { Header } from "@/app/ui/Header";
 import { Chat } from "@/features/chat-stream/Chat";
-import { FilesPage } from "@/features/files/FilesPage";
+import { FilesTree } from "@/features/files/FilesTree";
+import { EditorPane } from "@/features/files/EditorPane";
+import { TabsBar } from "@/features/editor-tabs/TabsBar";
+import {
+  activateTab,
+  closeTab,
+  initialState as initialWorkspace,
+  openFile,
+  type WorkspaceState,
+} from "@/entities/workspace/tabs";
 import { Sidebar, SidebarSheet, type SidebarContentProps } from "@/features/sessions/Sidebar";
 import { InputBar } from "@/features/input-bar/InputBar";
 import { DisconnectBanner } from "@/app/ui/DisconnectBanner";
@@ -51,8 +60,21 @@ export default function App() {
   const [booted, setBooted] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
-  // files 迭代：全屏视图切换（会话页 / 文件浏览页）
-  const [view, setView] = useState<"chat" | "files">("chat");
+  // vscode-align：工作区 tab 状态（文件 tab + 聊天 tab）
+  const [workspace, dispatchWs] = useReducer(
+    (s: WorkspaceState, a: { kind: "open"; path: string; name: string } | { kind: "activate"; id: string } | { kind: "close"; id: string }): WorkspaceState => {
+      switch (a.kind) {
+        case "open":
+          return openFile(s, a.path, a.name);
+        case "activate":
+          return activateTab(s, a.id);
+        case "close":
+          return closeTab(s, a.id);
+      }
+    },
+    undefined,
+    initialWorkspace,
+  );
   // R26：主题偏好（localStorage 持久化）+ 系统深浅（toast 联动）
   const [themePref, setThemePref] = useState<ThemePreference>(() => loadPreference(window.localStorage));
   const [systemScheme, setSystemScheme] = useState<Scheme>(() =>
@@ -361,14 +383,19 @@ export default function App() {
         onOpenDrawer={() => setDrawerOpen(true)}
         onCompact={compact}
         getRequest={getRequest}
-        view={view}
-        onViewChange={setView}
       />
-      {view === "files" ? (
-        <main className="min-h-0 flex-1">
-          <FilesPage request={getRequest()} />
-        </main>
-      ) : (
+      <TabsBar
+        tabs={workspace.tabs}
+        active={workspace.active}
+        sessionName={state.sessionName ?? "聊天"}
+        onActivate={(id) => dispatchWs({ kind: "activate", id })}
+        onClose={(id) => dispatchWs({ kind: "close", id })}
+        onOpenFiles={() => {
+          const files = workspace.tabs.filter((t) => t.kind === "file");
+          dispatchWs({ kind: "activate", id: files.length > 0 ? files[files.length - 1].path : "files" });
+        }}
+      />
+      {workspace.active === "chat" ? (
         <>
           <DisconnectBannerMemo conn={conn} />
           <div className="flex min-h-0 flex-1">
@@ -394,6 +421,30 @@ export default function App() {
             onPickerOpen={refreshPicker}
           />
         </>
+      ) : (
+        <div className="flex min-h-0 flex-1">
+          <aside className="w-60 shrink-0 border-r">
+            <FilesTree
+              request={getRequest()}
+              onOpenFile={(path, name) => dispatchWs({ kind: "open", path, name })}
+              activePath={workspace.active === "chat" || workspace.active === "files" ? null : workspace.active}
+            />
+          </aside>
+          <main className="min-w-0 flex-1">
+            {workspace.tabs
+              .filter((t) => t.kind === "file")
+              .map((t) => (
+                <div key={t.path} className={workspace.active === t.path ? "h-full" : "hidden"}>
+                  <EditorPane path={t.path} request={getRequest()} />
+                </div>
+              ))}
+            {workspace.active === "files" && (
+              <div className="text-muted-foreground flex h-full items-center justify-center text-sm">
+                从左侧选择文件打开
+              </div>
+            )}
+          </main>
+        </div>
       )}
       <TreeDialog
         open={treeOpen}
