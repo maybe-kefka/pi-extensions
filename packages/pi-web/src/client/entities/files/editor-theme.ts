@@ -52,6 +52,10 @@ const viewTheme = EditorView.theme({
   "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, ::selection": {
     backgroundColor: "color-mix(in oklab, var(--primary) 25%, transparent)",
   },
+  ".cm-scroller": {
+    scrollbarWidth: "thin",
+    scrollbarColor: "var(--muted-foreground) transparent",
+  },
   ".cm-gutters": {
     backgroundColor: "var(--background)",
     color: "var(--muted-foreground)",

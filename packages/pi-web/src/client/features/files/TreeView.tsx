@@ -77,7 +77,7 @@ function Row({
 
 export function TreeView({ nodes, selectedPath, onToggleDir, onOpenFile }: TreeViewProps) {
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto py-1">
+    <div className="scrollbar-thin scrollbar-gutter-stable min-h-0 flex-1 overflow-y-auto py-1">
       {nodes.map((n) => (
         <Row
           key={n.path}
