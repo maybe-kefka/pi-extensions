@@ -12,6 +12,9 @@ function makeRequest(calls: string[], overrides: Record<string, unknown> = {}) {
     if (method === "pi:gitBranches") {
       return overrides.gitBranches ?? { isRepo: true, current: "main", branches: ["main", "feat", "fix/1"] };
     }
+    if (method === "pi:gitStatus") {
+      return overrides.gitStatus ?? { isRepo: true, entries: [], aggregated: {} };
+    }
     if (method === "pi:gitSwitch" || method === "pi:gitMerge" || method === "pi:gitRebase" || method === "pi:gitBranchDelete" || method === "pi:gitBranchCreate") {
       if (typeof overrides.fail === "string") throw new Error(overrides.fail);
       return { ok: true };
@@ -100,5 +103,88 @@ describe("GitPanel 分支管理", () => {
     await waitFor(() => {
       expect(calls.some((c) => c.startsWith("pi:gitBranchCreate") && c.includes("hotfix"))).toBe(true);
     });
+  });
+});
+
+describe("GitPanel staging/commit", () => {
+  afterEach(cleanup);
+
+  function scRequest(calls: string[]) {
+    const request = (async (method: string, params: Record<string, unknown> = {}) => {
+      calls.push(`${method}:${JSON.stringify(params)}`);
+      if (method === "pi:gitBranches") return { isRepo: true, current: "main", branches: ["main"] };
+      if (method === "pi:gitStatus") {
+        return {
+          isRepo: true,
+          entries: [
+            { path: "staged.ts", status: "M", staged: true },
+            { path: "work.ts", status: "M", staged: false },
+            { path: "new.ts", status: "??", staged: false },
+          ],
+          aggregated: {},
+        };
+      }
+      if (method === "pi:gitStage" || method === "pi:gitUnstage" || method === "pi:gitCommit") return { ok: true };
+      throw new Error(`unexpected ${method}`);
+    }) as RpcClient["request"];
+    return { request, calls };
+  }
+
+  it("改动列表分组渲染（staged 在前）+ 行操作按钮", async () => {
+    const { request } = scRequest([]);
+    render(<GitPanel request={request} />);
+    expect(await screen.findByText("staged.ts")).toBeTruthy();
+    expect(screen.getByText("work.ts")).toBeTruthy();
+    expect(screen.getByText("new.ts")).toBeTruthy();
+    expect(screen.getByTitle("取消暂存")).toBeTruthy();
+    expect(screen.getAllByTitle("暂存").length).toBe(2);
+  });
+
+  it("暂存单文件 → pi:gitStage", async () => {
+    const calls: string[] = [];
+    const { request } = scRequest(calls);
+    render(<GitPanel request={request} />);
+    await screen.findByText("work.ts");
+    const row = screen.getByText("work.ts").closest(".group")!;
+    fireEvent.click(row.querySelector('button[title="暂存"]')!);
+    await waitFor(() => {
+      expect(calls.some((c) => c.startsWith("pi:gitStage") && c.includes("work.ts"))).toBe(true);
+    });
+  });
+
+  it("取消暂存 → pi:gitUnstage", async () => {
+    const calls: string[] = [];
+    const { request } = scRequest(calls);
+    render(<GitPanel request={request} />);
+    await screen.findByText("staged.ts");
+    const row = screen.getByText("staged.ts").closest(".group")!;
+    fireEvent.click(row.querySelector('button[title="取消暂存"]')!);
+    await waitFor(() => {
+      expect(calls.some((c) => c.startsWith("pi:gitUnstage"))).toBe(true);
+    });
+  });
+
+  it("commit：空 message 禁用；有 staged + message 才可提交", async () => {
+    const calls: string[] = [];
+    const { request } = scRequest(calls);
+    render(<GitPanel request={request} />);
+    await screen.findByText("staged.ts");
+    expect((screen.getByText("提交") as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(screen.getByPlaceholderText(/提交信息/), { target: { value: "feat: smoke" } });
+    expect((screen.getByText("提交") as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(screen.getByText("提交"));
+    await waitFor(() => {
+      expect(calls.some((c) => c.startsWith("pi:gitCommit") && c.includes("feat: smoke"))).toBe(true);
+    });
+  });
+
+  it("点击改动文件 → onOpenFile", async () => {
+    const calls: string[] = [];
+    const { request } = scRequest(calls);
+    const onOpenFile = vi.fn();
+    render(<GitPanel request={request} onOpenFile={onOpenFile} />);
+    await screen.findByText("work.ts");
+    fireEvent.click(screen.getByText("work.ts"));
+    expect(onOpenFile).toHaveBeenCalledWith("work.ts");
   });
 });

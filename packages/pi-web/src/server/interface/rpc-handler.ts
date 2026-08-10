@@ -26,10 +26,13 @@ import { deletePath, listDir, mkdirPath, readFileText, renamePath, touchPath, wr
 import { createBranch as createBranchOp } from "../domain/git.js";
 import {
   aggregateStatus,
+  commitChanges,
   deleteBranch,
   fileDiff,
   listBranches,
   mergeBranch,
+  stageFiles,
+  unstageFiles,
   parsePorcelain,
   rebaseBranch,
   repoInfo,
@@ -433,6 +436,31 @@ async function handleRequest(
       const branch = typeof params.branch === "string" ? params.branch : "";
       const r = await rebaseBranch(ctx.cwd, branch, createGitRunner(ctx.cwd));
       if (!r.ok) throw new WebServerError(-32603, r.error);
+      return { ok: true };
+    }
+
+    case "pi:gitStage": {
+      // vscode-align 05b：暂存（单文件或全部）
+      const ctx = requireCtxOf();
+      const path = typeof params.path === "string" ? params.path : null;
+      const res = await stageFiles(ctx.cwd, path ? [path] : ["."], createGitRunner(ctx.cwd));
+      if (!res.ok) throw new WebServerError(-32603, res.error);
+      return { ok: true };
+    }
+
+    case "pi:gitUnstage": {
+      const ctx = requireCtxOf();
+      const path = typeof params.path === "string" ? params.path : null;
+      const res = await unstageFiles(ctx.cwd, path ? [path] : ["."], createGitRunner(ctx.cwd));
+      if (!res.ok) throw new WebServerError(-32603, res.error);
+      return { ok: true };
+    }
+
+    case "pi:gitCommit": {
+      const ctx = requireCtxOf();
+      const message = typeof params.message === "string" ? params.message : "";
+      const res = await commitChanges(ctx.cwd, message, createGitRunner(ctx.cwd));
+      if (!res.ok) throw new WebServerError(-32603, res.error);
       return { ok: true };
     }
 

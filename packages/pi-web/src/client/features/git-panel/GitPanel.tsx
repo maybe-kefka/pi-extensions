@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Check, GitBranch, GitMerge, GitPullRequest, Plus, Trash2 } from "lucide-react";
+import { ArrowDownToLine, ArrowUpFromLine, Check, CirclePlus, GitBranch, GitMerge, GitPullRequest, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/shared/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/shared/ui/dialog";
@@ -8,12 +8,20 @@ import type { RpcClient } from "@/shared/api/rpc";
 
 export interface GitPanelProps {
   request: RpcClient["request"];
+  /** 点击改动文件 → 打开文件 tab（App 注入） */
+  onOpenFile?: (path: string) => void;
+}
+
+export interface GitStatusEntry {
+  path: string;
+  status: string;
+  staged: boolean;
 }
 
 type BranchOp = { kind: "merge" | "rebase" | "delete"; branch: string };
 
 /** git 控制面板：分支管理（vscode-align 05a；staging/commit/push/stash 后续票扩展） */
-export function GitPanel({ request }: GitPanelProps) {
+export function GitPanel({ request, onOpenFile }: GitPanelProps) {
   const [branches, setBranches] = useState<string[]>([]);
   const [current, setCurrent] = useState<string | null>(null);
   const [isRepo, setIsRepo] = useState(true);
@@ -21,13 +29,20 @@ export function GitPanel({ request }: GitPanelProps) {
   const [creating, setCreating] = useState(false);
   const [newBranch, setNewBranch] = useState("");
   const [confirmOp, setConfirmOp] = useState<BranchOp | null>(null);
+  const [status, setStatus] = useState<GitStatusEntry[]>([]);
+  const [commitMessage, setCommitMessage] = useState("");
+  const [committing, setCommitting] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
-      const r = await request<{ isRepo: boolean; current: string | null; branches: string[] }>("pi:gitBranches");
-      setIsRepo(r.isRepo);
-      setCurrent(r.current);
-      setBranches(r.branches);
+      const [b, s] = await Promise.all([
+        request<{ isRepo: boolean; current: string | null; branches: string[] }>("pi:gitBranches"),
+        request<{ isRepo: boolean; entries: GitStatusEntry[] }>("pi:gitStatus"),
+      ]);
+      setIsRepo(b.isRepo);
+      setCurrent(b.current);
+      setBranches(b.branches);
+      setStatus(s.entries ?? []);
     } catch {
       setIsRepo(false);
     }
@@ -67,6 +82,55 @@ export function GitPanel({ request }: GitPanelProps) {
       toast.error(`创建失败：${e instanceof Error ? e.message : String(e)}`);
     }
   }, [newBranch, request, refresh]);
+
+  const stagePath = useCallback(
+    async (path: string) => {
+      try {
+        await request("pi:gitStage", { path });
+        void refresh();
+      } catch (e) {
+        toast.error(`暂存失败：${e instanceof Error ? e.message : String(e)}`);
+      }
+    },
+    [request, refresh],
+  );
+
+  const unstagePath = useCallback(
+    async (path: string) => {
+      try {
+        await request("pi:gitUnstage", { path });
+        void refresh();
+      } catch (e) {
+        toast.error(`取消暂存失败：${e instanceof Error ? e.message : String(e)}`);
+      }
+    },
+    [request, refresh],
+  );
+
+  const stageAll = useCallback(async () => {
+    try {
+      await request("pi:gitStage", { all: true });
+      void refresh();
+    } catch (e) {
+      toast.error(`暂存失败：${e instanceof Error ? e.message : String(e)}`);
+    }
+  }, [request, refresh]);
+
+  const commit = useCallback(async () => {
+    const message = commitMessage.trim();
+    if (message === "" || committing) return;
+    setCommitting(true);
+    try {
+      await request("pi:gitCommit", { message });
+      toast.success("已提交");
+      setCommitMessage("");
+      void refresh();
+    } catch (e) {
+      toast.error(`提交失败：${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setCommitting(false);
+    }
+  }, [commitMessage, committing, request, refresh]);
 
   const runConfirmOp = useCallback(async () => {
     if (!confirmOp) return;
@@ -137,6 +201,64 @@ export function GitPanel({ request }: GitPanelProps) {
             </div>
           );
         })}
+      </div>
+
+      <div className="border-t">
+        <div className="flex items-center gap-2 px-3 py-1.5">
+          <span className="text-xs font-semibold">更改</span>
+          <span className="text-muted-foreground text-[11px] tabular-nums">{status.length} 项</span>
+          <Button variant="ghost" size="sm" className="ml-auto h-6 px-2 text-[11px]" title="全部暂存" onClick={() => void stageAll()}>
+            <CirclePlus className="mr-1 size-3" />
+            全部暂存
+          </Button>
+        </div>
+        <div className="scrollbar-thin max-h-48 overflow-y-auto">
+          {status.length === 0 && <div className="text-muted-foreground px-3 py-2 text-[11px]">工作区干净</div>}
+          {[...status].sort((a, b) => Number(b.staged) - Number(a.staged)).map((entry) => (
+            <div key={entry.path} className="group flex items-center gap-1.5 px-3 py-1 text-xs">
+              <span className={`w-4 shrink-0 font-mono text-[10px] font-bold ${entry.staged ? "text-primary" : "text-muted-foreground"}`}>
+                {entry.staged ? "A" : "M"}
+              </span>
+              <span
+                className="hover:text-primary min-w-0 flex-1 cursor-pointer truncate"
+                title={entry.path}
+                onClick={() => onOpenFile?.(entry.path)}
+              >
+                {entry.path}
+              </span>
+              {entry.staged ? (
+                <button title="取消暂存" className="hover:text-foreground text-muted-foreground shrink-0 cursor-pointer p-0.5" onClick={() => void unstagePath(entry.path)}>
+                  <ArrowDownToLine className="size-3.5" />
+                </button>
+              ) : (
+                <button title="暂存" className="hover:text-foreground text-muted-foreground shrink-0 cursor-pointer p-0.5" onClick={() => void stagePath(entry.path)}>
+                  <ArrowUpFromLine className="size-3.5" />
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-2 border-t p-3">
+        <textarea
+          value={commitMessage}
+          onChange={(e) => setCommitMessage(e.target.value)}
+          placeholder="提交信息（Ctrl+Enter 提交）"
+          rows={2}
+          className="border-input bg-background text-foreground placeholder:text-muted-foreground min-h-0 resize-none rounded border px-2 py-1.5 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) void commit();
+          }}
+        />
+        <Button
+          size="sm"
+          className="h-7 text-xs"
+          disabled={commitMessage.trim() === "" || !status.some((s) => s.staged) || committing}
+          onClick={() => void commit()}
+        >
+          {committing ? "提交中…" : "提交"}
+        </Button>
       </div>
 
       <Dialog open={creating} onOpenChange={(open) => !open && setCreating(false)}>

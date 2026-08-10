@@ -230,6 +230,7 @@ export function assertGitOp(args: string[]): GitOpAllow {
       if (cmd === "restore" && arg === "--staged") continue;
       if (cmd === "push" && (arg === "-u" || arg === "--set-upstream")) continue;
       if (cmd === "stash" && (arg === "push" || arg === "pop" || arg === "apply" || arg === "drop" || arg === "list" || arg === "show")) continue;
+      if (cmd === "commit" && arg === "-m") continue;
       return { ok: false, error: `标志不在白名单：${arg}` };
     }
   }
@@ -281,4 +282,20 @@ export async function mergeBranch(cwd: string, branch: string, git: GitRunner): 
 
 export async function rebaseBranch(cwd: string, branch: string, git: GitRunner): Promise<GitOpResult> {
   return runOp(["rebase", branch], cwd, git, "rebase");
+}
+
+/** 暂存文件（git add；白名单内） */
+export async function stageFiles(cwd: string, paths: string[], git: GitRunner): Promise<GitOpResult> {
+  return runOp(["add", ...paths], cwd, git);
+}
+
+/** 取消暂存（git restore --staged；白名单内） */
+export async function unstageFiles(cwd: string, paths: string[], git: GitRunner): Promise<GitOpResult> {
+  return runOp(["restore", "--staged", ...paths], cwd, git);
+}
+
+/** 提交（git commit -m；空消息拒绝） */
+export async function commitChanges(cwd: string, message: string, git: GitRunner): Promise<GitOpResult> {
+  if (message.trim() === "") return { ok: false, error: "commit message 不能为空" };
+  return runOp(["commit", "-m", message], cwd, git);
 }

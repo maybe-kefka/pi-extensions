@@ -411,7 +411,7 @@ export default function App() {
                 gitRefreshKey={gitRefreshKey}
               />
             )}
-            {panel === "git" && <GitPanel request={getRequest()} />}
+            {panel === "git" && <GitPanel request={getRequest()} onOpenFile={(path) => dispatchWs({ kind: "open", path, name: path.split("/").pop() ?? path })} />}
             {panel === "sessions" && <SessionPanel {...sessionPanelProps} />}
             {panel === "settings" && <SettingsPanel {...settingsPanelProps} />}
           </aside>

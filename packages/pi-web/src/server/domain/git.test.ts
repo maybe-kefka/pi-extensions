@@ -7,10 +7,13 @@ import {
   fileDiff,
   listBranches,
   mergeBranch,
+  commitChanges,
   parseGitDiff,
   parsePorcelain,
   repoInfo,
+  stageFiles,
   switchBranch,
+  unstageFiles,
   type GitRunner,
 } from "./git.js";
 
@@ -335,5 +338,52 @@ describe("分支操作编排", () => {
   it("merge/rebase 失败透传 stderr", async () => {
     const git = runner({ "merge feat": { code: 1, stderr: "CONFLICT (content)" } });
     expect(await mergeBranch("/repo", "feat", git)).toEqual({ ok: false, error: expect.stringContaining("CONFLICT") });
+  });
+});
+
+describe("staging / commit 编排", () => {
+  const runner = (responses: Record<string, { code: number; stderr?: string }>) => {
+    return (async (args: string[]) => {
+      const r = responses[args.join(" ")] ?? { code: 0 };
+      return { code: r.code, stdout: "", stderr: r.stderr ?? "" };
+    }) as GitRunner;
+  };
+
+  it("stageFiles 调 git add（多路径）", async () => {
+    const calls: string[][] = [];
+    const git = (async (args: string[]) => {
+      calls.push(args);
+      return { code: 0, stdout: "", stderr: "" };
+    }) as GitRunner;
+    expect(await stageFiles("/repo", ["a.ts", "b.ts"], git)).toEqual({ ok: true });
+    expect(calls).toEqual([["add", "a.ts", "b.ts"]]);
+  });
+
+  it("unstageFiles 调 git restore --staged", async () => {
+    const calls: string[][] = [];
+    const git = (async (args: string[]) => {
+      calls.push(args);
+      return { code: 0, stdout: "", stderr: "" };
+    }) as GitRunner;
+    expect(await unstageFiles("/repo", ["a.ts"], git)).toEqual({ ok: true });
+    expect(calls).toEqual([["restore", "--staged", "a.ts"]]);
+  });
+
+  it("commitChanges 调 git commit -m；空消息拒绝", async () => {
+    const calls: string[][] = [];
+    const git = (async (args: string[]) => {
+      calls.push(args);
+      return { code: 0, stdout: "", stderr: "" };
+    }) as GitRunner;
+    expect(await commitChanges("/repo", "", git)).toEqual({ ok: false, error: expect.any(String) });
+    expect(await commitChanges("/repo", "feat: x", git)).toEqual({ ok: true });
+    expect(calls).toEqual([["commit", "-m", "feat: x"]]);
+  });
+
+  it("commit 失败（无用户配置等）stderr 透传", async () => {
+    const git = runner({
+      "commit -m msg": { code: 128, stderr: "Author identity unknown" },
+    });
+    expect(await commitChanges("/repo", "msg", git)).toEqual({ ok: false, error: expect.stringContaining("Author identity") });
   });
 });
