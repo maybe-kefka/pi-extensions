@@ -16,7 +16,6 @@ import type { RpcClient } from "@/shared/api/rpc";
 import { langForFile, type SupportedLang } from "@/entities/files/lang";
 import { createEditorTheme } from "@/entities/files/editor-theme";
 import { isEditable, type OpenedFile } from "@/entities/files/editor";
-import type { DiffHunkDto } from "@/entities/files/diff";
 import {
   editContent,
   initialEditState,
@@ -27,7 +26,6 @@ import {
   resolveConflictOverwrite,
   type EditState,
 } from "@/entities/files/save-state";
-import { DiffView } from "./DiffView";
 
 function langExt(lang: SupportedLang | null) {
   switch (lang) {
@@ -100,7 +98,6 @@ export const EditorPane = forwardRef<EditorPaneHandle, EditorPaneProps>(function
   const [file, setFile] = useState<OpenedFile | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [edit, dispatch] = useReducer(reducer, EMPTY, initialEditState);
-  const [diff, setDiff] = useState<{ isRepo: boolean; hunks: DiffHunkDto[] } | null>(null);
   const filePathRef = useRef<string | null>(null);
 
   const loadFile = useCallback(
@@ -119,26 +116,13 @@ export const EditorPane = forwardRef<EditorPaneHandle, EditorPaneProps>(function
     [request],
   );
 
-  const loadDiff = useCallback(
-    async (path: string) => {
-      try {
-        const r = await request<{ isRepo: boolean; diff: DiffHunkDto[] | null }>("pi:gitDiff", { path });
-        setDiff({ isRepo: r.isRepo, hunks: r.diff ?? [] });
-      } catch {
-        setDiff({ isRepo: false, hunks: [] });
-      }
-    },
-    [request],
-  );
-
-  // path 变化（tab 打开/切换实例）→ 加载文件 + diff
+  // path 变化（tab 打开/切换实例）→ 加载文件
   useEffect(() => {
     if (path && path !== filePathRef.current) {
       filePathRef.current = path;
       void loadFile(path);
-      void loadDiff(path);
     }
-  }, [path, loadFile, loadDiff]);
+  }, [path, loadFile]);
 
   const doSave = useCallback(
     async (state: EditState): Promise<boolean> => {
@@ -161,7 +145,6 @@ export const EditorPane = forwardRef<EditorPaneHandle, EditorPaneProps>(function
           setFile(nextFile);
           onDirtyChange?.(file.path, false);
           onSaved?.(file.path);
-          void loadDiff(file.path); // 保存后刷新 diff
           return true;
         } else if (r.reason === "conflict" && r.current) {
           dispatch({ kind: "conflict", hash: r.current.hash, mtimeMs: r.current.mtimeMs });
@@ -246,7 +229,6 @@ export const EditorPane = forwardRef<EditorPaneHandle, EditorPaneProps>(function
         {edit.saving && <Badge variant="secondary">保存中…</Badge>}
         {modeNote}
       </div>
-      {diff && <DiffView hunks={diff.hunks} isRepo={diff.isRepo} />}
       <div className="min-h-0 flex-1 overflow-hidden">
         {file.mode === "text" ? (
           <CodeMirror

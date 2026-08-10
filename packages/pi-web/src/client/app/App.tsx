@@ -8,13 +8,16 @@ import { Header } from "@/app/ui/Header";
 import { Chat } from "@/features/chat-stream/Chat";
 import { FilesTree } from "@/features/files/FilesTree";
 import { EditorPane } from "@/features/files/EditorPane";
+import { DiffSplitView } from "@/features/files/DiffSplitView";
 import { TabsBar } from "@/features/editor-tabs/TabsBar";
 import { Button } from "@/shared/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/shared/ui/dialog";
 import {
   activateTab,
   closeTab,
+  diffPathOf,
   initialState as initialWorkspace,
+  openDiffTab,
   openFile,
   promotePreview,
   setDirty,
@@ -101,11 +104,19 @@ export default function App() {
   const [workspace, dispatchWs] = useReducer(
     (
       s: WorkspaceState,
-      a: { kind: "open"; path: string; name: string; preview?: boolean } | { kind: "activate"; id: string } | { kind: "close"; id: string } | { kind: "dirty"; path: string; dirty: boolean } | { kind: "promote"; path: string },
+      a:
+        | { kind: "open"; path: string; name: string; preview?: boolean }
+        | { kind: "open-diff"; path: string; name: string }
+        | { kind: "activate"; id: string }
+        | { kind: "close"; id: string }
+        | { kind: "dirty"; path: string; dirty: boolean }
+        | { kind: "promote"; path: string },
     ): WorkspaceState => {
       switch (a.kind) {
         case "open":
           return openFile(s, a.path, a.name, { preview: a.preview });
+        case "open-diff":
+          return openDiffTab(s, a.path, a.name);
         case "activate":
           return activateTab(s, a.id);
         case "close":
@@ -453,7 +464,7 @@ export default function App() {
                 gitRefreshKey={gitRefreshKey}
               />
             )}
-            {panel === "git" && <GitPanel request={getRequest()} onOpenFile={(path) => dispatchWs({ kind: "open", path, name: path.split("/").pop() ?? path, preview: false })} />}
+            {panel === "git" && <GitPanel request={getRequest()} onOpenFile={(path) => dispatchWs({ kind: "open-diff", path, name: path.split("/").pop() ?? path })} />}
             {panel === "sessions" && <SessionPanel {...sessionPanelProps} />}
             {panel === "settings" && <SettingsPanel {...settingsPanelProps} />}
           </aside>
@@ -520,7 +531,14 @@ export default function App() {
                 />
               </div>
             ))}
-          {workspace.active === "files" && (
+          {workspace.tabs
+            .filter((t) => t.kind === "diff")
+            .map((t) => (
+              <div key={`diff:${t.path}`} className={workspace.active === `diff:${t.path}` ? "h-full" : "hidden"}>
+                <DiffSplitView path={t.path} request={getRequest()} />
+              </div>
+            ))}
+          {(workspace.active === "files" || diffPathOf(workspace.active) !== null) && workspace.active !== "chat" && !workspace.tabs.some((t) => (t.kind === "file" ? t.path === workspace.active : false)) && !workspace.tabs.some((t) => t.kind === "diff" && workspace.active === `diff:${t.path}`) && (
             <div className="text-muted-foreground flex h-full items-center justify-center text-sm">
               从左侧选择文件打开
             </div>

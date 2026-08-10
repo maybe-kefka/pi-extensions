@@ -394,3 +394,18 @@ export async function assertRepoRoot(
   }
   return { ok: true, root: abs };
 }
+
+/** HEAD 版本文件内容（只读；路径白名单内——防 `HEAD:../../` 注入） */
+export async function showHeadFile(
+  cwd: string,
+  relPath: string,
+  git: GitRunner,
+): Promise<{ ok: true; content: string } | { ok: false; error: string }> {
+  const abs = resolveWithinRoot(cwd, relPath);
+  if (!abs) return { ok: false, error: "路径越权" };
+  const r = await git(["show", `HEAD:${relPath}`]);
+  if (r.code !== 0) {
+    return { ok: false, error: r.stderr.trim() || "HEAD 中无此文件（可能未跟踪/新增）" };
+  }
+  return { ok: true, content: r.stdout };
+}

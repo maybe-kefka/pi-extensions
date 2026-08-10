@@ -5,6 +5,7 @@
 
 export type WorkspaceTab =
   | { kind: "file"; path: string; name: string; dirty: boolean; preview: boolean }
+  | { kind: "diff"; path: string; name: string }
   | { kind: "chat" };
 
 export interface WorkspaceState {
@@ -66,16 +67,19 @@ export function activateTab(state: WorkspaceState, id: string): WorkspaceState {
   return { ...state, active: id };
 }
 
-/** 关闭文件 tab：激活右邻（无则左邻）；聊天 tab 不可关闭；不存在则状态不变 */
+/** 关闭 tab（文件/diff）：激活右邻（无则左邻）；聊天 tab 不可关闭；不存在则状态不变 */
 export function closeTab(state: WorkspaceState, id: string): WorkspaceState {
   if (id === CHAT_TAB_ID) return state;
-  const idx = state.tabs.findIndex((t) => t.kind === "file" && t.path === id);
+  const isDiff = id.startsWith("diff:");
+  const match = (t: WorkspaceTab): boolean =>
+    isDiff ? t.kind === "diff" && diffTabId(t.path) === id : t.kind === "file" && t.path === id;
+  const idx = state.tabs.findIndex(match);
   if (idx === -1) return state;
-  const tabs = state.tabs.filter((t) => !(t.kind === "file" && t.path === id));
+  const tabs = state.tabs.filter((t) => !match(t));
   let active = state.active;
   if (active === id) {
     const next = tabs[Math.min(idx, tabs.length - 1)];
-    active = next ? (next.kind === "file" ? next.path : CHAT_TAB_ID) : CHAT_TAB_ID;
+    active = next ? (next.kind === "file" ? next.path : next.kind === "diff" ? diffTabId(next.path) : CHAT_TAB_ID) : CHAT_TAB_ID;
   }
   return { tabs, active };
 }
@@ -99,4 +103,27 @@ export function tabDirty(state: WorkspaceState, path: string): boolean {
 /** 是否存在 dirty 文件 tab（关闭确认/保存按钮用） */
 export function hasDirty(state: WorkspaceState): boolean {
   return state.tabs.some((t) => t.kind === "file" && t.dirty);
+}
+
+/** 打开 diff tab（与编辑器 tab 可共存；去重激活） */
+export function openDiffTab(state: WorkspaceState, path: string, name: string): WorkspaceState {
+  if (state.tabs.some((t) => t.kind === "diff" && t.path === path)) {
+    return { ...state, active: diffTabId(path) };
+  }
+  return { tabs: [...state.tabs, { kind: "diff", path, name }], active: diffTabId(path) };
+}
+
+/** diff tab 激活标识（与文件 tab 同 path 时区分——active 用 path 会冲突！） */
+export function diffTabId(path: string): string {
+  return `diff:${path}`;
+}
+
+/** 激活 diff tab（active 用带前缀 id；渲染时按 kind 匹配） */
+export function activateDiffTab(state: WorkspaceState, path: string): WorkspaceState {
+  return { ...state, active: diffTabId(path) };
+}
+
+/** 从激活 id 解析 diff 路径 */
+export function diffPathOf(active: string): string | null {
+  return active.startsWith("diff:") ? active.slice(5) : null;
 }

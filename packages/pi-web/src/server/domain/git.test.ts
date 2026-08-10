@@ -16,6 +16,7 @@ import {
   pullBranch,
   repoBrief,
   pushBranch,
+  showHeadFile,
   repoInfo,
   stageFiles,
   stashOp,
@@ -524,5 +525,33 @@ describe("assertRepoRoot", () => {
     expect(noGit.ok).toBe(false);
     const denied = await assertRepoRoot("/w", "../x", fs);
     expect(denied.ok).toBe(false);
+  });
+});
+
+describe("showHeadFile", () => {
+  it("成功返回 HEAD 版本内容", async () => {
+    const calls: string[][] = [];
+    const git = (async (args: string[]) => {
+      calls.push(args);
+      return { code: 0, stdout: "old content\n", stderr: "" };
+    }) as GitRunner;
+    expect(await showHeadFile("/w", "a.ts", git)).toEqual({ ok: true, content: "old content\n" });
+    expect(calls).toEqual([["show", "HEAD:a.ts"]]);
+  });
+
+  it("新文件（无 HEAD 版本）返回错误", async () => {
+    const git = (async () => ({ code: 128, stdout: "", stderr: "fatal: path 'new.ts' exists on disk, but not in 'HEAD'" })) as GitRunner;
+    const r = await showHeadFile("/w", "new.ts", git);
+    expect(r.ok).toBe(false);
+  });
+
+  it("越权路径拒绝（不执行 git）", async () => {
+    let called = false;
+    const git = (async () => {
+      called = true;
+      return { code: 0, stdout: "", stderr: "" };
+    }) as GitRunner;
+    expect(await showHeadFile("/w", "../etc/passwd", git)).toEqual({ ok: false, error: expect.any(String) });
+    expect(called).toBe(false);
   });
 });

@@ -41,6 +41,7 @@ import {
   pushBranch,
   rebaseBranch,
   repoBrief,
+  showHeadFile,
   repoInfo,
   switchBranch,
 } from "../domain/git.js";
@@ -521,6 +522,15 @@ async function handleRequest(
       const res = await stashOp(ctx.cwd, action, message, await gitRunnerFor(ctx, params));
       if (!res.ok) throw new WebServerError(-32603, res.error);
       return { ok: true };
+    }
+
+    case "pi:gitShowHead": {
+      // git-multi-repo 06：HEAD 版本文件内容（只读 diff 左栏）
+      const ctx = requireCtxOf();
+      const relPath = typeof params.path === "string" ? params.path : "";
+      const res = await showHeadFile(ctx.cwd, relPath, await gitRunnerFor(ctx, params));
+      if (!res.ok) throw new WebServerError(-32603, res.error);
+      return { content: res.content };
     }
 
     case "pi:gitDiff": {

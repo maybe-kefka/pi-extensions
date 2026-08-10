@@ -3,8 +3,10 @@ import {
   activateTab,
   chatTab,
   closeTab,
+  diffPathOf,
   hasDirty,
   initialState,
+  openDiffTab,
   openFile,
   promotePreview,
   setDirty,
@@ -168,5 +170,29 @@ describe("preview 模型", () => {
     const s = openFile(initialState(), "a.ts", "a.ts");
     const a = s.tabs.find((t) => t.kind === "file" && t.path === "a.ts");
     expect(a && a.kind === "file" && a.preview).toBe(false);
+  });
+});
+
+describe("diff tab", () => {
+  it("openDiffTab 追加并激活（active 带 diff: 前缀）；与文件 tab 共存", () => {
+    let s = openFile(initialState(), "a.ts", "a.ts");
+    s = openDiffTab(s, "a.ts", "a.ts");
+    expect(s.tabs.some((t) => t.kind === "diff" && t.path === "a.ts")).toBe(true);
+    expect(s.tabs.filter((t) => t.kind === "file")).toHaveLength(1);
+    expect(s.active).toBe("diff:a.ts");
+    expect(diffPathOf(s.active)).toBe("a.ts");
+  });
+
+  it("openDiffTab 去重（再次打开仅激活）", () => {
+    const s1 = openDiffTab(initialState(), "a.ts", "a.ts");
+    const s2 = openDiffTab(s1, "a.ts", "a.ts");
+    expect(s2.tabs.filter((t) => t.kind === "diff")).toHaveLength(1);
+  });
+
+  it("closeTab 关闭 diff tab", () => {
+    const s1 = openDiffTab(initialState(), "a.ts", "a.ts");
+    const s2 = closeTab(s1, "diff:a.ts");
+    expect(s2.tabs.some((t) => t.kind === "diff")).toBe(false);
+    expect(s2.active).toBe("chat");
   });
 });

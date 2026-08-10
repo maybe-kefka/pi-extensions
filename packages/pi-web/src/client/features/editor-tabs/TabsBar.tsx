@@ -1,4 +1,4 @@
-import { MessageSquareText, Save, X } from "lucide-react";
+import { FileDiff, MessageSquareText, Save, X } from "lucide-react";
 import type { WorkspaceTab } from "@/entities/workspace/tabs";
 
 export interface TabsBarProps {
@@ -17,7 +17,7 @@ export function TabsBar({ tabs, active, sessionName, onActivate, onClose, onSave
   return (
     <div className="scrollbar-none flex h-9 shrink-0 items-stretch overflow-x-auto border-b">
       {tabs.map((tab) => {
-        const id = tab.kind === "chat" ? "chat" : tab.path;
+        const id = tab.kind === "chat" ? "chat" : tab.kind === "diff" ? `diff:${tab.path}` : tab.path;
         const isActive = active === id;
         const label = tab.kind === "chat" ? sessionName : tab.name;
         return (
@@ -32,9 +32,10 @@ export function TabsBar({ tabs, active, sessionName, onActivate, onClose, onSave
             title={tab.kind === "chat" ? "聊天" : id}
           >
             {tab.kind === "chat" && <MessageSquareText className="size-3.5 shrink-0" />}
+            {tab.kind === "diff" && <FileDiff className="text-muted-foreground size-3.5 shrink-0" />}
             {tab.kind === "file" && tab.dirty && <span className="bg-primary size-1.5 shrink-0 rounded-full" title="未保存" />}
             <span className={`truncate ${tab.kind === "file" && tab.preview ? "italic" : ""}`}>{label}</span>
-            {tab.kind === "file" && (
+            {tab.kind !== "chat" && (
               <button
                 className="hover:bg-muted text-muted-foreground hover:text-foreground ml-0.5 flex size-4 shrink-0 items-center justify-center rounded"
                 title="关闭 tab"
