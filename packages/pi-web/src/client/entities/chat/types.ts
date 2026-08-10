@@ -78,6 +78,8 @@ export interface TreeNode {
   };
   children: TreeNode[];
   label?: string;
+  /** R27：树深度超限被服务端截断（children 已清空） */
+  truncated?: boolean;
   [k: string]: unknown;
 }
 

@@ -86,6 +86,15 @@ export function isEventMessage(msg: { method: string }): boolean {
   return msg.method === "pi:event";
 }
 
+/**
+ * 序列化 RPC 响应/事件。JSON.stringify 对超深对象抛 RangeError（递归爆栈）、
+ * 对循环引用抛 TypeError——此类异常发生在 async 上下文会以 uncaughtException
+ * 杀死整个 pi 进程（R27 会话树事故）。任何失败都降级为错误 JSON，绝不外抛。
+ */
 export function serialize(msg: unknown): string {
-  return JSON.stringify(msg);
+  try {
+    return JSON.stringify(msg);
+  } catch {
+    return JSON.stringify({ jsonrpc: JSONRPC, error: { code: 1, message: "响应序列化失败（对象过深或含循环引用）" } });
+  }
 }

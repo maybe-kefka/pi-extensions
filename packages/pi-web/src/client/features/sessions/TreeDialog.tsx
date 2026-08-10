@@ -56,6 +56,7 @@ function TreeNodeView({
   const isLeaf = node.entry.id === currentLeafId;
   const [confirming, setConfirming] = useState(false);
   const hasChildren = node.children && node.children.length > 0;
+  const truncated = node.truncated === true;
 
   return (
     <li>
@@ -71,6 +72,7 @@ function TreeNodeView({
           {text}
         </span>
         {isLeaf && <Badge variant="secondary" className="shrink-0">当前</Badge>}
+        {truncated && <Badge variant="outline" className="text-muted-foreground shrink-0">深度已截断</Badge>}
         {navigable && !isLeaf && (
           <Button
             variant="ghost"

@@ -18,6 +18,10 @@ import { askRegistry } from "../domain/web-ask.js";
 import { readFileSync } from "node:fs";
 import { listFiles } from "../domain/file-lister.js";
 import { resolveUserEntryId } from "../domain/fork-util.js";
+import { truncateTree } from "../domain/tree.js";
+
+/** 会话树最大序列化深度（正常树 < 50；200 已含大量裕度，远低于 V8 递归极限） */
+const TREE_MAX_DEPTH = 200;
 import { deleteSessionFile } from "../infrastructure/session-files.js";
 import { messageTextOf, messageThinkingOf, messageToolCalls } from "../infrastructure/http-util.js";
 import { THINKING_LEVELS, SessionManager, type BuildSystemPromptOptions, type WebConsole } from "../application/web-console.js";
@@ -160,7 +164,8 @@ async function handleRequest(
 
     case "pi:getTree": {
       const ctx = requireCtxOf();
-      return { tree: ctx.sessionManager.getTree(), leafId: ctx.sessionManager.getLeafId() ?? null };
+      // R27：树深超过 serialize 递归极限会 RangeError 杀死进程——截断到安全深度
+      return { tree: truncateTree(ctx.sessionManager.getTree(), TREE_MAX_DEPTH), leafId: ctx.sessionManager.getLeafId() ?? null };
     }
 
     case "pi:deleteSession": {

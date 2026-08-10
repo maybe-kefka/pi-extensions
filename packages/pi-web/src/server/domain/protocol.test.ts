@@ -89,4 +89,13 @@ describe("响应/事件构造", () => {
   it("serialize 往返", () => {
     expect(JSON.parse(serialize(makeResponse(1)))).toEqual(makeResponse(1));
   });
+
+  // 注：JSON.stringify 的递归爆栈（RangeError）在 bun 实测存在（200k 层即爆）、
+  // 在 node/vitest 不爆（V8 内部迭代处理）——同一 try/catch 路径由下方循环引用测试覆盖。
+  it("serialize 循环引用不抛（兜底错误 JSON）", () => {
+    const cyclic: Record<string, unknown> = {};
+    cyclic.self = cyclic;
+    const parsed = JSON.parse(serialize(cyclic));
+    expect(parsed.error?.code).toBe(1);
+  });
 });
