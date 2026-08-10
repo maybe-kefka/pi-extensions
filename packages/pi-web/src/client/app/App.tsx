@@ -400,7 +400,16 @@ export default function App() {
     <div className="flex h-dvh flex-col bg-background text-foreground">
       <Header conn={conn} state={state} onCompact={compact} getRequest={getRequest} />
       <div className="flex min-h-0 flex-1">
-        <ActivityBar active={panel} onSelect={setPanel} />
+        <ActivityBar
+          active={panel}
+          onSelect={(p) => {
+            setPanel(p);
+            // 打开文件面板且无文件 tab 时进入文件浏览态（主区空态提示）
+            if (p === "files" && !workspace.tabs.some((t) => t.kind === "file")) {
+              dispatchWs({ kind: "activate", id: "files" });
+            }
+          }}
+        />
         {panel !== null && (
           <aside className="w-64 shrink-0 border-r">
             {panel === "files" && (
@@ -429,14 +438,6 @@ export default function App() {
                 dispatchWs({ kind: "close", id });
               }
             }}
-            onOpenFiles={() => {
-              const files = workspace.tabs.filter((t) => t.kind === "file");
-              if (files.length > 0) dispatchWs({ kind: "activate", id: files[files.length - 1].path });
-              else {
-                dispatchWs({ kind: "activate", id: "files" });
-                setPanel("files");
-              }
-            }}
             onSave={() => {
               const active = workspace.active;
               if (active !== "chat" && active !== "files") void editorRefs.current[active]?.save();
@@ -445,7 +446,7 @@ export default function App() {
       {workspace.active === "chat" ? (
         <>
           <DisconnectBannerMemo conn={conn} />
-          <div className="min-h-0 flex-1">
+          <div className="flex min-h-0 flex-1 flex-col">
             <Chat
               state={state}
               dispatch={dispatch}

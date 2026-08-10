@@ -1,4 +1,4 @@
-import { FileCode2, MessageSquareText, Save, X } from "lucide-react";
+import { MessageSquareText, Save, X } from "lucide-react";
 import type { WorkspaceTab } from "@/entities/workspace/tabs";
 
 export interface TabsBarProps {
@@ -8,13 +8,11 @@ export interface TabsBarProps {
   sessionName: string;
   onActivate: (id: string) => void;
   onClose: (id: string) => void;
-  /** 文件浏览入口（无文件 tab 时） */
-  onOpenFiles: () => void;
   /** 保存当前文件（激活文件 tab dirty 时显示） */
   onSave: () => void;
 }
 
-export function TabsBar({ tabs, active, sessionName, onActivate, onClose, onOpenFiles, onSave }: TabsBarProps) {
+export function TabsBar({ tabs, active, sessionName, onActivate, onClose, onSave }: TabsBarProps) {
   const activeFileDirty = tabs.some((t) => t.kind === "file" && t.path === active && t.dirty);
   return (
     <div className="scrollbar-none flex h-9 shrink-0 items-stretch overflow-x-auto border-b">
@@ -61,14 +59,6 @@ export function TabsBar({ tabs, active, sessionName, onActivate, onClose, onOpen
           保存
         </button>
       )}
-      <button
-        className="hover:bg-muted text-muted-foreground hover:text-foreground ml-1 flex shrink-0 cursor-pointer items-center gap-1 self-center rounded px-2 py-1 text-xs"
-        onClick={onOpenFiles}
-        title="打开文件"
-      >
-        <FileCode2 className="size-3.5" />
-        文件
-      </button>
     </div>
   );
 }
