@@ -121,6 +121,12 @@ export function mapEvent(type: string, payload: unknown): MappedEvent {
         refreshState: false,
       };
 
+    // R26 session-follow：自定义广播（会话切换完成 / 特权状态）——需显式映射才透传
+    case "session_switch_ready":
+      return { fields: {}, refreshState: false };
+    case "privilege_status":
+      return { fields: { ok: p.ok ?? false }, refreshState: false };
+
     default:
       return { fields: null, refreshState: false };
   }

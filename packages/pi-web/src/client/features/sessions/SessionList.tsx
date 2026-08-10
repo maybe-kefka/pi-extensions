@@ -50,7 +50,7 @@ export function SessionList({
 
       {degraded && (
         <div className="border-warning/40 bg-warning/10 text-warning mt-2 rounded-md border px-2 py-1.5 text-[11px] leading-snug">
-          会话控制能力已失效（TUI 已切换会话）：新建/切换/fork/树导航需在 TUI 重跑 /web 恢复
+          已切换到新会话：对话正常；切换/新建/树导航需在 TUI 输入 /web 恢复
         </div>
       )}
 

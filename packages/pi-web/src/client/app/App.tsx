@@ -104,6 +104,22 @@ export default function App() {
         } else {
           dispatch(action);
         }
+        // R26 session-follow：会话切换完成 → 列表/高亮/历史跟随（服务端 session_start 广播）
+        if (evt.type === "session_switch_ready") {
+          refreshSessions();
+          rpcRef.current
+            ?.request<{ messages: { role: string; text: string; thinking?: string; toolCalls?: { id: string; name: string; arguments: unknown; result?: string; isError?: boolean }[]; userIndex?: number }[] }>("pi:getMessages")
+            .then((r) => dispatch({ type: "history", messages: r.messages ?? [] }))
+            .catch(() => undefined);
+        }
+        // R26 session-follow：特权状态广播（TUI 切换 → 立即降级提示；重跑 /web → 自动恢复）
+        if (evt.type === "privilege_status") {
+          const ok = (evt as { ok?: boolean }).ok ?? false;
+          setDegraded(!ok);
+          if (!ok) {
+            toast.info("TUI 已切换会话：切换/新建/树导航需在 TUI 输入 /web 恢复");
+          }
+        }
       },
     });
     rpcRef.current = client;

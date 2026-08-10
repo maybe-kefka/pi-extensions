@@ -86,7 +86,7 @@
 
 ### 3.1 会话替换与 ctx 生命周期（v-next 源码核实，2026）
 
-- **扩展工厂每次 session 创建都会重跑**（`loadExtension` → `await factory(api)`，模块级缓存只缓存模块导入，工厂函数体每次执行）：新 session → 新 `ResourceLoader` → 新共享 runtime → 新 pi 对象。pi-web 在 factory 里重绑 `state.api`，因此 **TUI 手动切换后，发消息 / 模型 / 思考等级 / 命令列表自动恢复**（WS 请求每次取最新 api）。
+- **扩展工厂每次 session 创建都会重跑**（`loadExtension` → `await factory(api)`，模块级缓存只缓存模块导入，工厂函数体每次执行）：新 session → 新 `ResourceLoader` → 新共享 runtime → 新 pi 对象。pi-web 的 **WebConsole 是模块级单例**（R26 session-follow 修复：原实现 `createWebConsole()` 在 factory 内 → 每次切换产生新实例 → RPC 闭包指向旧实例（旧 api stale）且新实例 server 为 null（广播全丢）→ 切换后 web 瘫痪）；单例下 factory 重跑只重绑 `state.api`/`state.ctx`（`bindApi`/`bindCtx`），RPC 闭包与事件广播始终指向同一实例 → **TUI 手动切换后发消息 / 模型 / 思考等级 / 命令列表自动恢复**。
 - **模块级变量跨会话保留**：web server 单例、token、coalescer 存活于模块闭包 → 切换不重启服务、WS 不断线（与上表一致）。
 - **特权 ctx（`ExtensionCommandContext`）只在命令执行时创建**，`/web` handler 捕获；会话替换（`switchSession` / `newSession` / `fork`）会 dispose 旧 session → 旧捕获 ctx 的 `assertActive()` 抛错（上游错误消息明示：captured ctx 仅会话内有效，后置工作必须放 `withSession` 回调）。
 - **withSession 续链**：pi-web 发起的会话操作一律带 `withSession: async (fresh) => { state.privileged = fresh }`，切换后特权 ctx 自动指向新会话。**TUI 手动切换时 pi-web 无法重新捕获**（事件 ctx 无特权方法）→ 特权命令（resume/new/fork/clone/tree）降级：请求返回明确错误提示"在 TUI 重跑 /web 恢复"；前端侧栏常驻提示条。非特权能力不受影响。

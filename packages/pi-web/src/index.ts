@@ -19,6 +19,7 @@ import { parseArgs, USAGE } from "./server/interface/args.js";
 import { createWebConsole } from "./server/application/web-console.js";
 import { registerRpcHandler } from "./server/interface/rpc-handler.js";
 import { askAndWait, askRegistry, WEB_ASK_GUIDELINES } from "./server/domain/web-ask.js";
+import { probePrivileged } from "./server/domain/privilege-probe.js";
 
 const BROADCAST_EVENT_TYPES = [
   "message_start",
@@ -106,8 +107,12 @@ ${WEB_ASK_GUIDELINES}` };
   });
 }
 
+// 模块级单例：factory 每次重跑（会话切换）时保留 server/token/coalescer/privileged 续链，
+// 只重绑 api/ctx——RPC 闭包与事件广播始终指向同一实例（否则切换后广播断、RPC 用旧 api）
+const console = createWebConsole();
+
 export default function (pi: ExtensionAPI): void {
-  const console = createWebConsole();
+  // 幂等：重复注册只覆盖 handleRequest 闭包（引用的仍是单例 state）
   registerRpcHandler(console);
 
   // R25：web 提问工具（阻塞等待回答）
@@ -120,6 +125,13 @@ export default function (pi: ExtensionAPI): void {
   pi.on("session_start", (_event, ctx) => {
     console.bindCtx(ctx);
     if (console.isRunning()) {
+      // R26 session-follow：切换后主动探测特权有效性（TUI 切换 → stale → 降级提示立即生效；
+      // web 内切换 → withSession 续链 → ok，不降级）
+      const ok = probePrivileged(console.state.privileged);
+      if (!ok) {
+        console.state.privileged = null; // 清 stale 捕获，后续错误文案统一为"未就绪"
+      }
+      broadcast(console, "privilege_status", { ok });
       broadcast(console, "session_switch_ready", {});
       console.pushState();
     }
@@ -168,6 +180,8 @@ export default function (pi: ExtensionAPI): void {
           ctx.ui.notify(`已在 ${console.url} 运行；请先 /web --stop 再换端口`, "error");
           return;
         }
+        // R26 session-follow：重跑 /web → 特权重新捕获 → 广播恢复（前端自动清降级提示）
+        broadcast(console, "privilege_status", { ok: true });
         ctx.ui.notify(console.url ?? "", "info");
         if (opts.open) await console.openBrowser(console.url ?? "");
         return;
