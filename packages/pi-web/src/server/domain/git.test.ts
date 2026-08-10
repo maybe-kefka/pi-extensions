@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
+import type { FsLike } from "./files.js";
 import {
   aggregateStatus,
   assertGitOp,
   assertReadOnlyGit,
+  assertRepoRoot,
+  discoverRepos,
   deleteBranch,
   fileDiff,
   listBranches,
@@ -11,6 +14,7 @@ import {
   parseGitDiff,
   parsePorcelain,
   pullBranch,
+  repoBrief,
   pushBranch,
   repoInfo,
   stageFiles,
@@ -435,5 +439,90 @@ describe("push/pull/stash 编排", () => {
   it("stash push 失败（无改动）透传", async () => {
     const git = (async () => ({ code: 1, stdout: "", stderr: "No local changes to save" })) as GitRunner;
     expect(await stashOp("/repo", "push", undefined, git)).toEqual({ ok: false, error: expect.stringContaining("No local changes") });
+  });
+});
+
+const repoFs = (dirs: string[]): FsLike => {
+    const dirSet = new Set(dirs);
+    return {
+      readdir: async (dir) => {
+        const prefix = dir.endsWith("/") ? dir : `${dir}/`;
+        const names = new Set<string>();
+        for (const d of dirSet) {
+          if (!d.startsWith(prefix)) continue;
+          const first = d.slice(prefix.length).split("/")[0];
+          if (first) names.add(first);
+        }
+        return [...names];
+      },
+      stat: async (p) => ({
+        isDirectory: () => dirSet.has(p) || [...dirSet].some((d) => d.startsWith(`${p}/`)),
+        isFile: () => false,
+        isSymbolicLink: () => false,
+        size: 0,
+        mtimeMs: 0,
+      }),
+      readFile: async () => Buffer.alloc(0),
+      writeFile: async () => {},
+      mkdir: async () => {},
+      rename: async () => {},
+      rm: async () => {},
+    };
+};
+
+describe("discoverRepos", () => {
+  it("cwd 自身 repo + 子目录 repo 均发现（cwd 优先）", async () => {
+    const fs = repoFs(["/w", "/w/.git", "/w/a/.git", "/w/a/sub", "/w/b/.git"]);
+    expect(await discoverRepos("/w", fs)).toEqual(["/w", "/w/a", "/w/b"]);
+  });
+
+  it("无 repo 返回空", async () => {
+    const fs = repoFs(["/w", "/w/src"]);
+    expect(await discoverRepos("/w", fs)).toEqual([]);
+  });
+
+  it("跳过 node_modules 与隐藏目录；深度超限不扫", async () => {
+    const fs = repoFs(["/w", "/w/node_modules/x/.git", "/w/.hidden/y/.git", "/w/d1/d2/d3/d4/deep/.git"]);
+    expect(await discoverRepos("/w", fs)).toEqual([]);
+  });
+
+  it("嵌套 repo（父目录也是 repo）独立列出", async () => {
+    const fs = repoFs(["/w", "/w/.git", "/w/packages/app/.git"]);
+    expect(await discoverRepos("/w", fs)).toEqual(["/w", "/w/packages/app"]);
+  });
+});
+
+describe("repoBrief", () => {
+  const runner = (branch: string, statusHead: string): GitRunner =>
+    (async (args: string[]) => {
+      if (args[0] === "branch") return { code: 0, stdout: branch, stderr: "" };
+      return { code: 0, stdout: statusHead + "\n M x.ts\n", stderr: "" };
+    }) as GitRunner;
+
+  it("ahead + behind 解析", async () => {
+    const r = await repoBrief("/w", runner("main\n", "## main...origin/main [ahead 2, behind 1]"));
+    expect(r).toEqual({ branch: "main", ahead: 2, behind: 1 });
+  });
+
+  it("仅 behind / 无远程", async () => {
+    expect(await repoBrief("/w", runner("feat\n", "## feat...origin/feat [behind 3]"))).toEqual({ branch: "feat", ahead: 0, behind: 3 });
+    expect(await repoBrief("/w", runner("main\n", "## main"))).toEqual({ branch: "main", ahead: 0, behind: 0 });
+  });
+
+  it("无分支（empty repo）branch null", async () => {
+    expect(await repoBrief("/w", runner("", "## No commits yet on main"))).toEqual({ branch: null, ahead: 0, behind: 0 });
+  });
+});
+
+describe("assertRepoRoot", () => {
+  const fs = repoFs(["/w", "/w/.git", "/w/a/.git"]);
+
+  it("缺省 = cwd；合法 repoRoot 通过；无 .git 拒绝；越权拒绝", async () => {
+    expect(await assertRepoRoot("/w", undefined, fs)).toEqual({ ok: true, root: "/w" });
+    expect(await assertRepoRoot("/w", "a", fs)).toEqual({ ok: true, root: "/w/a" });
+    const noGit = await assertRepoRoot("/w", "b", fs);
+    expect(noGit.ok).toBe(false);
+    const denied = await assertRepoRoot("/w", "../x", fs);
+    expect(denied.ok).toBe(false);
   });
 });

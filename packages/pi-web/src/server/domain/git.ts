@@ -1,3 +1,6 @@
+import { join } from "node:path";
+import { resolveWithinRoot, type FsLike } from "./files.js";
+
 /**
  * git 域（SPEC files §Implementation Decisions Seam B）：只读白名单 + unified diff 解析 + repo 信息。
  * 全部纯函数，git 执行以 runner 注入（实现走 spawn shell:false——无 shell 注入面）。
@@ -317,4 +320,77 @@ export type StashAction = "push" | "pop" | "apply" | "drop";
 export async function stashOp(cwd: string, action: StashAction, message: string | undefined, git: GitRunner): Promise<GitOpResult> {
   const args = action === "push" ? ["stash", "push", ...(message ? ["-m", message] : [])] : ["stash", action];
   return runOp(args, cwd, git);
+}
+
+/** 发现 cwd 下的全部 git 仓库（深度 ≤4；跳过 node_modules/隐藏目录；嵌套独立；cwd 自身优先） */
+export async function discoverRepos(cwd: string, fs: FsLike, maxDepth = 4): Promise<string[]> {
+  const repos: string[] = [];
+  const walk = async (dir: string, depth: number): Promise<void> => {
+    let names: string[];
+    try {
+      names = await fs.readdir(dir);
+    } catch {
+      return;
+    }
+    if (names.includes(".git")) {
+      repos.push(dir);
+      // 嵌套 repo 独立——继续下钻（.git 本身不进入子扫描）
+    }
+    if (depth >= maxDepth) return;
+    for (const name of names) {
+      if (name === ".git" || name === "node_modules" || name.startsWith(".")) continue;
+      let st;
+      try {
+        st = await fs.stat(join(dir, name));
+      } catch {
+        continue;
+      }
+      if (st.isDirectory()) await walk(join(dir, name), depth + 1);
+    }
+  };
+  await walk(cwd, 0);
+  return repos.sort((a, b) => {
+    if (a === cwd) return -1;
+    if (b === cwd) return 1;
+    return a.localeCompare(b);
+  });
+}
+
+/** repo brief：分支 + ahead/behind（git status -sb 第一行解析） */
+export async function repoBrief(
+  root: string,
+  git: GitRunner,
+): Promise<{ branch: string | null; ahead: number; behind: number }> {
+  const [b, s] = await Promise.all([
+    git(["branch", "--show-current"]),
+    git(["status", "-sb"]),
+  ]);
+  const branch = b.stdout.trim() || null;
+  const head = s.stdout.split("\n")[0] ?? "";
+  const m = head.match(/\[ahead (\d+)(?:, behind (\d+))?\]|\[behind (\d+)\]/);
+  let ahead = 0;
+  let behind = 0;
+  if (m) {
+    ahead = Number(m[1] ?? 0);
+    behind = Number(m[2] ?? m[3] ?? 0);
+  }
+  return { branch, ahead, behind };
+}
+
+/** repoRoot 白名单：cwd 内（含 cwd 自身）且存在 .git——等价于发现列表 */
+export async function assertRepoRoot(
+  cwd: string,
+  repoRoot: string | undefined,
+  fs: FsLike,
+): Promise<{ ok: true; root: string } | { ok: false; error: string }> {
+  const rel = repoRoot ?? "";
+  const abs = resolveWithinRoot(cwd, rel);
+  if (!abs) return { ok: false, error: "repoRoot 越权" };
+  try {
+    const names = await fs.readdir(abs);
+    if (!names.includes(".git")) return { ok: false, error: `不是 git 仓库：${rel || "(cwd)"}` };
+  } catch {
+    return { ok: false, error: `repoRoot 不存在：${rel || "(cwd)"}` };
+  }
+  return { ok: true, root: abs };
 }

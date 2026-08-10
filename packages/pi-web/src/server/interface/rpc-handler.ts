@@ -26,8 +26,10 @@ import { deletePath, listDir, mkdirPath, readFileText, renamePath, touchPath, wr
 import { createBranch as createBranchOp } from "../domain/git.js";
 import {
   aggregateStatus,
+  assertRepoRoot,
   commitChanges,
   deleteBranch,
+  discoverRepos,
   fileDiff,
   listBranches,
   mergeBranch,
@@ -38,6 +40,7 @@ import {
   pullBranch,
   pushBranch,
   rebaseBranch,
+  repoBrief,
   repoInfo,
   switchBranch,
 } from "../domain/git.js";
@@ -52,6 +55,17 @@ const TREE_MAX_DEPTH = 2000;
 
 export function registerRpcHandler(console: WebConsole): void {
   console.handleRequest = (id, method, params) => handleRequest(console, id, method, params);
+}
+
+/** 多仓库：repoRoot 白名单校验后返回 git runner（默认 cwd） */
+async function gitRunnerFor(
+  ctx: ExtensionContext,
+  params: Record<string, unknown>,
+): Promise<ReturnType<typeof createGitRunner>> {
+  const repoRoot = typeof params.repoRoot === "string" ? params.repoRoot : undefined;
+  const check = await assertRepoRoot(ctx.cwd, repoRoot, realFs);
+  if (!check.ok) throw new WebServerError(-32603, check.error);
+  return createGitRunner(check.root);
 }
 
 async function handleRequest(
@@ -334,6 +348,21 @@ async function handleRequest(
       return { ok: false, reason: result.reason, current: result.current ?? undefined };
     }
 
+    case "pi:gitRepos": {
+      // git-multi-repo：发现 cwd 下全部 git 仓库 + brief 信息
+      const ctx = requireCtxOf();
+      const roots = await discoverRepos(ctx.cwd, realFs);
+      const repos = await Promise.all(
+        roots.map(async (root) => {
+          const git = createGitRunner(root);
+          const brief = await repoBrief(root, git);
+          const rel = root === ctx.cwd ? "" : root.slice(ctx.cwd.length + 1);
+          return { root: rel, name: rel || root.split("/").pop() || "root", ...brief };
+        }),
+      );
+      return { repos };
+    }
+
     case "pi:gitInfo": {
       // files 迭代：repo 根/分支/worktree 标记（只读 rev-parse 查询）
       const ctx = requireCtxOf();
@@ -378,7 +407,7 @@ async function handleRequest(
     case "pi:gitStatus": {
       // files 迭代：porcelain 全量解析 + 目录聚合（树状态标记）
       const ctx = requireCtxOf();
-      const git = createGitRunner(ctx.cwd);
+      const git = await gitRunnerFor(ctx, params);
       const probe = await git(["rev-parse", "--is-inside-work-tree"]);
       if (probe.code !== 0 || probe.stdout.trim() !== "true") {
         return { isRepo: false, entries: [] };
@@ -392,7 +421,7 @@ async function handleRequest(
     case "pi:gitBranches": {
       // vscode-align 05a：分支列表
       const ctx = requireCtxOf();
-      const r = await listBranches(ctx.cwd, createGitRunner(ctx.cwd));
+      const r = await listBranches(ctx.cwd, await gitRunnerFor(ctx, params));
       if (r.branches.length === 0 && !r.current) {
         const probe = await createGitRunner(ctx.cwd)(["rev-parse", "--is-inside-work-tree"]);
         if (probe.code !== 0) return { isRepo: false };
@@ -404,7 +433,7 @@ async function handleRequest(
       const ctx = requireCtxOf();
       const branch = typeof params.branch === "string" ? params.branch : "";
       if (branch === "") throw new WebServerError(-32602, "branch 必填");
-      const r = await switchBranch(ctx.cwd, branch, createGitRunner(ctx.cwd));
+      const r = await switchBranch(ctx.cwd, branch, await gitRunnerFor(ctx, params));
       if (!r.ok) throw new WebServerError(-32603, r.error);
       return { ok: true };
     }
@@ -413,7 +442,7 @@ async function handleRequest(
       const ctx = requireCtxOf();
       const name = typeof params.name === "string" ? params.name : "";
       if (name === "") throw new WebServerError(-32602, "name 必填");
-      const r = await createBranchOp(ctx.cwd, name, createGitRunner(ctx.cwd));
+      const r = await createBranchOp(ctx.cwd, name, await gitRunnerFor(ctx, params));
       if (!r.ok) throw new WebServerError(-32603, r.error);
       return { ok: true };
     }
@@ -421,7 +450,7 @@ async function handleRequest(
     case "pi:gitBranchDelete": {
       const ctx = requireCtxOf();
       const branch = typeof params.branch === "string" ? params.branch : "";
-      const r = await deleteBranch(ctx.cwd, branch, createGitRunner(ctx.cwd));
+      const r = await deleteBranch(ctx.cwd, branch, await gitRunnerFor(ctx, params));
       if (!r.ok) throw new WebServerError(-32603, r.error);
       return { ok: true };
     }
@@ -429,7 +458,7 @@ async function handleRequest(
     case "pi:gitMerge": {
       const ctx = requireCtxOf();
       const branch = typeof params.branch === "string" ? params.branch : "";
-      const r = await mergeBranch(ctx.cwd, branch, createGitRunner(ctx.cwd));
+      const r = await mergeBranch(ctx.cwd, branch, await gitRunnerFor(ctx, params));
       if (!r.ok) throw new WebServerError(-32603, r.error);
       return { ok: true };
     }
@@ -437,7 +466,7 @@ async function handleRequest(
     case "pi:gitRebase": {
       const ctx = requireCtxOf();
       const branch = typeof params.branch === "string" ? params.branch : "";
-      const r = await rebaseBranch(ctx.cwd, branch, createGitRunner(ctx.cwd));
+      const r = await rebaseBranch(ctx.cwd, branch, await gitRunnerFor(ctx, params));
       if (!r.ok) throw new WebServerError(-32603, r.error);
       return { ok: true };
     }
@@ -446,7 +475,7 @@ async function handleRequest(
       // vscode-align 05b：暂存（单文件或全部）
       const ctx = requireCtxOf();
       const path = typeof params.path === "string" ? params.path : null;
-      const res = await stageFiles(ctx.cwd, path ? [path] : ["."], createGitRunner(ctx.cwd));
+      const res = await stageFiles(ctx.cwd, path ? [path] : ["."], await gitRunnerFor(ctx, params));
       if (!res.ok) throw new WebServerError(-32603, res.error);
       return { ok: true };
     }
@@ -454,7 +483,7 @@ async function handleRequest(
     case "pi:gitUnstage": {
       const ctx = requireCtxOf();
       const path = typeof params.path === "string" ? params.path : null;
-      const res = await unstageFiles(ctx.cwd, path ? [path] : ["."], createGitRunner(ctx.cwd));
+      const res = await unstageFiles(ctx.cwd, path ? [path] : ["."], await gitRunnerFor(ctx, params));
       if (!res.ok) throw new WebServerError(-32603, res.error);
       return { ok: true };
     }
@@ -462,7 +491,7 @@ async function handleRequest(
     case "pi:gitCommit": {
       const ctx = requireCtxOf();
       const message = typeof params.message === "string" ? params.message : "";
-      const res = await commitChanges(ctx.cwd, message, createGitRunner(ctx.cwd));
+      const res = await commitChanges(ctx.cwd, message, await gitRunnerFor(ctx, params));
       if (!res.ok) throw new WebServerError(-32603, res.error);
       return { ok: true };
     }
@@ -470,14 +499,14 @@ async function handleRequest(
     case "pi:gitPush": {
       // vscode-align 05c：推送当前分支（--force 已被白名单拒绝）
       const ctx = requireCtxOf();
-      const res = await pushBranch(ctx.cwd, createGitRunner(ctx.cwd));
+      const res = await pushBranch(ctx.cwd, await gitRunnerFor(ctx, params));
       if (!res.ok) throw new WebServerError(-32603, res.error);
       return { ok: true };
     }
 
     case "pi:gitPull": {
       const ctx = requireCtxOf();
-      const res = await pullBranch(ctx.cwd, createGitRunner(ctx.cwd));
+      const res = await pullBranch(ctx.cwd, await gitRunnerFor(ctx, params));
       if (!res.ok) throw new WebServerError(-32603, res.error);
       return { ok: true };
     }
@@ -489,7 +518,7 @@ async function handleRequest(
       if (action !== "push" && action !== "pop" && action !== "apply" && action !== "drop") {
         throw new WebServerError(-32602, `未知 stash 动作：${action}`);
       }
-      const res = await stashOp(ctx.cwd, action, message, createGitRunner(ctx.cwd));
+      const res = await stashOp(ctx.cwd, action, message, await gitRunnerFor(ctx, params));
       if (!res.ok) throw new WebServerError(-32603, res.error);
       return { ok: true };
     }
@@ -498,7 +527,7 @@ async function handleRequest(
       // files 迭代：单文件 vs HEAD diff（只读白名单内）
       const ctx = requireCtxOf();
       const relPath = typeof params.path === "string" ? params.path : "";
-      return fileDiff(ctx.cwd, relPath, createGitRunner(ctx.cwd));
+      return fileDiff(ctx.cwd, relPath, await gitRunnerFor(ctx, params));
     }
 
     case "pi:listModels": {

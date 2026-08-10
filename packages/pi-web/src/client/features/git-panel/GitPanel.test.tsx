@@ -1,236 +1,83 @@
 // @vitest-environment jsdom
-// GitPanel 渲染测试：分支列表/当前高亮/切换/确认弹窗
+// GitPanel 多仓库列表测试：空态/多项/brief 徽标/展开折叠/刷新
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { GitPanel } from "./GitPanel";
-import { Toaster } from "@/shared/ui/sonner";
+import { GitPanel, RepoItem, type RepoInfo } from "./GitPanel";
 import type { RpcClient } from "@/shared/api/rpc";
 
-function makeRequest(calls: string[], overrides: Record<string, unknown> = {}) {
+const REPOS: RepoInfo[] = [
+  { root: "", name: "pi-extensions", branch: "main", ahead: 2, behind: 1 },
+  { root: "packages/pi-web", name: "pi-web", branch: "feat", ahead: 0, behind: 0 },
+];
+
+function makeRequest(repos: RepoInfo[] | null, calls: string[] = []) {
   const request = (async (method: string, params: Record<string, unknown> = {}) => {
     calls.push(`${method}:${JSON.stringify(params)}`);
-    if (method === "pi:gitBranches") {
-      return overrides.gitBranches ?? { isRepo: true, current: "main", branches: ["main", "feat", "fix/1"] };
-    }
-    if (method === "pi:gitStatus") {
-      return overrides.gitStatus ?? { isRepo: true, entries: [], aggregated: {} };
-    }
-    if (method === "pi:gitSwitch" || method === "pi:gitMerge" || method === "pi:gitRebase" || method === "pi:gitBranchDelete" || method === "pi:gitBranchCreate") {
-      if (typeof overrides.fail === "string") throw new Error(overrides.fail);
-      return { ok: true };
+    if (method === "pi:gitRepos") {
+      if (repos === null) throw new Error("boom");
+      return { repos };
     }
     throw new Error(`unexpected ${method}`);
   }) as RpcClient["request"];
   return { request, calls };
 }
 
-describe("GitPanel 分支管理", () => {
+describe("GitPanel 多仓库列表", () => {
   afterEach(cleanup);
 
-  it("渲染分支列表与当前分支高亮", async () => {
+  it("多 repo 列表渲染（含 brief 徽标：↓/↑/分支）", async () => {
+    const { request } = makeRequest(REPOS);
+    render(<GitPanel request={request} />);
+    expect(await screen.findByText("pi-extensions")).toBeTruthy();
+    expect(screen.getByText("pi-web")).toBeTruthy();
+    expect(screen.getByTitle("可拉取 1")).toBeTruthy();
+    expect(screen.getByTitle("可推送 2")).toBeTruthy();
+    expect(screen.getByText("feat")).toBeTruthy();
+  });
+
+  it("无仓库显示空态", async () => {
     const { request } = makeRequest([]);
     render(<GitPanel request={request} />);
-    expect(await screen.findByText("feat")).toBeTruthy();
-    expect(screen.getByText("fix/1")).toBeTruthy();
-    // 当前分支高亮（title=当前分支）
-    const cur = screen.getByTitle("当前分支");
-    expect(cur.textContent).toContain("main");
+    expect(await screen.findByText("未找到 git 仓库")).toBeTruthy();
   });
 
-  it("点击分支发起切换（当前分支不可点）", async () => {
-    const calls: string[] = [];
-    const { request } = makeRequest(calls);
+  it("加载失败也显示空态", async () => {
+    const { request } = makeRequest(null);
     render(<GitPanel request={request} />);
-    await screen.findByText("feat");
-    fireEvent.click(screen.getByText("feat"));
-    await waitFor(() => {
-      expect(calls.some((c) => c.startsWith("pi:gitSwitch") && c.includes("feat"))).toBe(true);
-    });
+    expect(await screen.findByText("未找到 git 仓库")).toBeTruthy();
   });
 
-  it("切换失败展示错误", async () => {
-    const { request } = makeRequest([], { fail: "error: pathspec did not match" });
-    render(
-      <>
-        <GitPanel request={request} />
-        <Toaster position="top-right" />
-      </>,
-    );
-    await screen.findByText("feat");
-    fireEvent.click(screen.getByText("feat"));
-    await waitFor(() => {
-      expect(screen.getByText(/切换失败/)).toBeTruthy();
-    });
-  });
-
-  it("删除分支：行按钮 → 确认弹窗 → 确认执行", async () => {
-    const calls: string[] = [];
-    const { request } = makeRequest(calls);
+  it("点击行展开/折叠", async () => {
+    const { request } = makeRequest(REPOS);
     render(<GitPanel request={request} />);
-    await screen.findByText("feat");
-    const row = screen.getByText("feat").closest(".group")!;
-    fireEvent.click(row.querySelector('button[title="删除分支"]')!);
-    expect(await screen.findByText(/删除分支 feat/)).toBeTruthy();
-    fireEvent.click(screen.getByText("确认"));
-    await waitFor(() => {
-      expect(calls.some((c) => c.startsWith("pi:gitBranchDelete") && c.includes("feat"))).toBe(true);
-    });
+    await screen.findByText("pi-extensions");
+    const row = screen.getByText("pi-extensions").closest(".group, div")!;
+    fireEvent.click(row.querySelector('button[title="展开"]')!);
+    expect(screen.getByText(/工作区变更区/)).toBeTruthy();
   });
 
-  it("合并分支：确认弹窗 → 执行", async () => {
+  it("刷新按钮触发重扫", async () => {
     const calls: string[] = [];
-    const { request } = makeRequest(calls);
+    const { request } = makeRequest(REPOS, calls);
     render(<GitPanel request={request} />);
-    await screen.findByText("feat");
-    const row = screen.getByText("feat").closest(".group")!;
-    fireEvent.click(row.querySelector('button[title="合并到当前分支"]')!);
-    expect(await screen.findByText(/将 feat 合并到 main/)).toBeTruthy();
-    fireEvent.click(screen.getByText("确认"));
+    await screen.findByText("pi-extensions");
+    fireEvent.click(screen.getByTitle("重新扫描仓库"));
     await waitFor(() => {
-      expect(calls.some((c) => c.startsWith("pi:gitMerge"))).toBe(true);
-    });
-  });
-
-  it("新建分支：弹窗输入 → 创建", async () => {
-    const calls: string[] = [];
-    const { request } = makeRequest(calls);
-    render(<GitPanel request={request} />);
-    await screen.findByText("feat");
-    fireEvent.click(screen.getByTitle("新建分支"));
-    const input = await screen.findByPlaceholderText("分支名");
-    fireEvent.change(input, { target: { value: "hotfix" } });
-    fireEvent.click(screen.getByText("创建"));
-    await waitFor(() => {
-      expect(calls.some((c) => c.startsWith("pi:gitBranchCreate") && c.includes("hotfix"))).toBe(true);
+      expect(calls.filter((c) => c.startsWith("pi:gitRepos")).length).toBeGreaterThanOrEqual(2);
     });
   });
 });
 
-describe("GitPanel staging/commit", () => {
+describe("RepoItem", () => {
   afterEach(cleanup);
 
-  function scRequest(calls: string[]) {
-    const request = (async (method: string, params: Record<string, unknown> = {}) => {
-      calls.push(`${method}:${JSON.stringify(params)}`);
-      if (method === "pi:gitBranches") return { isRepo: true, current: "main", branches: ["main"] };
-      if (method === "pi:gitStatus") {
-        return {
-          isRepo: true,
-          entries: [
-            { path: "staged.ts", status: "M", staged: true },
-            { path: "work.ts", status: "M", staged: false },
-            { path: "new.ts", status: "??", staged: false },
-          ],
-          aggregated: {},
-        };
-      }
-      if (method === "pi:gitStage" || method === "pi:gitUnstage" || method === "pi:gitCommit") return { ok: true };
-      throw new Error(`unexpected ${method}`);
-    }) as RpcClient["request"];
-    return { request, calls };
-  }
-
-  it("改动列表分组渲染（staged 在前）+ 行操作按钮", async () => {
-    const { request } = scRequest([]);
-    render(<GitPanel request={request} />);
-    expect(await screen.findByText("staged.ts")).toBeTruthy();
-    expect(screen.getByText("work.ts")).toBeTruthy();
-    expect(screen.getByText("new.ts")).toBeTruthy();
-    expect(screen.getByTitle("取消暂存")).toBeTruthy();
-    expect(screen.getAllByTitle("暂存").length).toBe(2);
-  });
-
-  it("暂存单文件 → pi:gitStage", async () => {
-    const calls: string[] = [];
-    const { request } = scRequest(calls);
-    render(<GitPanel request={request} />);
-    await screen.findByText("work.ts");
-    const row = screen.getByText("work.ts").closest(".group")!;
-    fireEvent.click(row.querySelector('button[title="暂存"]')!);
-    await waitFor(() => {
-      expect(calls.some((c) => c.startsWith("pi:gitStage") && c.includes("work.ts"))).toBe(true);
-    });
-  });
-
-  it("取消暂存 → pi:gitUnstage", async () => {
-    const calls: string[] = [];
-    const { request } = scRequest(calls);
-    render(<GitPanel request={request} />);
-    await screen.findByText("staged.ts");
-    const row = screen.getByText("staged.ts").closest(".group")!;
-    fireEvent.click(row.querySelector('button[title="取消暂存"]')!);
-    await waitFor(() => {
-      expect(calls.some((c) => c.startsWith("pi:gitUnstage"))).toBe(true);
-    });
-  });
-
-  it("commit：空 message 禁用；有 staged + message 才可提交", async () => {
-    const calls: string[] = [];
-    const { request } = scRequest(calls);
-    render(<GitPanel request={request} />);
-    await screen.findByText("staged.ts");
-    expect((screen.getByText("提交") as HTMLButtonElement).disabled).toBe(true);
-    fireEvent.change(screen.getByPlaceholderText(/提交信息/), { target: { value: "feat: smoke" } });
-    expect((screen.getByText("提交") as HTMLButtonElement).disabled).toBe(false);
-    fireEvent.click(screen.getByText("提交"));
-    await waitFor(() => {
-      expect(calls.some((c) => c.startsWith("pi:gitCommit") && c.includes("feat: smoke"))).toBe(true);
-    });
-  });
-
-  it("点击改动文件 → onOpenFile", async () => {
-    const calls: string[] = [];
-    const { request } = scRequest(calls);
-    const onOpenFile = vi.fn();
-    render(<GitPanel request={request} onOpenFile={onOpenFile} />);
-    await screen.findByText("work.ts");
-    fireEvent.click(screen.getByText("work.ts"));
-    expect(onOpenFile).toHaveBeenCalledWith("work.ts");
-  });
-});
-
-describe("GitPanel push/pull/stash", () => {
-  afterEach(cleanup);
-
-  function psRequest(calls: string[]) {
-    const request = (async (method: string, params: Record<string, unknown> = {}) => {
-      calls.push(`${method}:${JSON.stringify(params)}`);
-      if (method === "pi:gitBranches") return { isRepo: true, current: "main", branches: ["main"] };
-      if (method === "pi:gitStatus") return { isRepo: true, entries: [], aggregated: {} };
-      if (method === "pi:gitPush" || method === "pi:gitPull" || method === "pi:gitStash") return { ok: true };
-      throw new Error(`unexpected ${method}`);
-    }) as RpcClient["request"];
-    return { request, calls };
-  }
-
-  it("push/pull 按钮触发 RPC", async () => {
-    const calls: string[] = [];
-    const { request } = psRequest(calls);
-    render(<GitPanel request={request} />);
-    await screen.findByTitle("推送");
-    fireEvent.click(screen.getByTitle("推送"));
-    fireEvent.click(screen.getByTitle("拉取"));
-    await waitFor(() => {
-      expect(calls.some((c) => c.startsWith("pi:gitPush"))).toBe(true);
-      expect(calls.some((c) => c.startsWith("pi:gitPull"))).toBe(true);
-    });
-  });
-
-  it("stash 四按钮触发对应动作", async () => {
-    const calls: string[] = [];
-    const { request } = psRequest(calls);
-    render(<GitPanel request={request} />);
-    await screen.findByTitle("推送");
-    fireEvent.click(screen.getByTitle("暂存全部改动"));
-    fireEvent.click(screen.getByText("Pop"));
-    fireEvent.click(screen.getByText("Apply"));
-    fireEvent.click(screen.getByText("Drop"));
-    await waitFor(() => {
-      expect(calls.filter((c) => c.startsWith("pi:gitStash")).length).toBe(4);
-      expect(calls.some((c) => c.includes('"action":"push"'))).toBe(true);
-      expect(calls.some((c) => c.includes('"action":"pop"'))).toBe(true);
-      expect(calls.some((c) => c.includes('"action":"apply"'))).toBe(true);
-      expect(calls.some((c) => c.includes('"action":"drop"'))).toBe(true);
-    });
+  it("brief 行渲染仓库名/分支/徽标/展开与更多按钮", () => {
+    const { request } = makeRequest(REPOS);
+    render(<RepoItem repo={REPOS[0]} request={request} />);
+    expect(screen.getByText("pi-extensions")).toBeTruthy();
+    expect(screen.getByText("main")).toBeTruthy();
+    expect(screen.getByTitle("展开")).toBeTruthy();
+    expect(screen.getByTitle("更多操作")).toBeTruthy();
+    expect(screen.getByTitle("刷新")).toBeTruthy();
   });
 });
