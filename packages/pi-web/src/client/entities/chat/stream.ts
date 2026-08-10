@@ -134,6 +134,7 @@ export type StreamAction =
   | { type: "session_before_compact"; reason?: string | null; willRetry?: boolean }
   | { type: "session_compact"; reason?: string | null; willRetry?: boolean; fromExtension?: boolean }
   | { type: "session_switch_ready" }
+  | { type: "privilege_status"; ok: boolean }
   | { type: "notify"; message: string; notifyType: string }
   | { type: "setStatus"; statusKey: string; statusText: string | null }
   | { type: "setWidget"; widgetKey: string; widgetLines: string[] | null };
@@ -756,6 +757,10 @@ export function streamReducer(state: StreamState, action: StreamAction): StreamS
       return { ...state, sessionReason: `switching:${action.reason ?? ""}` };
 
     case "session_switch_ready":
+      return { ...state };
+
+    case "privilege_status":
+      // 特权状态由 App 层消费（setDegraded）；reducer 透传
       return { ...state };
 
     case "notify":

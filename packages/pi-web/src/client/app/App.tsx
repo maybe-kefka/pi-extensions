@@ -114,11 +114,8 @@ export default function App() {
         }
         // R26 session-follow：特权状态广播（TUI 切换 → 立即降级提示；重跑 /web → 自动恢复）
         if (evt.type === "privilege_status") {
-          const ok = (evt as { ok?: boolean }).ok ?? false;
-          setDegraded(!ok);
-          if (!ok) {
-            toast.info("TUI 已切换会话：切换/新建/树导航需在 TUI 输入 /web 恢复");
-          }
+          // 降级提示由 SessionList 常驻提示条表达（spec 范围）；此处只同步状态
+          setDegraded(!((evt as { ok?: boolean }).ok ?? false));
         }
       },
     });
@@ -128,8 +125,14 @@ export default function App() {
     return () => client.disconnect();
   }, []);
 
-  const refreshSessions = useCallback(() => {
-    rpcRef.current?.request<SessionInfo[]>("pi:listSessions").then(setSessions).catch(() => undefined);
+  const refreshSessions = useCallback((retry = true) => {
+    // R26 session-follow：切换瞬间 ctx 可能未就绪（requireCtx 抛"切换中"）——失败延迟重试一次
+    rpcRef.current
+      ?.request<SessionInfo[]>("pi:listSessions")
+      .then(setSessions)
+      .catch(() => {
+        if (retry) setTimeout(() => refreshSessions(false), 400);
+      });
   }, []);
 
   // 连接建立后拉取初始数据

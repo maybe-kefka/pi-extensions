@@ -16,6 +16,7 @@ import {
   type ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
 import { createCoalescer, type Coalescer } from "../infrastructure/coalescer.js";
+import { probePrivileged } from "../domain/privilege-probe.js";
 import { startWebServer, WebServerError, type WebServerHandle } from "../infrastructure/server.js";
 import { makeEvent, serialize } from "../domain/protocol.js";
 import { buildState } from "../domain/state.js";
@@ -86,6 +87,18 @@ export class WebConsole {
     this.state.privileged = ctx;
   }
 
+  /** 探测特权有效性（R26 session-follow）；失效时清 stale 捕获（后续错误文案统一"未就绪"） */
+  probePrivilegedStatus(): boolean {
+    const ok = probePrivileged(this.state.privileged);
+    if (!ok) this.state.privileged = null;
+    return ok;
+  }
+
+  /** 探测 + 广播特权状态（session_start 探测可能先于续链误报降级——续链完成后用此纠正） */
+  broadcastPrivilegeStatus(): void {
+    this.broadcast("privilege_status", { ok: this.probePrivilegedStatus() });
+  }
+
   /** 当前会话 ctx；未就绪（切换中）→ 明确错误 */
   requireCtx(): ExtensionContext {
     if (!this.state.ctx) throw new WebServerError(3, "会话未就绪（切换中？），请重试");
@@ -122,6 +135,8 @@ export class WebConsole {
         this.state.privileged = fresh;
         this.state.ctx = fresh;
         this.wrapUiBridge(fresh);
+        // R26：续链完成后特权必然有效——广播纠正 session_start 探测（其在续链前误报降级）
+        this.broadcastPrivilegeStatus();
         await (options as { withSession?: (c: ExtensionCommandContext) => Promise<void> }).withSession?.(fresh);
       },
     };

@@ -109,38 +109,36 @@ ${WEB_ASK_GUIDELINES}` };
 
 // 模块级单例：factory 每次重跑（会话切换）时保留 server/token/coalescer/privileged 续链，
 // 只重绑 api/ctx——RPC 闭包与事件广播始终指向同一实例（否则切换后广播断、RPC 用旧 api）
-const console = createWebConsole();
+const webConsole = createWebConsole();
 
 export default function (pi: ExtensionAPI): void {
   // 幂等：重复注册只覆盖 handleRequest 闭包（引用的仍是单例 state）
-  registerRpcHandler(console);
+  registerRpcHandler(webConsole);
 
   // R25：web 提问工具（阻塞等待回答）
   registerWebAskTools(pi);
 
   // 每次 factory 运行（startup / 会话切换）都重绑当前 api
-  console.bindApi(pi);
+  webConsole.bindApi(pi);
 
   // ---- 会话生命周期 ----
   pi.on("session_start", (_event, ctx) => {
-    console.bindCtx(ctx);
-    if (console.isRunning()) {
+    webConsole.bindCtx(ctx);
+    if (webConsole.isRunning()) {
       // R26 session-follow：切换后主动探测特权有效性（TUI 切换 → stale → 降级提示立即生效；
       // web 内切换 → withSession 续链 → ok，不降级）
-      const ok = probePrivileged(console.state.privileged);
-      if (!ok) {
-        console.state.privileged = null; // 清 stale 捕获，后续错误文案统一为"未就绪"
-      }
-      broadcast(console, "privilege_status", { ok });
-      broadcast(console, "session_switch_ready", {});
-      console.pushState();
+      // ④ 探测+清 stale 收进 WebConsole 方法（领域逻辑不进接线层）
+      const ok = webConsole.probePrivilegedStatus();
+      broadcast(webConsole, "privilege_status", { ok });
+      broadcast(webConsole, "session_switch_ready", {});
+      webConsole.pushState();
     }
   });
 
   pi.on("session_shutdown", (event) => {
-    console.state.ctx = null;
+    webConsole.state.ctx = null;
     if (event.reason === "reload" || event.reason === "quit") {
-      void console.stop();
+      void webConsole.stop();
     }
   });
 
@@ -148,7 +146,7 @@ export default function (pi: ExtensionAPI): void {
   const on = pi.on as unknown as (type: string, handler: (event: Record<string, unknown>) => void) => void;
   for (const type of BROADCAST_EVENT_TYPES) {
     on(type, (event) => {
-      broadcast(console, type, event);
+      broadcast(webConsole, type, event);
     });
   }
 
@@ -157,7 +155,7 @@ export default function (pi: ExtensionAPI): void {
     description: "启动/显示本地 web 控制台（--port <n> | --open | --stop）",
     handler: async (args: string | undefined, ctx: ExtensionCommandContext) => {
       // 特权 ctx 捕获链：命令执行时拿到完整 ExtensionCommandContext（含 switchSession/newSession/fork/navigateTree）
-      console.setPrivileged(ctx);
+      webConsole.setPrivileged(ctx);
       const parsed = parseArgs(args);
       if (!parsed.ok) {
         ctx.ui.notify(parsed.error, "error");
@@ -166,29 +164,29 @@ export default function (pi: ExtensionAPI): void {
       const opts = parsed.value;
 
       if (opts.stop) {
-        if (!console.isRunning()) {
+        if (!webConsole.isRunning()) {
           ctx.ui.notify("web 服务未在运行", "info");
           return;
         }
-        await console.stop();
+        await webConsole.stop();
         ctx.ui.notify("web 服务已停止", "info");
         return;
       }
 
-      if (console.isRunning()) {
-        if (opts.port !== 0 && opts.port !== console.port) {
-          ctx.ui.notify(`已在 ${console.url} 运行；请先 /web --stop 再换端口`, "error");
+      if (webConsole.isRunning()) {
+        if (opts.port !== 0 && opts.port !== webConsole.port) {
+          ctx.ui.notify(`已在 ${webConsole.url} 运行；请先 /web --stop 再换端口`, "error");
           return;
         }
         // R26 session-follow：重跑 /web → 特权重新捕获 → 广播恢复（前端自动清降级提示）
-        broadcast(console, "privilege_status", { ok: true });
-        ctx.ui.notify(console.url ?? "", "info");
-        if (opts.open) await console.openBrowser(console.url ?? "");
+        broadcast(webConsole, "privilege_status", { ok: true });
+        ctx.ui.notify(webConsole.url ?? "", "info");
+        if (opts.open) await webConsole.openBrowser(webConsole.url ?? "");
         return;
       }
 
       try {
-        const { url } = await console.start(opts.port, opts.open);
+        const { url } = await webConsole.start(opts.port, opts.open);
         ctx.ui.notify(url, "info");
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);

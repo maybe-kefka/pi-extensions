@@ -38,6 +38,12 @@ describe("toAction：服务器 pi:event → reducer action 映射", () => {
     expect(toAction({ type: "agent_end", willRetry: true } as never)).toEqual({ type: "agent_end", willRetry: true });
   });
 
+  it("privilege_status 映射（ok 布尔透传；缺失回退 false）", () => {
+    expect(toAction({ type: "privilege_status", ok: true } as never)).toEqual({ type: "privilege_status", ok: true });
+    expect(toAction({ type: "privilege_status", ok: false } as never)).toEqual({ type: "privilege_status", ok: false });
+    expect(toAction({ type: "privilege_status" } as never)).toEqual({ type: "privilege_status", ok: false });
+  });
+
   it("未知事件 → null（丢弃）", () => {
     expect(toAction({ type: "unknown_event" } as never)).toBeNull();
   });

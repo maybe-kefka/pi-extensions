@@ -42,6 +42,10 @@ export function toAction(evt: PiEvent): StreamAction | null {
       return { type: "session_before_switch", reason: evt.reason as string | undefined };
     case "session_switch_ready":
       return { type: "session_switch_ready" };
+    case "privilege_status": {
+      const ok = evt.ok;
+      return { type: "privilege_status", ok: typeof ok === "boolean" ? ok : false };
+    }
     case "session_before_compact":
       return {
         type: "session_before_compact",
