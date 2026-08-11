@@ -22,3 +22,15 @@ export interface SessionAgentLike {
 export function resolveSessionInstance(agents: SessionAgentLike[], sessionFile: string): "existing" | "spawn" {
   return agents.some((a) => a.sessionFile === sessionFile) ? "existing" : "spawn";
 }
+
+/** TUI 切会话编排：目标会话已有 spawn 实例 → 杀（jsonl 双写排他）；TUI 自己/无撞车不杀 */
+export function resolveTuiSessionSwitch(
+  agents: SessionAgentLike[],
+  tuiProcessId: string,
+  newSessionFile: string,
+): { kill: string[] } {
+  const kill = agents
+    .filter((a) => a.processId !== tuiProcessId && a.sessionFile === newSessionFile)
+    .map((a) => a.processId);
+  return { kill };
+}

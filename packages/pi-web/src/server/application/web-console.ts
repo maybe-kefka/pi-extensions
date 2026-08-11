@@ -21,7 +21,7 @@ import {
 import { createCoalescer, type Coalescer } from "../infrastructure/coalescer.js";
 import { probePrivileged } from "../domain/privilege-probe.js";
 import { portAlive } from "../infrastructure/net-probe.js";
-import { resolveConnectAction } from "../domain/orchestrate.js";
+import { resolveConnectAction, resolveTuiSessionSwitch } from "../domain/orchestrate.js";
 import type { WebStateFile } from "../domain/registry.js";
 import { sessionInstanceSpawnSpec, webServiceSpawnSpec } from "../domain/spawn-spec.js";
 import { startWebServer, WebServerError, type WebServerHandle } from "../infrastructure/server.js";
@@ -208,7 +208,17 @@ export class WebConsole {
           // 已注册（session_start 后重发 hello）→ 更新会话信息
           const existing = this.state.registry.list().find((a) => a.pid === info.pid);
           if (existing) {
-            this.state.registry.add({ ...existing, sessionFile: info.sessionFile ?? existing.sessionFile, sessionName: info.sessionName ?? existing.sessionName });
+            const newFile = info.sessionFile ?? existing.sessionFile;
+            const updated = { ...existing, sessionFile: newFile, sessionName: info.sessionName ?? existing.sessionName };
+            this.state.registry.add(updated);
+            // TUI 切会话（hello 重发带新 sessionFile）：杀撞车 spawn 实例（jsonl 双写排他）+ 广播接管
+            if (newFile && existing.sessionFile !== newFile) {
+              const { kill } = resolveTuiSessionSwitch(this.state.registry.list(), existing.processId, newFile);
+              for (const pid of kill) this.killAgent(pid);
+              if (kill.length > 0) this.broadcast("tui_takeover", { sessionFile: newFile });
+            }
+            // 广播列表（客户端 diff 跟随：旧 tab 关 + 新 tab 开）
+            this.broadcastAgentList();
             return existing.processId;
           }
           const processId = this.state.registry.nextProcessId(kind);
@@ -225,6 +235,7 @@ export class WebConsole {
           return processId;
         },
         onAgentEvent: (processId, event) => {
+          // TUI 切会话编排在 onAgentHello（hello 重发带新 sessionFile）
           this.broadcastAgentEvent(processId, event);
         },
         onAgentClose: (processId) => {
@@ -257,6 +268,17 @@ export class WebConsole {
     this.broadcastAgentList();
     if (open) await this.openBrowser(server.url);
     return { url: server.url };
+  }
+
+  /** 终止 spawn 实例（TUI 接管排他）——SIGTERM 优雅；WS close 触发 onAgentClose 清理 */
+  killAgent(processId: string): void {
+    const entry = this.state.registry.get(processId);
+    if (!entry || entry.kind !== "spawned") return;
+    try {
+      process.kill(entry.pid, "SIGTERM");
+    } catch {
+      /* 已退出 */
+    }
   }
 
   /**

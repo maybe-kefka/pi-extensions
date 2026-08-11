@@ -263,6 +263,11 @@ export default function App() {
           }
           return;
         }
+        // TUI 接管提示（TUI 切到 web 已实例化的会话 → 该实例被杀）
+        if (evt.type === "tui_takeover") {
+          toast.info("该会话已由 TUI 接管，实例已释放");
+          return;
+        }
         // 注册进程列表 → chat tab 生命周期（join 开 tab + 激活；leave 关 tab）
         // ——必须在 toAction 之前（agent_list 不是流式 action，toAction 返回 null 会提前 return）
         if (evt.type === "agent_list") {
