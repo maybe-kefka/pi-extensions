@@ -36,6 +36,7 @@ export function FilesTree({ request, onOpenFile, activePath, gitRefreshKey = 0 }
   const [error, setError] = useState<string | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [deleteCount, setDeleteCount] = useState<number | null>(null);
   const [newTarget, setNewTarget] = useState<{ dir: string; type: "file" | "dir" } | null>(null);
   const [newName, setNewName] = useState("");
   const inflight = useRef(new Set<string>());
@@ -230,7 +231,13 @@ export function FilesTree({ request, onOpenFile, activePath, gitRefreshKey = 0 }
           onRenameStart={(path) => setRenaming(path)}
           onRenameCommit={(path, name) => void commitRename(path, name)}
           onRenameCancel={() => setRenaming(null)}
-          onDelete={(path) => setConfirmDelete(path)}
+          onDelete={(path) => {
+            setConfirmDelete(path);
+            setDeleteCount(null);
+            request<{ count: number }>("pi:countTree", { path })
+              .then((r) => setDeleteCount(r.count))
+              .catch(() => setDeleteCount(null));
+          }}
           onNewFile={(dir) => {
             setNewName("");
             setNewTarget({ dir, type: "file" });
@@ -272,7 +279,10 @@ export function FilesTree({ request, onOpenFile, activePath, gitRefreshKey = 0 }
         <DialogContent>
           <DialogHeader>
             <DialogTitle>删除 {confirmDelete ?? ""}？</DialogTitle>
-            <DialogDescription>此操作将递归删除该文件/目录及其所有内容，且无法撤销。</DialogDescription>
+            <DialogDescription>
+              此操作将递归删除该文件/目录及其所有内容，且无法撤销。
+              {deleteCount !== null && `（共 ${deleteCount} 项）`}
+            </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => setConfirmDelete(null)}>

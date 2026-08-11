@@ -89,6 +89,10 @@ export function parseGitDiff(text: string): DiffHunk[] {
   for (const raw of text.split("\n")) {
     const line = raw;
     if (line === "") continue; // 结尾换行产生的空段
+    if (line.startsWith("diff --git")) {
+      current = null; // 多文件输入：新文件边界，头部行不并入前 hunk
+      continue;
+    }
     if (line.startsWith("@@")) {
       current = { header: line, lines: [] };
       hunks.push(current);
@@ -197,7 +201,7 @@ export type GitOpAllow = { ok: true; confirm?: GitConfirm } | { ok: false; error
 /** 写命令白名单（vscode-align 05）：放行 + 破坏性拒绝 + 确认分层 */
 const ALLOWED_WRITE_COMMANDS: Record<string, { confirm?: GitConfirm; rejectFlags?: string[] }> = {
   switch: {},
-  branch: { rejectFlags: ["-D", "--delete --force"] },
+  branch: { rejectFlags: ["-D", "-f", "--force"] },
   merge: { confirm: "merge" },
   rebase: { confirm: "rebase" },
   commit: { rejectFlags: ["--amend"] },
@@ -220,7 +224,7 @@ export function assertGitOp(args: string[]): GitOpAllow {
   if (!spec) return { ok: false, error: `命令不在写白名单：${cmd}` };
   if (spec.rejectFlags) {
     for (const flag of spec.rejectFlags) {
-      if (rest.includes(flag) || rest.some((a) => a === flag)) {
+      if (rest.includes(flag)) {
         return { ok: false, error: `标志拒绝：${cmd} ${flag}` };
       }
     }

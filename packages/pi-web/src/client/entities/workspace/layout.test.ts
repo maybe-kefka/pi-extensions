@@ -26,7 +26,7 @@ describe("侧边栏宽度持久化", () => {
   });
 
   it("损坏数据回退缺省", () => {
-    expect(loadPanelWidth(memStorage({ "pi:panel-width": "abc" }))).toBe(260);
-    expect(loadPanelWidth(memStorage({ "pi:panel-width": "9999" }))).toBe(480);
+    expect(loadPanelWidth(memStorage({ ".pi/sidebar-width": "abc" }))).toBe(260);
+    expect(loadPanelWidth(memStorage({ ".pi/sidebar-width": "9999" }))).toBe(480);
   });
 });

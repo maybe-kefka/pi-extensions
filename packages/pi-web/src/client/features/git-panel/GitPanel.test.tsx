@@ -182,7 +182,7 @@ describe("RepoItem 展开区", () => {
     fireEvent.click(screen.getAllByTitle("展开")[0]);
     await screen.findByText("work.ts");
     fireEvent.click(screen.getByText("work.ts"));
-    expect(onOpenFile).toHaveBeenCalledWith("work.ts");
+    expect(onOpenFile).toHaveBeenCalledWith("work.ts", "");
   });
 });
 
@@ -245,5 +245,30 @@ describe("RepoItem popover 工具栏", () => {
       expect(calls.some((c) => c.startsWith("pi:gitPush"))).toBe(true);
       expect(calls.some((c) => c.startsWith("pi:gitStash"))).toBe(true);
     });
+  });
+});
+
+describe("review 回归：分支行 hover 操作可达", () => {
+  afterEach(cleanup);
+
+  it("popover 分支行含 group 类（hover 按钮可达）", async () => {
+    const calls: string[] = [];
+    const request = (async (method: string) => {
+      calls.push(method);
+      if (method === "pi:gitRepos") return { repos: REPOS };
+      if (method === "pi:gitStatus") return { isRepo: true, entries: [], aggregated: {} };
+      if (method === "pi:gitBranches") return { isRepo: true, current: "main", branches: ["main", "feat"] };
+      throw new Error(`unexpected ${method}`);
+    }) as RpcClient["request"];
+    render(<GitPanel request={request} />);
+    await screen.findByText("pi-extensions");
+    fireEvent.click(screen.getAllByTitle("更多操作")[0]);
+    await screen.findByText("feat");
+    const feats = screen.getAllByText("feat");
+    const row = feats[feats.length - 1].closest(".group")!;
+    expect(row).toBeTruthy();
+    // hover 按钮存在于 DOM（group-hover:flex 仅视觉隐藏）
+    expect(row.querySelector('button[title="删除分支"]')).toBeTruthy();
+    expect(row.querySelector('button[title="合并到当前分支"]')).toBeTruthy();
   });
 });

@@ -5,7 +5,7 @@
 
 export type WorkspaceTab =
   | { kind: "file"; path: string; name: string; dirty: boolean; preview: boolean }
-  | { kind: "diff"; path: string; name: string }
+  | { kind: "diff"; path: string; name: string; repoRoot?: string }
   | { kind: "chat" };
 
 export interface WorkspaceState {
@@ -106,11 +106,11 @@ export function hasDirty(state: WorkspaceState): boolean {
 }
 
 /** 打开 diff tab（与编辑器 tab 可共存；去重激活） */
-export function openDiffTab(state: WorkspaceState, path: string, name: string): WorkspaceState {
+export function openDiffTab(state: WorkspaceState, path: string, name: string, repoRoot?: string): WorkspaceState {
   if (state.tabs.some((t) => t.kind === "diff" && t.path === path)) {
     return { ...state, active: diffTabId(path) };
   }
-  return { tabs: [...state.tabs, { kind: "diff", path, name }], active: diffTabId(path) };
+  return { tabs: [...state.tabs, { kind: "diff", path, name, repoRoot }], active: diffTabId(path) };
 }
 
 /** diff tab 激活标识（与文件 tab 同 path 时区分——active 用 path 会冲突！） */

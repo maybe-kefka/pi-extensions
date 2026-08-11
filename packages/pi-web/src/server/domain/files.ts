@@ -294,3 +294,29 @@ export async function touchPath(root: string, relPath: string, fs: FsLike): Prom
     return { ok: false, reason: "io" };
   }
 }
+
+/** 统计目录树项数（删除确认用）；不存在/越权返回 null */
+export async function countPath(root: string, relPath: string, fs: FsLike): Promise<number | null> {
+  const abs = resolveWithinRoot(root, relPath);
+  if (!abs) return null;
+  try {
+    await fs.stat(abs); // 不存在 → null（readdir 的 ENOENT 与文件无法区分）
+  } catch {
+    return null;
+  }
+  let count = 0;
+  const walk = async (p: string): Promise<void> => {
+    count += 1;
+    let names: string[];
+    try {
+      names = await fs.readdir(p);
+    } catch {
+      return; // 文件
+    }
+    for (const name of names) {
+      await walk(join(p, name));
+    }
+  };
+  await walk(abs);
+  return count;
+}

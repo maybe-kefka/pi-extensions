@@ -190,6 +190,11 @@ export function TreeView(props: TreeViewProps) {
           const prev = all[idx - 1];
           if (prev.type === "file") onOpenFile(prev.path, false);
           else onToggleDir(prev.path);
+        } else if (e.key === "Enter" && idx >= 0) {
+          e.preventDefault();
+          const cur = all[idx];
+          if (cur.type === "file") onOpenFile(cur.path, false); // Enter = 正式打开（vscode 语义）
+          else onToggleDir(cur.path);
         } else if (e.key === "Delete" && selectedPath) {
           e.preventDefault();
           onDelete(selectedPath);

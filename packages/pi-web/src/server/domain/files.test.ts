@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   checkConflict,
+  countPath,
   deletePath,
   listDir,
   mkdirPath,
@@ -345,5 +346,15 @@ describe("touchPath", () => {
     expect(await touchPath("/repo", "a.txt", fs)).toEqual({ ok: false, reason: "exists" });
     expect(await touchPath("/repo", "a/b", fs)).toEqual({ ok: false, reason: "invalid-name" });
     expect(await touchPath("/repo", "../x", fs)).toEqual({ ok: false, reason: "denied" });
+  });
+});
+
+
+describe("countPath", () => {
+  it("统计目录树项数；越权返回 null", async () => {
+    const fs = memFs({ "/repo/dir/a.ts": "1", "/repo/dir/sub/b.ts": "2", "/repo/dir/c.ts": "3" });
+    expect(await countPath("/repo", "dir", fs)).toBe(5); // dir + a + sub + b + c
+    expect(await countPath("/repo", "../x", fs)).toBeNull();
+    expect(await countPath("/repo", "nope", fs)).toBeNull();
   });
 });

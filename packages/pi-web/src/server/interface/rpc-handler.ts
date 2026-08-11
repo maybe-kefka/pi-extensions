@@ -22,7 +22,7 @@ import { truncateTree } from "../domain/tree.js";
 import { deleteSessionFile } from "../infrastructure/session-files.js";
 import { realFs } from "../infrastructure/real-fs.js";
 import { createGitRunner } from "../infrastructure/git-runner.js";
-import { deletePath, listDir, mkdirPath, readFileText, renamePath, touchPath, writeFileText } from "../domain/files.js";
+import { countPath, deletePath, listDir, mkdirPath, readFileText, renamePath, touchPath, writeFileText } from "../domain/files.js";
 import { createBranch as createBranchOp } from "../domain/git.js";
 import {
   aggregateStatus,
@@ -397,6 +397,15 @@ async function handleRequest(
       return { ok: true };
     }
 
+    case "pi:countTree": {
+      // git-multi-repo review：删除确认前统计项数
+      const ctx = requireCtxOf();
+      const relPath = typeof params.path === "string" ? params.path : "";
+      const count = await countPath(ctx.cwd, relPath, realFs);
+      if (count === null) throw new WebServerError(-32602, `路径不存在或越权：${relPath}`);
+      return { count };
+    }
+
     case "pi:delete": {
       const ctx = requireCtxOf();
       const relPath = typeof params.path === "string" ? params.path : "";
@@ -422,9 +431,10 @@ async function handleRequest(
     case "pi:gitBranches": {
       // vscode-align 05a：分支列表
       const ctx = requireCtxOf();
-      const r = await listBranches(ctx.cwd, await gitRunnerFor(ctx, params));
+      const git = await gitRunnerFor(ctx, params);
+      const r = await listBranches(ctx.cwd, git);
       if (r.branches.length === 0 && !r.current) {
-        const probe = await createGitRunner(ctx.cwd)(["rev-parse", "--is-inside-work-tree"]);
+        const probe = await git(["rev-parse", "--is-inside-work-tree"]);
         if (probe.code !== 0) return { isRepo: false };
       }
       return { isRepo: true, current: r.current, branches: r.branches };
@@ -577,14 +587,7 @@ async function handleRequest(
       return null;
     }
 
-    case "pi:listCommands": {
-      if (!state.api) throw new WebServerError(3, "扩展未就绪");
-      return state.api
-        .getCommands()
-        .map((c) => ({ name: c.name, description: c.description ?? null, source: c.source }));
-    }
-
-    case "pi:getMessages": {
+        case "pi:getMessages": {
       const ctx = requireCtxOf();
       const entries = ctx.sessionManager.getEntries() as {
         type?: string;

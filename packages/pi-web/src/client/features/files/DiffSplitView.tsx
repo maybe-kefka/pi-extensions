@@ -5,10 +5,12 @@ import type { DiffHunkDto } from "@/entities/files/diff";
 export interface DiffSplitViewProps {
   path: string;
   request: RpcClient["request"];
+  /** 所属仓库根（相对 cwd；diff 数据源在仓库上下文执行） */
+  repoRoot?: string;
 }
 
 /** 只读 split diff（vscode diff editor 简化版）：左 HEAD / 右工作区，hunk 行对齐 */
-export function DiffSplitView({ path, request }: DiffSplitViewProps) {
+export function DiffSplitView({ path, request, repoRoot }: DiffSplitViewProps) {
   const [head, setHead] = useState<string | null>(null);
   const [work, setWork] = useState<string | null>(null);
   const [hunks, setHunks] = useState<DiffHunkDto[]>([]);
@@ -20,9 +22,9 @@ export function DiffSplitView({ path, request }: DiffSplitViewProps) {
       setError(null);
       try {
         const [h, w, d] = await Promise.all([
-          request<{ content: string }>("pi:gitShowHead", { path }),
+          request<{ content: string }>("pi:gitShowHead", { path, ...(repoRoot !== undefined ? { repoRoot } : {}) }),
           request<{ content: string }>("pi:readFile", { path }),
-          request<{ isRepo: boolean; diff: DiffHunkDto[] | null }>("pi:gitDiff", { path }),
+          request<{ isRepo: boolean; diff: DiffHunkDto[] | null }>("pi:gitDiff", { path, ...(repoRoot !== undefined ? { repoRoot } : {}) }),
         ]);
         if (cancelled) return;
         setHead(h.content);
@@ -36,7 +38,7 @@ export function DiffSplitView({ path, request }: DiffSplitViewProps) {
     return () => {
       cancelled = true;
     };
-  }, [path, request]);
+  }, [path, request, repoRoot]);
 
   // hunk 行平铺（ctx 两侧 / del 左 / add 右）
   const rows: { left: { text: string; type: "ctx" | "del" } | null; right: { text: string; type: "ctx" | "add" } | null }[] = [];

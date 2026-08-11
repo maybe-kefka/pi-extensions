@@ -2,7 +2,7 @@
  * 工作区布局持久化（entities/workspace）：侧边栏宽度（localStorage，与 theme 偏好同机制）。
  */
 
-const KEY = "pi:panel-width";
+const KEY = ".pi/sidebar-width";
 export const PANEL_MIN = 200;
 export const PANEL_MAX = 480;
 export const PANEL_DEFAULT = 260;

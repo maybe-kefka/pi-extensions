@@ -20,6 +20,7 @@ import { toast } from "sonner";
 import { Button } from "@/shared/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/shared/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/shared/ui/popover";
+import { statusMarker } from "@/entities/files/git-status";
 import type { RpcClient } from "@/shared/api/rpc";
 
 export interface GitStatusEntry {
@@ -30,8 +31,10 @@ export interface GitStatusEntry {
 
 export interface GitPanelProps {
   request: RpcClient["request"];
-  /** 展开区点击文件 → 打开 tab（App 注入；06 diff 挂接） */
-  onOpenFile?: (path: string) => void;
+  /** 展开区点击文件 → 打开 tab（App 注入；带 repoRoot 供 diff 使用） */
+  onOpenFile?: (path: string, repoRoot: string) => void;
+  /** 保存成功后递增（联动刷新展开区状态） */
+  gitRefreshKey?: number;
 }
 
 export interface RepoInfo {
@@ -47,10 +50,16 @@ export function RepoItem({
   repo,
   request,
   onOpenFile,
+  onBriefRefresh,
+  gitRefreshKey = 0,
 }: {
   repo: RepoInfo;
   request: RpcClient["request"];
-  onOpenFile?: (path: string) => void;
+  onOpenFile?: (path: string, repoRoot: string) => void;
+  /** 刷新后的 brief 上报（父级更新 repos state——不 mutate props） */
+  onBriefRefresh?: (root: string, brief: { branch: string | null; ahead: number; behind: number }) => void;
+  /** 保存成功后递增（联动刷新展开区状态） */
+  gitRefreshKey?: number;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -71,19 +80,13 @@ export function RepoItem({
     try {
       const r = await request<{ repos: RepoInfo[] }>("pi:gitRepos");
       const fresh = r.repos.find((x) => x.root === repo.root);
-      if (fresh) {
-        repo.branch = fresh.branch;
-        repo.ahead = fresh.ahead;
-        repo.behind = fresh.behind;
-      }
+      if (fresh) onBriefRefresh?.(repo.root, { branch: fresh.branch, ahead: fresh.ahead, behind: fresh.behind });
     } catch {
       /* 静默 */
     } finally {
       setRefreshing(false);
     }
-    // 强制重渲染（repo 对象就地更新）
-    setExpanded((e) => e);
-  }, [request, repo]);
+  }, [request, repo.root, onBriefRefresh]);
 
   const loadBranches = useCallback(async () => {
     try {
@@ -176,10 +179,10 @@ export function RepoItem({
     }
   }, [request, repo.root]);
 
-  // 展开时拉取工作区状态（折叠再展开重拉）
+  // 展开时拉取工作区状态（折叠再展开重拉；保存后联动刷新）
   useEffect(() => {
     if (expanded) void refreshStatus();
-  }, [expanded, refreshStatus]);
+  }, [expanded, refreshStatus, gitRefreshKey]);
 
 
   const stagePath = useCallback(
@@ -287,7 +290,7 @@ export function RepoItem({
                 return (
                   <div
                     key={branch}
-                    className={`flex cursor-pointer items-center gap-1.5 rounded px-1.5 py-1 text-[11px] ${isCurrent ? "bg-primary/10 text-primary" : "hover:bg-muted"}`}
+                    className={`group flex cursor-pointer items-center gap-1.5 rounded px-1.5 py-1 text-[11px] ${isCurrent ? "bg-primary/10 text-primary" : "hover:bg-muted"}`}
                     onClick={() => !isCurrent && void switchBranch(branch)}
                     title={isCurrent ? "当前分支" : `切换到 ${branch}`}
                   >
@@ -398,11 +401,11 @@ export function RepoItem({
               </div>
               {unstaged.map((e) => (
                 <div key={e.path} className="group flex items-center gap-1.5 py-0.5 text-[11px]">
-                  <span className="text-muted-foreground w-3 shrink-0 font-mono text-[10px]">M</span>
+                  <span className="text-muted-foreground w-3 shrink-0 font-mono text-[10px]">{statusMarker(e.status)}</span>
                   <span
                     className="hover:text-primary min-w-0 flex-1 cursor-pointer truncate"
                     title={e.path}
-                    onClick={() => onOpenFile?.(e.path)}
+                    onClick={() => onOpenFile?.(e.path, repo.root)}
                   >
                     {e.path}
                   </span>
@@ -424,11 +427,11 @@ export function RepoItem({
               </div>
               {staged.map((e) => (
                 <div key={e.path} className="group flex items-center gap-1.5 py-0.5 text-[11px]">
-                  <span className="text-primary w-3 shrink-0 font-mono text-[10px]">A</span>
+                  <span className="text-primary w-3 shrink-0 font-mono text-[10px]">{statusMarker(e.status)}</span>
                   <span
                     className="hover:text-primary min-w-0 flex-1 cursor-pointer truncate"
                     title={e.path}
-                    onClick={() => onOpenFile?.(e.path)}
+                    onClick={() => onOpenFile?.(e.path, repo.root)}
                   >
                     {e.path}
                   </span>
@@ -486,7 +489,7 @@ export function RepoItem({
 }
 
 /** git 控制面板：多仓库列表（发现 + brief；展开区/工具栏后续票填充） */
-export function GitPanel({ request, onOpenFile }: GitPanelProps) {
+export function GitPanel({ request, onOpenFile, gitRefreshKey = 0 }: GitPanelProps) {
   const [repos, setRepos] = useState<RepoInfo[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -501,6 +504,10 @@ export function GitPanel({ request, onOpenFile }: GitPanelProps) {
       setLoading(false);
     }
   }, [request]);
+
+  const handleBriefRefresh = useCallback((root: string, brief: { branch: string | null; ahead: number; behind: number }) => {
+    setRepos((prev) => prev.map((r) => (r.root === root ? { ...r, ...brief } : r)));
+  }, []);
 
   useEffect(() => {
     void refresh();
@@ -524,7 +531,7 @@ export function GitPanel({ request, onOpenFile }: GitPanelProps) {
           </div>
         ) : (
           repos.map((repo) => (
-            <RepoItem key={repo.root} repo={repo} request={request} onOpenFile={onOpenFile} />
+            <RepoItem key={repo.root} repo={repo} request={request} onOpenFile={onOpenFile} onBriefRefresh={handleBriefRefresh} gitRefreshKey={gitRefreshKey} />
           ))
         )}
       </div>

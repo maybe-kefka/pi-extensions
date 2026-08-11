@@ -264,7 +264,8 @@ export const EditorPane = forwardRef<EditorPaneHandle, EditorPaneProps>(function
             <Button
               variant="outline"
               onClick={() => {
-                void reloadFromDisk();
+                // 放弃编辑：用本地已加载快照恢复（无网络请求）
+                if (file) dispatch({ kind: "reload", file });
               }}
             >
               放弃编辑
@@ -272,6 +273,7 @@ export const EditorPane = forwardRef<EditorPaneHandle, EditorPaneProps>(function
             <Button
               variant="outline"
               onClick={() => {
+                // 重新加载：强制从磁盘重读（可能比本地快照更新）
                 void reloadFromDisk();
               }}
             >

@@ -134,3 +134,17 @@ describe("FilesTree 文件操作", () => {
     });
   });
 });
+
+describe("review 回归：Enter 键正式打开", () => {
+  afterEach(cleanup);
+
+  it("选中文件后按 Enter → onOpenFile(preview=false)", async () => {
+    const user = userEvent.setup();
+    const onOpenFile = vi.fn();
+    render(<FilesTree request={fakeRequest({ "a.txt": "hello" })} onOpenFile={onOpenFile} activePath="a.txt" />);
+    await screen.findByText("a.txt");
+    const tree = document.querySelector(".scrollbar-thin.scrollbar-gutter-stable.min-h-0")!;
+    fireEvent.keyDown(tree, { key: "Enter" });
+    expect(onOpenFile).toHaveBeenLastCalledWith("a.txt", "a.txt", false);
+  });
+});
