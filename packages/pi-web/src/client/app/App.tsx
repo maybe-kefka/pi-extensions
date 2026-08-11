@@ -71,9 +71,9 @@ export default function App() {
   const [conn, setConn] = useState(initialState.conn);
   /** 新建会话待开 tab 标记（session_switch_ready 时消费） */
   const pendingNewRef = useRef(false);
-  /** host tab 状态上报（会话元数据：sessionName/sessionFile/context/streaming——低频使用） */
-  const handleTabStateChange = useCallback((processId: string, st: typeof initialState) => {
-    if (processId === "host") setHostState(st);
+  /** 激活 chat tab 状态上报（会话元数据：sessionName/sessionFile/context——ChatTab 仅在激活时上报） */
+  const handleTabStateChange = useCallback((sessionId: string, st: typeof initialState) => {
+    if (sessionId === chatSessionOf(workspaceRef.current.active)) setHostState(st);
   }, []);
 
   /** 进程分发表：ChatTab 挂载时注册 dispatch（事件按 processId 路由） */
@@ -86,6 +86,11 @@ export default function App() {
   }, []);
   const dispatchToProcess = useCallback((processId: string, action: StreamAction) => {
     dispatchersRef.current[processId]?.(action);
+  }, []);
+  /** 分发到激活 chat tab（进程当前会话 = 激活 tab——流式/conn 事件走这里） */
+  const dispatchToActiveChat = useCallback((action: StreamAction) => {
+    const sid = chatSessionOf(workspaceRef.current.active);
+    if (sid) dispatchersRef.current[sid]?.(action);
   }, []);
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
   const [models, setModels] = useState<ModelInfo[]>([]);
@@ -228,7 +233,7 @@ export default function App() {
       url,
       onConnState: (s) => {
         setConn(s);
-        dispatchToProcess("host", { type: "conn", state: s });
+        dispatchToActiveChat({ type: "conn", state: s });
       },
       onEvent: (evt) => {
         // multi-instance：agent 事件按进程分发；普通事件归宿主进程
@@ -249,9 +254,9 @@ export default function App() {
         // R23 F5：高频流式事件（text_delta/thinking_delta/tool_update）包 transition，
         // 避免每 delta 同步渲染阻塞输入/滚动；消息边界保持同步
         if (isTransitionalAction(action)) {
-          startTransition(() => dispatchToProcess("host", action));
+          startTransition(() => dispatchToActiveChat(action));
         } else {
-          dispatchToProcess("host", action);
+          dispatchToActiveChat(action);
         }
         // 会话切换完成：会话列表刷新 + 历史跟随（切换由激活 tab / 新建触发）
         if (evt.type === "session_switch_ready") {
@@ -550,7 +555,6 @@ export default function App() {
           <TabsBar
             tabs={workspace.tabs}
             active={workspace.active}
-            sessionName={hostState.sessionName ?? "聊天"}
             onActivate={(id) => dispatchWs({ kind: "activate", id })}
             onClose={(id) => {
               if (chatSessionOf(id) !== null) {
@@ -569,10 +573,14 @@ export default function App() {
               if (chatSessionOf(active) === null) void editorRefs.current[active]?.save();
             }}
           />
-      {chatSessionOf(workspace.active) !== null ? (
-        <div className="min-h-0 flex-1">
+      <div className="min-h-0 flex-1">
           <DisconnectBannerMemo conn={conn} />
-          {/* 连接建立后才挂载 ChatTab（渲染期 getRequest 需要 rpc 就绪）——连接中主区空 */}
+          {workspace.active === "" && (
+            <div className="text-muted-foreground flex h-full items-center justify-center text-sm">
+              从侧边栏打开会话或文件
+            </div>
+          )}
+          {/* chat 与 file 同级常驻挂载（hidden 保状态——input/滚动不丢）；conn open 才挂 ChatTab */}
           {conn === "open" && workspace.tabs
             .filter((t) => t.kind === "chat")
             .map((t) => (
@@ -595,14 +603,6 @@ export default function App() {
                 />
               </div>
             ))}
-        </div>
-      ) : (
-        <div className="min-h-0 flex-1">
-          {workspace.active === "" && (
-            <div className="text-muted-foreground flex h-full items-center justify-center text-sm">
-              从侧边栏打开会话或文件
-            </div>
-          )}
           {workspace.tabs
             .filter((t) => t.kind === "file")
             .map((t) => (
@@ -628,9 +628,7 @@ export default function App() {
                 <DiffSplitView path={t.path} request={getRequest()} repoRoot={t.repoRoot} />
               </div>
             ))}
-
         </div>
-      )}
       </main>
       </div>
       <Dialog

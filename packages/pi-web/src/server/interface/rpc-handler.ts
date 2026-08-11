@@ -127,20 +127,6 @@ async function handleRequest(
       }
     }
 
-    case "pi:newChat": {
-      // multi-instance：宿主 spawn 对等实例（新建会话 tab）
-      console.spawnAgent();
-      return { ok: true };
-    }
-
-    case "pi:chatClose": {
-      const processId = typeof params.processId === "string" ? params.processId : "";
-      if (processId === "") throw new WebServerError(-32602, "processId 必填");
-      if (processId === "host") throw new WebServerError(1, "宿主 tab 不可关闭");
-      console.closeAgent(processId);
-      return { ok: true };
-    }
-
     case "pi:chatAbort": {
       const processId = typeof params.processId === "string" ? params.processId : "";
       if (processId === "") throw new WebServerError(-32602, "processId 必填");

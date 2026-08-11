@@ -322,53 +322,7 @@ export class WebConsole {
     this.extensionPath = p;
   }
 
-  /** 新建会话：spawn 对等 pi 实例（环境变量自动注册） */
-  spawnAgent(): void {
-    if (!this.state.server || !this.state.token) throw new WebServerError(1, "宿主未运行");
-    if (!this.extensionPath) throw new WebServerError(1, "扩展路径未知，无法 spawn");
-    const cwd = this.state.cwd ?? process.cwd();
-    const url = `ws://127.0.0.1:${this.state.server.port}/agent?token=${encodeURIComponent(this.state.token)}`;
-    // spawn 对等 pi 实例：pi 是 node 脚本（argv[0]=node、argv[1]=pi 入口）
-    const exe = process.execPath || process.argv[0];
-    const piEntry = process.argv[1] ?? "";
-    const child = spawn(exe, piEntry ? [piEntry, "--mode", "rpc", "--extension", this.extensionPath] : ["--mode", "rpc", "--extension", this.extensionPath], {
-      cwd,
-      env: {
-        ...process.env,
-        PI_WEB_HOST_URL: url,
-        PI_WEB_HOST_KIND: "spawned",
-      },
-      // stdin 保持打开（pipe 不写）：stdio ignore 会让 pi 因 stdin EOF 立即退出
-      stdio: ["pipe", "ignore", "ignore"],
-    });
-    child.on("error", () => {
-      /* spawn 失败静默（RPC 已返回 ok——注册失败由 agent_list 缺失体现） */
-    });
-    child.unref();
-  }
 
-  /** 关闭 chat tab：spawned → 终止进程；external → 注销（进程继续） */
-  closeAgent(processId: string): void {
-    const entry = this.state.registry.get(processId);
-    if (!entry) return;
-    if (entry.kind === "spawned") {
-      try {
-        process.kill(entry.pid);
-      } catch {
-        /* 已退出 */
-      }
-      this.state.registry.remove(processId);
-      this.broadcastAgentList();
-      return;
-    }
-    if (entry.kind === "external") {
-      try {
-        this.state.server?.sendAgentCommand(processId, { command: "deregister" });
-      } catch {
-        /* 未连接 */
-      }
-    }
-  }
 
   /** agent 模式的宿主 URL（重跑 /web 显示用） */
   agentHostUrl(): string | null {

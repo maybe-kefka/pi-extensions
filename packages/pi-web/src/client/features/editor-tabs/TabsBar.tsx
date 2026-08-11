@@ -1,18 +1,17 @@
-import { FileDiff, MessageSquareText, Plus, Save, X } from "lucide-react";
+import { FileDiff, MessageSquareText, Save, X } from "lucide-react";
 import { chatTabId, type WorkspaceTab } from "@/entities/workspace/tabs";
 
 export interface TabsBarProps {
   tabs: WorkspaceTab[];
   active: string;
   /** 聊天 tab 标签（当前会话名） */
-  sessionName: string;
   onActivate: (id: string) => void;
   onClose: (id: string) => void;
   /** 保存当前文件（激活文件 tab dirty 时显示） */
   onSave: () => void;
 }
 
-export function TabsBar({ tabs, active, sessionName, onActivate, onClose, onSave }: TabsBarProps) {
+export function TabsBar({ tabs, active, onActivate, onClose, onSave }: TabsBarProps) {
   const activeFileDirty = tabs.some((t) => t.kind === "file" && t.path === active && t.dirty);
   return (
     <div className="scrollbar-none flex h-9 shrink-0 items-stretch overflow-x-auto border-b">
@@ -35,18 +34,16 @@ export function TabsBar({ tabs, active, sessionName, onActivate, onClose, onSave
             {tab.kind === "diff" && <FileDiff className="text-muted-foreground size-3.5 shrink-0" />}
             {tab.kind === "file" && tab.dirty && <span className="bg-primary size-1.5 shrink-0 rounded-full" title="未保存" />}
             <span className={`truncate ${tab.kind === "file" && tab.preview ? "italic" : ""}`}>{label}</span>
-            {(tab.kind !== "chat" || tab.kind === "chat") && (
-              <button
-                className="hover:bg-muted text-muted-foreground hover:text-foreground ml-0.5 flex size-4 shrink-0 items-center justify-center rounded"
-                title="关闭 tab"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onClose(id);
-                }}
-              >
-                <X className="size-3" />
-              </button>
-            )}
+            <button
+              className="hover:bg-muted text-muted-foreground hover:text-foreground ml-0.5 flex size-4 shrink-0 items-center justify-center rounded"
+              title="关闭 tab"
+              onClick={(e) => {
+                e.stopPropagation();
+                onClose(id);
+              }}
+            >
+              <X className="size-3" />
+            </button>
           </div>
         );
       })}

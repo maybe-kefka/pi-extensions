@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ArrowDownToLine,
   ArrowUpCircle,
@@ -78,6 +78,7 @@ export function RepoItem({
   const [confirmOp, setConfirmOp] = useState<{ kind: "merge" | "rebase" | "delete"; branch: string } | null>(null);
   const [toolOpen, setToolOpen] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const commitAreaRef = useRef<HTMLTextAreaElement>(null);
   const [pickerQuery, setPickerQuery] = useState("");
   const [pickerStep, setPickerStep] = useState<"list" | "create">("list");
   const [selectedBase, setSelectedBase] = useState<string | null>(null);
@@ -292,6 +293,14 @@ export function RepoItem({
         toast.success("已提交");
         setCommitMessage("");
         setConfirmAll(false);
+        // 清空后重置 textarea 高度（auto-grow 的 inline style 残留会让框不折叠回一行）
+        requestAnimationFrame(() => {
+          const ta = commitAreaRef.current;
+          if (ta) {
+            ta.style.height = "auto";
+            ta.style.height = `${ta.scrollHeight}px`;
+          }
+        });
         await refreshStatus();
         await refreshBrief();
       } catch (e) {
@@ -311,6 +320,10 @@ export function RepoItem({
   const pickLocal = branches.filter((b) => b.toLowerCase().includes(q));
   const pickRemote = remotes.filter((r) => r.toLowerCase().includes(q));
   const pickBases = [...branches, ...remotes];
+  // 输入精确匹配高亮（回车=切换该分支；否则回车进入创建）
+  const exactMatch = q !== ""
+    ? [...pickLocal, ...pickRemote].find((b) => b.toLowerCase() === q) ?? null
+    : null;
 
   return (
     <div className="border-border border-b">
@@ -445,6 +458,7 @@ export function RepoItem({
           {(staged.length > 0 || unstaged.length > 0) && (
             <div className="mb-1.5 flex items-center gap-1.5">
               <textarea
+                ref={commitAreaRef}
                 value={commitMessage}
                 onChange={(e) => {
                   setCommitMessage(e.target.value);
@@ -594,12 +608,13 @@ export function RepoItem({
               <div className="scrollbar-thin max-h-32 overflow-y-auto">
                 {pickLocal.map((b) => {
                   const isCurrent = b === currentBranch;
+                  const isExact = exactMatch === b;
                   return (
                     <button
                       key={b}
                       disabled={isCurrent}
                       title={isCurrent ? "当前分支" : `切换到 ${b}`}
-                      className={`flex w-full cursor-pointer items-center gap-1.5 rounded px-1.5 py-1 text-left text-[11px] ${isCurrent ? "text-muted-foreground cursor-default opacity-60" : "hover:bg-muted"}`}
+                      className={`flex w-full cursor-pointer items-center gap-1.5 rounded px-1.5 py-1 text-left text-[11px] ${isCurrent ? "text-muted-foreground cursor-default opacity-60" : isExact ? "bg-primary/15 text-primary" : "hover:bg-muted"}`}
                       onClick={() => void pickerSwitch(b, false)}
                     >
                       {isCurrent ? <Check className="size-3 shrink-0" /> : <GitBranch className="text-muted-foreground size-3 shrink-0" />}
