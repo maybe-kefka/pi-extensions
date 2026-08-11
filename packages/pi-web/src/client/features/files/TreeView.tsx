@@ -5,9 +5,9 @@ import {
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuTrigger,
-} from "@/shared/ui/context-menu";
-import type { FileTreeNode } from "@/entities/files/tree";
-import { statusColorVar, statusMarker } from "@/entities/files/git-status";
+} from "@/shared/ui";
+import type { FileTreeNode } from "@/entities/files";
+import { statusColorVar, statusMarker } from "@/entities/files";
 
 export interface TreeViewProps {
   nodes: FileTreeNode[];

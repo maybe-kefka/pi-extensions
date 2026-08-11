@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { RotateCcw, Sparkles } from "lucide-react";
-import { Button } from "@/shared/ui/button";
-import { Progress } from "@/shared/ui/progress";
-import type { RpcClient } from "@/shared/api/rpc";
-import type { ContextBreakdownData } from "@/entities/chat/types";
+import { Button } from "@/shared/ui";
+import { Progress } from "@/shared/ui";
+import type { RpcClient } from "@/shared/api";
+import type { ContextBreakdownData } from "@/entities/chat";
 
 function fmt(n: number): string {
   return n.toLocaleString("en-US");

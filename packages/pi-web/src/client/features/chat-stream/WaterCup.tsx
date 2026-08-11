@@ -1,4 +1,4 @@
-import { usagePercent, usageTier } from "@/entities/chat/usage-tier";
+import { usagePercent, usageTier } from "@/entities/chat";
 
 const TIER_COLOR: Record<string, string> = {
   ok: "bg-emerald-500",

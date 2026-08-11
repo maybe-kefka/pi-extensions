@@ -15,8 +15,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { createRef } from "react";
 import { EditorPane, type EditorPaneHandle } from "./EditorPane";
-import type { OpenedFile } from "@/entities/files/editor";
-import type { RpcClient } from "@/shared/api/rpc";
+import type { OpenedFile } from "@/entities/files";
+import type { RpcClient } from "@/shared/api";
 
 const FILE: OpenedFile = {
   path: "a.ts",

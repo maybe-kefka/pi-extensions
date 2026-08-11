@@ -1,4 +1,4 @@
-import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui";
 import {
   Select,
   SelectContent,
@@ -6,9 +6,9 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/shared/ui/select";
-import type { ModelInfo } from "@/entities/chat/types";
-import { THEMES, THEME_NAMES, type ThemePreference } from "@/entities/theme/theme";
+} from "@/shared/ui";
+import type { ModelInfo } from "@/entities/chat";
+import { THEMES, THEME_NAMES, type ThemePreference } from "@/entities/theme";
 
 export interface SettingsPanelProps {
   models: ModelInfo[];

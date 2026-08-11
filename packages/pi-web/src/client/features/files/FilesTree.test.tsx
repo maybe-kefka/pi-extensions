@@ -9,7 +9,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import userEvent from "@testing-library/user-event";
 import { FilesTree } from "./FilesTree";
 import { buildFileMenuItems } from "./TreeView";
-import type { RpcClient } from "@/shared/api/rpc";
+import type { RpcClient } from "@/shared/api";
 
 /** 假 RPC：listDir 返回内存树，readFile 返回内存内容 */
 function fakeRequest(files: Record<string, string>): RpcClient["request"] {

@@ -1,12 +1,12 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import type * as React from "react";
 import { ArrowUp, Square } from "lucide-react";
-import { Button } from "@/shared/ui/button";
-import { MentionMenu, type MentionItem } from "@/features/input-bar/MentionMenu";
-import { FILE_MARK_PREFIX, SKILL_MARK_PREFIX, backspaceAtChip, isContentEmpty, serializeContent } from "@/features/input-bar/chip-serialize";
-import { filterMentionItems, mentionInitial, mentionKeyAt, deriveQueryFromHead } from "@/features/input-bar/mention";
-import type { CommandInfo, FileGroup, SkillInfo } from "@/entities/chat/types";
-import type { StreamState } from "@/entities/chat/stream";
+import { Button } from "@/shared/ui";
+import { MentionMenu, type MentionOption } from "@/features/input-bar";
+import { FILE_MARK_PREFIX, SKILL_MARK_PREFIX, backspaceAtChip, isContentEmpty, serializeContent } from "@/features/input-bar";
+import { filterMentionItems, mentionInitial, mentionKeyAt, deriveQueryFromHead } from "@/features/input-bar";
+import type { CommandInfo, FileGroup, SkillInfo } from "@/entities/chat";
+import type { StreamState } from "@/entities/chat";
 
 /** chip 视觉：按插入类型区分（skill/file 为原子 chip，command 为纯文本不渲染 chip） */
 const CHIP_STYLES: Record<"skill" | "file", { icon: string; cls: string }> = {
@@ -166,8 +166,8 @@ export function InputBar(props: {
 
   /** R23 F4：base items 按数据源引用缓存（skills/commands/files 引用未变不重建扁平化）；
    * query 每键击变化只跑 filter */
-  const baseFileItems = useMemo<MentionItem[]>(() => {
-    const items: MentionItem[] = [];
+  const baseFileItems = useMemo<MentionOption[]>(() => {
+    const items: MentionOption[] = [];
     for (const g of files) {
       for (const f of g.files) {
         items.push({
@@ -183,7 +183,7 @@ export function InputBar(props: {
     return items;
   }, [files]);
 
-  const baseSkillCommandItems = useMemo<MentionItem[]>(() => {
+  const baseSkillCommandItems = useMemo<MentionOption[]>(() => {
     return [
       ...skills.map((s) => ({ id: `skill:${s.name}`, label: `skill:${s.name}`, insert: `/skill:${s.name}`, chip: true, group: "Skills" })),
       ...commands.map((c) => ({ id: `cmd:${c.name}`, label: `/${c.name}`, insert: `/${c.name}`, chip: false, group: "命令" })),
@@ -191,7 +191,7 @@ export function InputBar(props: {
   }, [skills, commands]);
 
   /** 上拉框候选（按 mention.kind 选 base + query 过滤） */
-  const mentionItems = useMemo<MentionItem[]>(() => {
+  const mentionItems = useMemo<MentionOption[]>(() => {
     if (!mention.active) return [];
     if (mention.kind === "file") return filterMentionItems(baseFileItems, mention.query);
     return filterMentionItems(baseSkillCommandItems, mention.query);
@@ -206,7 +206,7 @@ export function InputBar(props: {
   }, [mention.kind, files.length]);
 
   const selectMention = useCallback(
-    (item: MentionItem) => {
+    (item: MentionOption) => {
       const el = editorRef.current;
       if (!el) return;
       // 删除触发字符（" /" / " @"）——光标位置无效时 fallback 追加

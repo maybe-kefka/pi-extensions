@@ -18,12 +18,12 @@ import {
   Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
-import { Button } from "@/shared/ui/button";
-import { Input } from "@/shared/ui/input";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/shared/ui/dialog";
-import { Popover, PopoverContent, PopoverTrigger } from "@/shared/ui/popover";
-import { statusMarker } from "@/entities/files/git-status";
-import type { RpcClient } from "@/shared/api/rpc";
+import { Button } from "@/shared/ui";
+import { Input } from "@/shared/ui";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/shared/ui";
+import { Popover, PopoverContent, PopoverTrigger } from "@/shared/ui";
+import { statusMarker } from "@/entities/files";
+import type { RpcClient } from "@/shared/api";
 
 export interface GitStatusEntry {
   path: string;

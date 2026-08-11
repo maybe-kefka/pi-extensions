@@ -1,3 +1,4 @@
+import type { UserContentSegment } from "@/entities/chat";
 /**
  * contenteditable 输入区序列化（纯函数，TDD）。
  * DOM 结构：文本节点 + <br>（换行）+ span[data-insert]（原子 chip）。
@@ -39,11 +40,6 @@ export function isContentEmpty(root: HTMLElement): boolean {
 export const SKILL_MARK_PREFIX = "\u0001skill:";
 export const FILE_MARK_PREFIX = "\u0001file:";
 export const MARK_SUFFIX = "\u0001";
-
-export type UserContentSegment =
-  | { type: "text"; text: string }
-  | { type: "skill"; name: string }
-  | { type: "file"; path: string };
 
 /** 解析标记文本 → 段列表（chip 段 + 文本段，顺序保持）。无标记 → 单文本段。 */
 export function parseChipMarks(text: string): UserContentSegment[] {

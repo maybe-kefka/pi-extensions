@@ -3,7 +3,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { GitPanel, RepoItem, type GitStatusEntry, type RepoInfo } from "./GitPanel";
-import type { RpcClient } from "@/shared/api/rpc";
+import type { RpcClient } from "@/shared/api";
 
 const REPOS: RepoInfo[] = [
   { root: "", name: "pi-extensions", branch: "main", ahead: 2, behind: 1 },

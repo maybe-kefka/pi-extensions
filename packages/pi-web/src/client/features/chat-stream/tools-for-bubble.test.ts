@@ -2,7 +2,7 @@
 // R23 F2：per-bubble 工具行过滤 + 引用稳定缓存
 import { describe, expect, it } from "vitest";
 import { toolsForBubble } from "./tools-for-bubble";
-import type { ToolRow, TurnBubble } from "@/entities/chat/stream";
+import type { ToolRow, TurnBubble } from "@/entities/chat";
 
 function row(id: string, output = ""): ToolRow {
   return { toolCallId: id, toolName: "bash", args: null, output, isError: false, final: true, expanded: false };

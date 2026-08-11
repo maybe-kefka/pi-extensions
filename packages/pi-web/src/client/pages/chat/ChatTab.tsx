@@ -5,15 +5,15 @@
  * - 挂载时拉取该进程会话历史（pi:chatHistory——按 processId 读注册者会话文件）
  */
 import { memo, useCallback, useEffect, useReducer, useRef } from "react";
-import { initialState, streamReducer, type StreamAction, type StreamState } from "@/entities/chat/stream";
-import type { ConnState, RpcClient } from "@/shared/api/rpc";
-import { Chat } from "./Chat";
-import { Button } from "@/shared/ui/button";
-import { Popover, PopoverContent, PopoverTrigger } from "@/shared/ui/popover";
-import { ContextPanel } from "@/features/context/ContextPanel";
-import { WaterCup } from "./WaterCup";
-import { InputBar } from "@/features/input-bar/InputBar";
-import type { CommandInfo, SkillInfo, FileGroup, HistoryMessage } from "@/entities/chat/types";
+import { initialState, pickStreamMeta, streamReducer, type StreamAction, type StreamState, type StreamStateMeta } from "@/entities/chat";
+import type { ConnState, RpcClient } from "@/shared/api";
+import { Chat } from "@/features/chat-stream";
+import { Button } from "@/shared/ui";
+import { Popover, PopoverContent, PopoverTrigger } from "@/shared/ui";
+import { ContextPanel } from "@/features/context";
+import { WaterCup } from "@/features/chat-stream";
+import { InputBar } from "@/features/input-bar";
+import type { CommandInfo, SkillInfo, FileGroup, HistoryMessage } from "@/entities/chat";
 
 export interface ChatTabProps {
   /** 会话 id（session 文件路径）——tab 键与事件分发 key */
@@ -42,7 +42,8 @@ export interface ChatTabProps {
   onRegisterDispatch: (sessionId: string, dispatch: (a: StreamAction) => void) => void;
   onUnregisterDispatch: (sessionId: string) => void;
   /** 状态上报（App 只镜像激活 tab——会话元数据用） */
-  onStateChange: (sessionId: string, state: StreamState) => void;
+  /** 会话元数据上报（元数据子集——完整 stream state 高频变化不得上抛） */
+  onStateChange: (sessionId: string, meta: StreamStateMeta) => void;
 }
 
 export const ChatTab = memo(function ChatTab({
@@ -106,7 +107,7 @@ export const ChatTab = memo(function ChatTab({
 
   // 状态上报（App 镜像激活 tab——会话元数据用）
   useEffect(() => {
-    if (active) onStateChange(sessionId, state);
+    if (active) onStateChange(sessionId, pickStreamMeta(state));
   }, [active, sessionId, state, onStateChange]);
 
   const send = useCallback(

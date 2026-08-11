@@ -1,16 +1,16 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type * as React from "react";
 import { Bot, ChevronDown, ChevronRight, CircleCheck, CircleX, GitFork, Loader2, User, Wrench } from "lucide-react";
-import { Avatar, AvatarFallback } from "@/shared/ui/avatar";
-import { Badge } from "@/shared/ui/badge";
-import { Button } from "@/shared/ui/button";
-import { Bubble, BubbleContent } from "@/shared/ui/bubble";
-import { Markdown } from "@/shared/ui/markdown";
-import { UserContentChip } from "@/features/chat-stream/user-content";
-import { toolsForBubble } from "@/features/chat-stream/tools-for-bubble";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/shared/ui/dialog";
-import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/shared/ui/empty";
-import { Message, MessageAvatar, MessageContent, MessageGroup, MessageHeader } from "@/shared/ui/message";
+import { Avatar, AvatarFallback } from "@/shared/ui";
+import { Badge } from "@/shared/ui";
+import { Button } from "@/shared/ui";
+import { Bubble, BubbleContent } from "@/shared/ui";
+import { Markdown } from "@/shared/ui";
+import { UserContentChip } from "./user-content";
+import { toolsForBubble } from "./tools-for-bubble";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/shared/ui";
+import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/shared/ui";
+import { Message, MessageAvatar, MessageContent, MessageGroup, MessageHeader } from "@/shared/ui";
 import {
   MessageScroller,
   MessageScrollerButton,
@@ -18,8 +18,8 @@ import {
   MessageScrollerItem,
   MessageScrollerProvider,
   MessageScrollerViewport,
-} from "@/shared/ui/message-scroller";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
+} from "@/shared/ui";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui";
 import {
   bubbleStreaming,
   bubbleToolCallIds,
@@ -29,7 +29,7 @@ import {
   type Turn,
   type TurnBubble,
   type TurnStep,
-} from "@/entities/chat/stream";
+} from "@/entities/chat";
 
 function BotAvatar() {
   return (

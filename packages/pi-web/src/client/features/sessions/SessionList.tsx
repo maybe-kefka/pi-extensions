@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { Copy, GitBranch, Loader2, Pencil, Plus, Trash2 } from "lucide-react";
-import { Button } from "@/shared/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/shared/ui/dialog";
-import { Input } from "@/shared/ui/input";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
-import type { SessionInfo } from "@/entities/chat/types";
+import { Button } from "@/shared/ui";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/shared/ui";
+import { Input } from "@/shared/ui";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui";
+import type { SessionInfo } from "@/entities/chat";
 
 export interface SessionActions {
   onSelect: (path: string, name: string) => void;

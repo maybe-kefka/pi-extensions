@@ -3,7 +3,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { DiffSplitView } from "./DiffSplitView";
-import type { RpcClient } from "@/shared/api/rpc";
+import type { RpcClient } from "@/shared/api";
 
 function makeRequest(overrides: { head?: string; work?: string; hunks?: unknown[] } = {}) {
   const calls: string[] = [];

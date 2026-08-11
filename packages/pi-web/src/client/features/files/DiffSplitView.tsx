@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import type { RpcClient } from "@/shared/api/rpc";
-import type { DiffHunkDto } from "@/entities/files/diff";
+import type { RpcClient } from "@/shared/api";
+import type { DiffHunkDto } from "@/entities/files";
 
 export interface DiffSplitViewProps {
   path: string;

@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { FileDiff, MessageSquareText, X } from "lucide-react";
-import { chatTabId, type WorkspaceTab } from "@/entities/workspace/tabs";
+import { chatTabId, type WorkspaceTab } from "@/entities/workspace";
 
 export interface TabsBarProps {
   tabs: WorkspaceTab[];

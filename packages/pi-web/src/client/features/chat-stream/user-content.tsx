@@ -1,15 +1,11 @@
 // @vitest-environment jsdom
 import { FileText, Sparkles } from "lucide-react";
+import type { UserContentSegment as UserSegment } from "@/entities/chat";
 
 /**
  * R22：用户消息内容 → chip 渲染（纯函数 + 组件）。
  * skill XML 段（<skill name=...>）→ skill chip；文件路径（带扩展名）→ file chip；其余文本原样。
  */
-
-export type UserSegment =
-  | { type: "text"; text: string }
-  | { type: "skill"; name: string }
-  | { type: "file"; path: string };
 
 /** 路径正则：相对路径（带扩展名，lookbehind 分隔符不进匹配）；排除 URL 与纯数字/小数 */
 const PATH_RE = /(?<=^|[\s，。、])(?![\w.+-]+:\/\/)([\w./@~-]+\.\w{1,8})(?=$|[\s，。、])/;

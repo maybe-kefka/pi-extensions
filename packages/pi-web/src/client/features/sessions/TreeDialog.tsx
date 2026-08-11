@@ -1,9 +1,9 @@
 import { useMemo, useState } from "react";
 import { GitBranch, Loader2 } from "lucide-react";
-import { Badge } from "@/shared/ui/badge";
-import { Button } from "@/shared/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/shared/ui/dialog";
-import type { TreeNode } from "@/entities/chat/types";
+import { Badge } from "@/shared/ui";
+import { Button } from "@/shared/ui";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/shared/ui";
+import type { TreeNode } from "@/entities/chat";
 
 /** 从 entry 提取展示文本（消息取文本内容截断；其他类型取类型名） */
 export function entrySummary(node: TreeNode): { text: string; kind: string } {

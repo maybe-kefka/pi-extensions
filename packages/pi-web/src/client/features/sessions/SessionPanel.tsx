@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
 import { Info, ListOrdered, RefreshCw } from "lucide-react";
-import { Button } from "@/shared/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
-import { Separator } from "@/shared/ui/separator";
-import { SessionList, type SessionActions } from "@/features/sessions/SessionList";
-import type { SessionInfo } from "@/entities/chat/types";
-import type { StreamState } from "@/entities/chat/stream";
+import { Button } from "@/shared/ui";
+import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui";
+import { Separator } from "@/shared/ui";
+import { SessionList, type SessionActions } from "@/features/sessions";
+import type { SessionInfo } from "@/entities/chat";
+import type { StreamState } from "@/entities/chat";
 
 export interface SessionPanelProps {
   sessions: SessionInfo[];

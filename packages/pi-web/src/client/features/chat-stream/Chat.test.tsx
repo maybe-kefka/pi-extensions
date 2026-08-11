@@ -3,7 +3,7 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, cleanup, within } from "@testing-library/react";
 import { Chat } from "./Chat";
-import { initialState, streamReducer, type StreamAction, type StreamState } from "@/entities/chat/stream";
+import { initialState, streamReducer, type StreamAction, type StreamState } from "@/entities/chat";
 
 function reduce(actions: StreamAction[]): StreamState {
   return actions.reduce((st, a) => streamReducer(st, a), initialState);

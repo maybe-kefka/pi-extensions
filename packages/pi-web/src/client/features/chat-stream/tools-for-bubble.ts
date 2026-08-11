@@ -1,6 +1,6 @@
 /** R23 F2：per-bubble 工具行过滤 + 引用稳定缓存（纯函数，可单测）。 */
 
-import { bubbleToolCallIds, type ToolRow, type TurnBubble } from "@/entities/chat/stream";
+import { bubbleToolCallIds, type ToolRow, type TurnBubble } from "@/entities/chat";
 
 /**
  * 返回气泡相关的工具行（按 bubbleToolCallIds 过滤）。

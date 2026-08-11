@@ -3,7 +3,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { TabsBar } from "./TabsBar";
-import type { WorkspaceTab } from "@/entities/workspace/tabs";
+import type { WorkspaceTab } from "@/entities/workspace";
 
 afterEach(cleanup);
 

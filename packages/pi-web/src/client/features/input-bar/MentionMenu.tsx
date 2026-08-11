@@ -1,9 +1,9 @@
 import { useEffect, useRef } from "react";
 import { FileText, Folder, Loader2, Sparkles, Terminal } from "lucide-react";
-import type { MentionKind } from "@/features/input-bar/mention";
+import type { MentionKind } from "@/features/input-bar";
 
 /** 上拉框候选条目（InputBar 组装） */
-export interface MentionItem {
+export interface MentionOption {
   id: string;
   label: string;
   /** 选中后插入输入框的文本 */
@@ -35,12 +35,12 @@ export function MentionMenu({
 }: {
   open: boolean;
   kind: MentionKind | null;
-  items: MentionItem[];
+  items: MentionOption[];
   activeIndex: number;
   loading: boolean;
   /** R21：空态文案（区分“当前目录无文件可引用”/“无匹配文件”/“无匹配项”） */
   emptyLabel: string;
-  onSelect: (item: MentionItem) => void;
+  onSelect: (item: MentionOption) => void;
   onHover: (index: number) => void;
 }) {
   const activeRef = useRef<HTMLButtonElement | null>(null);
@@ -51,7 +51,7 @@ export function MentionMenu({
   }, [activeIndex, open]);
 
   if (!open) return null;
-  const groups: { group: string; items: MentionItem[] }[] = [];
+  const groups: { group: string; items: MentionOption[] }[] = [];
   for (const it of items) {
     const g = groups.find((x) => x.group === it.group);
     if (g) g.items.push(it);
