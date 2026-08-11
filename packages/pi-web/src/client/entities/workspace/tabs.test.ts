@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   activateTab,
-  chatTab,
+  chatTabId,
+  chatProcessOf,
+  openChatTab,
+  closeChatTab,
   closeTab,
   diffPathOf,
   hasDirty,
@@ -17,8 +20,8 @@ import {
 describe("workspace tab 状态机", () => {
   it("初始态：仅聊天 tab 且激活", () => {
     const s = initialState();
-    expect(s.tabs).toEqual([{ kind: "chat" }]);
-    expect(s.active).toBe("chat");
+    expect(s.tabs).toEqual([{ kind: "chat", processId: "host", name: "聊天" }]);
+    expect(s.active).toBe("chat:host");
   });
 
   it("打开新文件：追加 tab 并激活", () => {
@@ -37,8 +40,8 @@ describe("workspace tab 状态机", () => {
 
   it("切换 tab：聊天与文件互切", () => {
     let s = openFile(initialState(), "a.ts", "a.ts");
-    s = activateTab(s, "chat");
-    expect(s.active).toBe("chat");
+    s = activateTab(s, "chat:host");
+    expect(s.active).toBe("chat:host");
     s = activateTab(s, "a.ts");
     expect(s.active).toBe("a.ts");
   });
@@ -50,7 +53,7 @@ describe("workspace tab 状态机", () => {
     expect(s.active).toBe("a.ts");
     // 关闭 a（激活）→ 右侧无 → 左侧（chat）
     s = closeTab(s, "a.ts");
-    expect(s.active).toBe("chat");
+    expect(s.active).toBe("chat:host");
   });
 
   it("关闭非激活 tab：激活不变", () => {
@@ -61,21 +64,21 @@ describe("workspace tab 状态机", () => {
     expect(s.active).toBe("a.ts");
   });
 
-  it("聊天 tab 常驻：closeTab 对 chat 无操作", () => {
-    const s = closeTab(initialState(), "chat");
+  it("宿主聊天 tab 常驻：closeTab 对 chat:host 无操作", () => {
+    const s = closeTab(initialState(), "chat:host");
     expect(s.tabs).toHaveLength(1);
-    expect(s.active).toBe("chat");
+    expect(s.active).toBe("chat:host");
   });
 
   it("最后一个文件关闭后回聊天", () => {
     let s = openFile(initialState(), "a.ts", "a.ts");
     s = closeTab(s, "a.ts");
-    expect(s.active).toBe("chat");
-    expect(s.tabs).toEqual([{ kind: "chat" }]);
+    expect(s.active).toBe("chat:host");
+    expect(s.tabs).toEqual([{ kind: "chat", processId: "host", name: "聊天" }]);
   });
 
-  it("chatTab 标识常量", () => {
-    expect(chatTab()).toBe("chat");
+  it("chatTabId 标识常量", () => {
+    expect(chatTabId("host")).toBe("chat:host");
   });
 
   it("文件浏览态可激活（无文件 tab 时）", () => {
@@ -193,6 +196,44 @@ describe("diff tab", () => {
     const s1 = openDiffTab(initialState(), "a.ts", "a.ts");
     const s2 = closeTab(s1, "diff:a.ts");
     expect(s2.tabs.some((t) => t.kind === "diff")).toBe(false);
-    expect(s2.active).toBe("chat");
+    expect(s2.active).toBe("chat:host");
+  });
+});
+
+
+describe("multi-instance chat tab（T5）", () => {
+  it("openChatTab：新进程追加并激活；重复打开仅激活", () => {
+    let s = initialState();
+    s = openChatTab(s, "p-1", "会话B");
+    expect(s.tabs.map((t) => (t.kind === "chat" ? t.processId : ""))).toEqual(["host", "p-1"]);
+    expect(s.active).toBe("chat:p-1");
+    s = openChatTab(s, "p-1", "会话B");
+    expect(s.tabs).toHaveLength(2);
+    s = openChatTab(s, "host", "聊天");
+    expect(s.active).toBe("chat:host");
+  });
+
+  it("closeChatTab：host 不可关；普通 chat 关闭激活相邻；全关后回 host", () => {
+    let s = initialState();
+    s = openChatTab(s, "p-1", "会话B");
+    expect(closeChatTab(s, "host")).toEqual(s); // host 不可关
+    s = closeChatTab(s, "p-1");
+    expect(s.tabs).toHaveLength(1);
+    expect(s.active).toBe("chat:host");
+  });
+
+  it("closeTab 支持 chat 前缀 id；激活 id 用 chatTabId", () => {
+    let s = initialState();
+    s = openChatTab(s, "p-1", "会话B");
+    s = closeTab(s, "chat:p-1");
+    expect(s.tabs.some((t) => t.kind === "chat" && t.processId === "p-1")).toBe(false);
+  });
+
+  it("chatProcessOf 解析；activateTab 匹配 chat:<processId>", () => {
+    expect(chatProcessOf("chat:p-1")).toBe("p-1");
+    expect(chatProcessOf("a.ts")).toBeNull();
+    let s = initialState();
+    s = openChatTab(s, "p-1", "B");
+    expect(activateTab(s, "chat:p-1").active).toBe("chat:p-1");
   });
 });

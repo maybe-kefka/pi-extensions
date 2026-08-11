@@ -1,11 +1,11 @@
 import { memo, startTransition, useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { toast } from "sonner";
 import { createRpcClient, type RpcClient } from "@/shared/api/rpc";
-import { initialState, streamReducer, type StreamAction } from "@/entities/chat/stream";
+import { initialState, type StreamAction } from "@/entities/chat/stream";
 import { isTransitionalAction, toAction } from "@/entities/chat/events";
 import type { CommandInfo, FileGroup, HistoryMessage, ModelInfo, PiEvent, SessionInfo, SkillInfo, TreeNode, WebState } from "@/entities/chat/types";
 import { Header } from "@/app/ui/Header";
-import { Chat } from "@/features/chat-stream/Chat";
+import { ChatTab } from "@/features/chat-stream/ChatTab";
 import { FilesTree } from "@/features/files/FilesTree";
 import { EditorPane } from "@/features/files/EditorPane";
 import { DiffSplitView } from "@/features/files/DiffSplitView";
@@ -14,11 +14,16 @@ import { Button } from "@/shared/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/shared/ui/dialog";
 import {
   activateTab,
+  chatProcessOf,
+  chatTabId,
+  closeChatTab,
   closeTab,
   diffPathOf,
   initialState as initialWorkspace,
+  openChatTab,
   openDiffTab,
   openFile,
+  renameChatTab,
   promotePreview,
   setDirty,
   tabDirty,
@@ -54,8 +59,34 @@ function isPrivilegedError(e: Error): boolean {
 }
 
 export default function App() {
-  const [state, dispatch] = useReducer(streamReducer, initialState);
+  const [hostState, setHostState] = useState(initialState);
   const [conn, setConn] = useState(initialState.conn);
+  /** agent_list：新注册进程 → 打开 chat tab */
+  const setWorkspaceAgents = useCallback((agents: Array<{ processId: string; sessionName: string | null }>) => {
+    dispatchWs({ kind: "agent-list", agents });
+  }, []);
+
+  /** agent_closed：进程注销 → 关闭对应 chat tab */
+  const setWorkspaceAgentsClosed = useCallback((processId: string) => {
+    dispatchWs({ kind: "agent-closed", processId });
+  }, []);
+
+  /** host tab 状态上报（会话元数据：sessionName/sessionFile/context/streaming——低频使用） */
+  const handleTabStateChange = useCallback((processId: string, st: typeof initialState) => {
+    if (processId === "host") setHostState(st);
+  }, []);
+
+  /** 进程分发表：ChatTab 挂载时注册 dispatch（事件按 processId 路由） */
+  const dispatchersRef = useRef<Record<string, (a: StreamAction) => void>>({});
+  const registerDispatch = useCallback((processId: string, d: (a: StreamAction) => void) => {
+    dispatchersRef.current[processId] = d;
+  }, []);
+  const unregisterDispatch = useCallback((processId: string) => {
+    delete dispatchersRef.current[processId];
+  }, []);
+  const dispatchToProcess = useCallback((processId: string, action: StreamAction) => {
+    dispatchersRef.current[processId]?.(action);
+  }, []);
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [skills, setSkills] = useState<SkillInfo[]>([]);
@@ -110,7 +141,10 @@ export default function App() {
         | { kind: "activate"; id: string }
         | { kind: "close"; id: string }
         | { kind: "dirty"; path: string; dirty: boolean }
-        | { kind: "promote"; path: string },
+        | { kind: "promote"; path: string }
+        | { kind: "agent-list"; agents: Array<{ processId: string; sessionName: string | null }> }
+        | { kind: "agent-closed"; processId: string }
+        | { kind: "rename-chat"; processId: string; name: string },
     ): WorkspaceState => {
       switch (a.kind) {
         case "open":
@@ -125,6 +159,19 @@ export default function App() {
           return setDirty(s, a.path, a.dirty);
         case "promote":
           return promotePreview(s, a.path);
+        case "agent-list": {
+          let next = s;
+          for (const agent of a.agents) {
+            if (!next.tabs.some((t) => t.kind === "chat" && t.processId === agent.processId)) {
+              next = openChatTab(next, agent.processId, agent.sessionName ?? "聊天");
+            }
+          }
+          return next;
+        }
+        case "agent-closed":
+          return closeChatTab(s, a.processId);
+        case "rename-chat":
+          return renameChatTab(s, a.processId, a.name);
       }
     },
     undefined,
@@ -172,17 +219,40 @@ export default function App() {
       url,
       onConnState: (s) => {
         setConn(s);
-        dispatch({ type: "conn", state: s });
+        dispatchToProcess("host", { type: "conn", state: s });
       },
       onEvent: (evt) => {
+        // multi-instance：agent 事件按进程分发；普通事件归宿主进程
+        if (evt.type === "agent-event") {
+          const pid = typeof evt.processId === "string" ? evt.processId : "";
+          if (!pid) return;
+          const action = toAction(evt.event as PiEvent);
+          if (!action) return;
+          if (isTransitionalAction(action)) {
+            startTransition(() => dispatchToProcess(pid, action));
+          } else {
+            dispatchToProcess(pid, action);
+          }
+          return;
+        }
+        if (evt.type === "agent-list") {
+          const agents = (evt as { agents?: Array<{ processId: string; sessionName: string | null }> }).agents ?? [];
+          setWorkspaceAgents(agents);
+          return;
+        }
+        if (evt.type === "agent_closed") {
+          const pid = typeof evt.processId === "string" ? evt.processId : "";
+          if (pid) setWorkspaceAgentsClosed(pid);
+          return;
+        }
         const action = toAction(evt as PiEvent);
         if (!action) return;
         // R23 F5：高频流式事件（text_delta/thinking_delta/tool_update）包 transition，
         // 避免每 delta 同步渲染阻塞输入/滚动；消息边界保持同步
         if (isTransitionalAction(action)) {
-          startTransition(() => dispatch(action));
+          startTransition(() => dispatchToProcess("host", action));
         } else {
-          dispatch(action);
+          dispatchToProcess("host", action);
         }
         // R26 session-follow：会话切换完成 → 列表/高亮/历史跟随（服务端 session_start 广播）
         if (evt.type === "session_switch_ready") {
@@ -215,24 +285,28 @@ export default function App() {
   // R26 session-follow：拉取当前会话历史（切换完成时 + 连接建立时共用；失败延迟重试一次）
   const loadHistory = useCallback((retry = true) => {
     rpcRef.current
-      ?.request<{ messages: HistoryMessage[] }>("pi:getMessages")
-      .then((r) => dispatch({ type: "history", messages: r.messages ?? [] }))
+      ?.request<{ messages: HistoryMessage[] }>("pi:chatHistory", { processId: "host" })
+      .then((r) => dispatchToProcess("host", { type: "history", messages: r.messages ?? [] }))
       .catch(() => {
         if (retry) setTimeout(() => loadHistory(false), 400);
       });
-  }, []);
+  }, [dispatchToProcess]);
 
   // 连接建立后拉取初始数据
   useEffect(() => {
     if (conn !== "open" || !rpcRef.current) return;
     const c = rpcRef.current;
     c.request<WebState>("pi:getState")
-      .then((st) => dispatch({ type: "state", state: st as unknown as Record<string, unknown> }))
+      .then((st) => dispatchToProcess("host", { type: "state", state: st as unknown as Record<string, unknown> }))
       .catch((e) => toast.error(`getState: ${e.message}`));
     loadHistory(false);
     refreshSessions();
     c.request<ModelInfo[]>("pi:listModels").then(setModels).catch(() => undefined);
-  }, [conn, refreshSessions]);
+    // multi-instance：连接后拉取已注册进程（chat tab 列表）
+    c.request<{ agents: Array<{ processId: string; sessionName: string | null }> }>("pi:agentList")
+      .then((r) => setWorkspaceAgents(r.agents ?? []))
+      .catch(() => undefined);
+  }, [conn, refreshSessions, setWorkspaceAgents]);
 
   // 上拉框数据（懒加载：面板首次触发时刷新）
   const refreshPicker = useCallback(() => {
@@ -258,24 +332,11 @@ export default function App() {
     if (conn === "open") refreshPicker();
   }, [conn, refreshPicker]);
 
-  const send = useCallback((text: string) => {
-    const c = rpcRef.current;
-    if (!c) return;
-    // R25：LLM 忙碌时排队（steer：当前 turn 工具执行完后、下次 LLM 调用前注入——输出结束后自动处理）
-    c.request("pi:sendMessage", { text, deliverAs: "steer" }).catch((e) => {
-      toast.error(`发送失败: ${e.message}`);
-    });
-  }, []);
-
   // R25：web 提问工具回答 → RPC 通道（resolve 服务器端阻塞的 execute）
   const answerAsk = useCallback((toolCallId: string, answer: unknown) => {
     rpcRef.current?.request("web-ask:answer", { toolCallId, answer }).catch((e) => {
       toast.error(`回答提交失败: ${e.message}`);
     });
-  }, []);
-
-  const abort = useCallback(() => {
-    rpcRef.current?.request("pi:abort").catch((e) => toast.error(`abort: ${e.message}`));
   }, []);
 
   const compact = useCallback(() => {
@@ -412,31 +473,31 @@ export default function App() {
   const sessionPanelProps = useMemo(
     () => ({
       sessions,
-      currentSessionFile: state.sessionFile,
-      bridge: state.bridge,
+      currentSessionFile: hostState.sessionFile,
+      bridge: hostState.bridge,
       sessionDegraded: degraded,
       sessionActions,
     }),
-    [sessions, state.sessionFile, state.bridge, degraded, sessionActions],
+    [sessions, hostState.sessionFile, hostState.bridge, degraded, sessionActions],
   );
 
   const settingsPanelProps = useMemo(
     () => ({
       models,
-      currentModel: state.model ? `${state.model.provider}/${state.model.id}` : null,
-      thinkingLevel: state.thinkingLevel,
-      thinkingLevels: state.availableThinkingLevels,
+      currentModel: hostState.model ? `${hostState.model.provider}/${hostState.model.id}` : null,
+      thinkingLevel: hostState.thinkingLevel,
+      thinkingLevels: hostState.availableThinkingLevels,
       onSetModel: setModel,
       onSetThinking: setThinking,
       themePreference: themePref,
       onThemeChange,
     }),
-    [models, state.model, state.thinkingLevel, state.availableThinkingLevels, setModel, setThinking, themePref, onThemeChange],
+    [models, hostState.model, hostState.thinkingLevel, hostState.availableThinkingLevels, setModel, setThinking, themePref, onThemeChange],
   );
 
   return (
     <div className="flex h-dvh flex-col bg-background text-foreground">
-      <Header conn={conn} state={state} onCompact={compact} getRequest={getRequest} />
+      <Header conn={conn} state={hostState} onCompact={compact} getRequest={getRequest} />
       <div className="flex min-h-0 flex-1">
         <ActivityBar
           active={panel}
@@ -460,7 +521,7 @@ export default function App() {
               <FilesTree
                 request={getRequest()}
                 onOpenFile={(path, name, preview) => dispatchWs({ kind: "open", path, name, preview })}
-                activePath={workspace.active === "chat" || workspace.active === "files" ? null : workspace.active}
+                activePath={chatProcessOf(workspace.active) !== null || workspace.active === "files" ? null : workspace.active}
                 gitRefreshKey={gitRefreshKey}
                 onOpenDiff={(path) => dispatchWs({ kind: "open-diff", path, name: path.split("/").pop() ?? path })}
               />
@@ -474,10 +535,10 @@ export default function App() {
           <TabsBar
             tabs={workspace.tabs}
             active={workspace.active}
-            sessionName={state.sessionName ?? "聊天"}
+            sessionName={hostState.sessionName ?? "聊天"}
             onActivate={(id) => dispatchWs({ kind: "activate", id })}
             onClose={(id) => {
-              if (id !== "chat" && tabDirty(workspace, id)) {
+              if (chatProcessOf(id) === null && id !== "files" && tabDirty(workspace, id)) {
                 setPendingClose(id);
               } else {
                 dispatchWs({ kind: "close", id });
@@ -485,33 +546,36 @@ export default function App() {
             }}
             onSave={() => {
               const active = workspace.active;
-              if (active !== "chat" && active !== "files") void editorRefs.current[active]?.save();
+              if (chatProcessOf(active) === null && active !== "files") void editorRefs.current[active]?.save();
             }}
           />
-      {workspace.active === "chat" ? (
-        <>
+      {chatProcessOf(workspace.active) !== null ? (
+        <div className="min-h-0 flex-1">
           <DisconnectBannerMemo conn={conn} />
-          <div className="flex min-h-0 flex-1 flex-col">
-            <Chat
-              state={state}
-              dispatch={dispatch}
-              onFork={fork}
-              onAnswerAsk={answerAsk}
-            />
-          </div>
-          <InputBarMemo
-            busy={state.streaming}
-            queue={state.queue}
-            conn={conn}
-            skills={skills}
-            commands={commands}
-            files={files}
-            pickerLoading={pickerLoading}
-            onSend={send}
-            onAbort={abort}
-            onPickerOpen={refreshPicker}
-          />
-        </>
+          {/* 连接建立后才挂载 ChatTab（渲染期 getRequest 需要 rpc 就绪）——连接中主区空 */}
+          {conn === "open" && workspace.tabs
+            .filter((t) => t.kind === "chat")
+            .map((t) => (
+              <div key={t.processId} className={chatTabId(t.processId) === workspace.active ? "h-full" : "hidden"}>
+                <ChatTab
+                  processId={t.processId}
+                  name={t.name}
+                  request={getRequest()}
+                  conn={conn}
+                  skills={skills}
+                  commands={commands}
+                  files={files}
+                  pickerLoading={pickerLoading}
+                  onPickerOpen={refreshPicker}
+                  onAnswerAsk={answerAsk}
+                  onFork={fork}
+                  onRegisterDispatch={registerDispatch}
+                  onUnregisterDispatch={unregisterDispatch}
+                  onStateChange={handleTabStateChange}
+                />
+              </div>
+            ))}
+        </div>
       ) : (
         <div className="min-h-0 flex-1">
           {workspace.tabs
@@ -539,7 +603,7 @@ export default function App() {
                 <DiffSplitView path={t.path} request={getRequest()} repoRoot={t.repoRoot} />
               </div>
             ))}
-          {(workspace.active === "files" || diffPathOf(workspace.active) !== null) && workspace.active !== "chat" && !workspace.tabs.some((t) => (t.kind === "file" ? t.path === workspace.active : false)) && !workspace.tabs.some((t) => t.kind === "diff" && workspace.active === `diff:${t.path}`) && (
+          {(workspace.active === "files" || diffPathOf(workspace.active) !== null) && chatProcessOf(workspace.active) === null && !workspace.tabs.some((t) => (t.kind === "file" ? t.path === workspace.active : false)) && !workspace.tabs.some((t) => t.kind === "diff" && workspace.active === `diff:${t.path}`) && (
             <div className="text-muted-foreground flex h-full items-center justify-center text-sm">
               从左侧选择文件打开
             </div>

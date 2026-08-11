@@ -6,7 +6,7 @@
 export type WorkspaceTab =
   | { kind: "file"; path: string; name: string; dirty: boolean; preview: boolean }
   | { kind: "diff"; path: string; name: string; repoRoot?: string }
-  | { kind: "chat" };
+  | { kind: "chat"; processId: string; name: string };
 
 export interface WorkspaceState {
   tabs: WorkspaceTab[];
@@ -14,16 +14,33 @@ export interface WorkspaceState {
   active: string;
 }
 
-export const CHAT_TAB_ID = "chat";
+/** 宿主进程 processId（默认 tab） */
+export const HOST_PROCESS_ID = "host";
+
+/** chat tab 激活标识（processId 维度：chat:<processId>） */
+export function chatTabId(processId: string): string {
+  return `chat:${processId}`;
+}
+
+/** 从激活 id 解析 chat 的 processId；非 chat 返回 null */
+export function chatProcessOf(active: string): string | null {
+  return active.startsWith("chat:") ? active.slice("chat:".length) : null;
+}
+
 /** 文件浏览态（无文件 tab 时的树+空编辑器视图，非真实 tab） */
 export const FILES_VIEW_ID = "files";
 
-export function chatTab(): string {
-  return CHAT_TAB_ID;
+export function initialState(processId = HOST_PROCESS_ID, name = "聊天"): WorkspaceState {
+  return { tabs: [{ kind: "chat", processId, name }], active: chatTabId(processId) };
 }
 
-export function initialState(): WorkspaceState {
-  return { tabs: [{ kind: "chat" }], active: CHAT_TAB_ID };
+/** 打开/激活 chat tab（多实例：每进程一 tab） */
+export function openChatTab(state: WorkspaceState, processId: string, name: string): WorkspaceState {
+  const id = chatTabId(processId);
+  if (state.tabs.some((t) => t.kind === "chat" && t.processId === processId)) {
+    return { ...state, active: id };
+  }
+  return { tabs: [...state.tabs, { kind: "chat", processId, name }], active: id };
 }
 
 export interface OpenFileOptions {
@@ -60,28 +77,49 @@ export function promotePreview(state: WorkspaceState, path: string): WorkspaceSt
   return { ...state, tabs: state.tabs.map((x) => (x.kind === "file" && x.path === path ? { ...x, preview: false } : x)) };
 }
 
-/** 激活任意 tab（chat / 文件路径 / 文件浏览态） */
+/** 激活任意 tab（chat:<processId> / 文件路径 / diff:<path> / 文件浏览态） */
 export function activateTab(state: WorkspaceState, id: string): WorkspaceState {
-  const exists = state.tabs.some((t) => (t.kind === "file" ? t.path === id : id === CHAT_TAB_ID));
+  const exists = state.tabs.some((t) =>
+    t.kind === "file" ? t.path === id : t.kind === "diff" ? diffTabId(t.path) === id : t.kind === "chat" ? chatTabId(t.processId) === id : false,
+  );
   if (!exists && id !== FILES_VIEW_ID) return state;
   return { ...state, active: id };
 }
 
-/** 关闭 tab（文件/diff）：激活右邻（无则左邻）；聊天 tab 不可关闭；不存在则状态不变 */
+/** 关闭 tab（文件/diff/chat）：激活右邻（无则左邻）；宿主 chat tab 不可关；不存在则状态不变 */
 export function closeTab(state: WorkspaceState, id: string): WorkspaceState {
-  if (id === CHAT_TAB_ID) return state;
+  if (id === chatTabId(HOST_PROCESS_ID)) return state;
   const isDiff = id.startsWith("diff:");
+  const isChat = id.startsWith("chat:");
   const match = (t: WorkspaceTab): boolean =>
-    isDiff ? t.kind === "diff" && diffTabId(t.path) === id : t.kind === "file" && t.path === id;
+    isDiff
+      ? t.kind === "diff" && diffTabId(t.path) === id
+      : isChat
+        ? t.kind === "chat" && chatTabId(t.processId) === id
+        : t.kind === "file" && t.path === id;
   const idx = state.tabs.findIndex(match);
   if (idx === -1) return state;
   const tabs = state.tabs.filter((t) => !match(t));
   let active = state.active;
   if (active === id) {
     const next = tabs[Math.min(idx, tabs.length - 1)];
-    active = next ? (next.kind === "file" ? next.path : next.kind === "diff" ? diffTabId(next.path) : CHAT_TAB_ID) : CHAT_TAB_ID;
+    active = next ? (next.kind === "file" ? next.path : next.kind === "diff" ? diffTabId(next.path) : chatTabId(next.processId)) : chatTabId(HOST_PROCESS_ID);
   }
   return { tabs, active };
+}
+
+/** 关闭 chat tab（host 不可关）；不存在忽略 */
+export function closeChatTab(state: WorkspaceState, processId: string): WorkspaceState {
+  return closeTab(state, chatTabId(processId));
+}
+
+/** 更新 chat tab 显示名（session 名变化同步）；不存在忽略 */
+export function renameChatTab(state: WorkspaceState, processId: string, name: string): WorkspaceState {
+  if (!state.tabs.some((t) => t.kind === "chat" && t.processId === processId)) return state;
+  return {
+    ...state,
+    tabs: state.tabs.map((t) => (t.kind === "chat" && t.processId === processId ? { ...t, name } : t)),
+  };
 }
 
 /** 标记文件 tab dirty 状态（编辑器编辑/保存后上报）；不存在路径忽略 */

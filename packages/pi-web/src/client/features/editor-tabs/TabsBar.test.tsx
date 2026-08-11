@@ -8,7 +8,7 @@ import type { WorkspaceTab } from "@/entities/workspace/tabs";
 afterEach(cleanup);
 
 const tabs: WorkspaceTab[] = [
-  { kind: "chat" },
+  { kind: "chat", processId: "host", name: "聊天" },
   { kind: "file", path: "a.ts", name: "a.ts", dirty: false, preview: false },
   { kind: "file", path: "b.ts", name: "b.ts", dirty: false, preview: false },
 ];
@@ -56,7 +56,7 @@ describe("TabsBar dirty 与保存", () => {
   afterEach(cleanup);
 
   const dirtyTabs: WorkspaceTab[] = [
-    { kind: "chat" },
+    { kind: "chat", processId: "host", name: "聊天" },
     { kind: "file", path: "a.ts", name: "a.ts", dirty: true, preview: false },
   ];
 
