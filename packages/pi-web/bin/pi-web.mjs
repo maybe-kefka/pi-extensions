@@ -5,7 +5,7 @@
  * 等价于：PI_WEB_SERVICE=1 pi --mode rpc --extension <pi-web 入口>
  * - 注：pi CLI 对未知参数报错退出，故服务模式标志走环境变量（PI_WEB_SERVICE），不走 --web 参数
  * - rpc 模式：无 TUI 常驻，扩展以服务模式启动（只起 web 服务，不注册自己、无会话 tab）
- * - 入口自适应：发布构建 dist/index.js 优先，开发源码 src/index.ts 兜底（jiti 直载）
+ * - 入口：源码 src/index.ts 直载（jiti——pi 扩展加载机制；开发/发布一致，改代码重启即生效）
  * - Ctrl+C / SIGTERM 透传终止
  */
 import { spawn } from "node:child_process";
@@ -27,9 +27,8 @@ if (!cliPath || !existsSync(cliPath)) {
 }
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const entry = existsSync(path.join(here, "..", "dist", "index.js"))
-  ? path.join(here, "..", "dist", "index.js")
-  : path.join(here, "..", "src", "index.ts");
+// src 优先（jiti 直载——发布包 files 含 src；改代码重启即生效，无需每次构建）
+const entry = path.join(here, "..", "src", "index.ts");
 
 const argv = [cliPath, "--mode", "rpc", "--extension", entry, ...process.argv.slice(2)];
 const child = spawn(process.execPath, argv, {
