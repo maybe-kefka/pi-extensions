@@ -519,8 +519,7 @@ export function RepoItem({
               ))}
             </div>
           )}
-        </div>
-      )}          {unstaged.length > 0 && (
+          {unstaged.length > 0 && (
             <div className="mb-1">
               <div className="text-muted-foreground flex items-center gap-1 py-0.5 text-[10px] font-semibold tracking-wide uppercase">
                 未暂存（{unstaged.length}）
@@ -545,8 +544,8 @@ export function RepoItem({
               ))}
             </div>
           )}
-
-
+        </div>
+      )}
 
       <Dialog
         open={pickerOpen}

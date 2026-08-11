@@ -18,7 +18,7 @@ export function TabsBar({ tabs, active, onActivate, onClose, onSave }: TabsBarPr
       {tabs.map((tab) => {
         const id = tab.kind === "chat" ? chatTabId(tab.sessionId) : tab.kind === "diff" ? `diff:${tab.path}` : tab.path;
         const isActive = active === id;
-        const label = tab.kind === "chat" ? tab.name : tab.name;
+        const label = tab.name;
         return (
           <div
             key={id}

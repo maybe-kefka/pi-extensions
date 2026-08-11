@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 /**
  * R22：skill/file chip 标记展开（纯函数，TDD）。
  * 只展开标记内的 chip（\u0001skill:name\u0001 / \u0001file:path\u0001）——
@@ -58,6 +59,28 @@ export function expandSkillChips(text: string, skills: SkillLookupEntry[]): stri
       out += rest.slice(si, ei + 1);
     }
     rest = rest.slice(ei + 1);
+  }
+  return out;
+}
+
+/** 从扩展 API 收集 skill 元数据（R22：chip 展开用——rpc-handler 与 web-console 共用） */
+export function skillLookupFrom(api: {
+  getCommands: () => { name: string; source: string; sourceInfo?: { path: string; baseDir?: string } }[];
+}): SkillLookupEntry[] {
+  const out: SkillLookupEntry[] = [];
+  for (const c of api.getCommands()) {
+    if (c.source !== "skill" || !c.sourceInfo?.path) continue;
+    const name = c.name.replace(/^skill:/, "");
+    try {
+      out.push({
+        name,
+        path: c.sourceInfo.path,
+        baseDir: c.sourceInfo.baseDir ?? c.sourceInfo.path,
+        content: readFileSync(c.sourceInfo.path, "utf-8"),
+      });
+    } catch {
+      // 文件不可读的 skill 跳过（展开时保留原文标记）
+    }
   }
   return out;
 }

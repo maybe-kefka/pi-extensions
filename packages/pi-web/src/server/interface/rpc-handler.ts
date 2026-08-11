@@ -13,7 +13,7 @@ import {
   type ContextCategory,
   type ConversationTokens,
 } from "../domain/context-breakdown.js";
-import { expandSkillChips, type SkillLookupEntry } from "../domain/skill-expand.js";
+import { expandSkillChips, skillLookupFrom } from "../domain/skill-expand.js";
 import { askRegistry } from "../domain/web-ask.js";
 import { readFileSync } from "node:fs";
 import { listFiles } from "../domain/file-lister.js";
@@ -713,22 +713,3 @@ function buildBreakdownResult(
   };
 }
 
-/** R22：从扩展 API 收集 skill 元数据（getCommands 的 skill 命令 sourceInfo 含路径与 baseDir） */
-function skillLookupFrom(api: { getCommands: () => { name: string; source: string; sourceInfo?: { path: string; baseDir?: string } }[] }): SkillLookupEntry[] {
-  const out: SkillLookupEntry[] = [];
-  for (const c of api.getCommands()) {
-    if (c.source !== "skill" || !c.sourceInfo?.path) continue;
-    const name = c.name.replace(/^skill:/, "");
-    try {
-      out.push({
-        name,
-        path: c.sourceInfo.path,
-        baseDir: c.sourceInfo.baseDir ?? c.sourceInfo.path,
-        content: readFileSync(c.sourceInfo.path, "utf-8"),
-      });
-    } catch {
-      // 文件不可读的 skill 跳过（展开时保留原文标记）
-    }
-  }
-  return out;
-}

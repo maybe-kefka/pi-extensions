@@ -2,7 +2,7 @@
  * 多实例 chat tab（T5）：每进程一个 tab 实例。
  * - 内部 useReducer(streamReducer)——per-tab 状态隔离（input/滚动/流式互不干扰）
  * - 挂载时注册 dispatch 到 App 的进程分发表（事件按 processId 路由）
- * - 挂载时拉取该进程会话历史（pi:chatHistory）
+ * - 挂载时拉取该进程会话历史（pi:getMessages——进程当前会话）
  */
 import { memo, useCallback, useEffect, useReducer, useRef } from "react";
 import { initialState, streamReducer, type StreamAction, type StreamState } from "@/entities/chat/stream";

@@ -396,3 +396,26 @@ describe("ticket07：popover 管理区只列本地分支", () => {
     expect(screen.queryByText("origin/main")).toBeNull();
   });
 });
+
+describe("review 回归：收起态不渲染展开区", () => {
+  afterEach(cleanup);
+
+  it("repo 收起时未暂存/已暂存列表均不显示（未暂存块在 expanded 内）", async () => {
+    const request = (async (method: string, params: Record<string, unknown> = {}) => {
+      if (method === "pi:gitRepos") return { repos: REPOS };
+      if (method === "pi:gitStatus")
+        return { isRepo: true, entries: [{ path: "w.ts", status: "M", staged: false }, { path: "s.ts", status: "M", staged: true }], aggregated: {} };
+      if (method === "pi:gitBranches") return { isRepo: true, current: "main", branches: ["main"] };
+      throw new Error(`unexpected ${method}`);
+    }) as RpcClient["request"];
+    render(<GitPanel request={request} />);
+    await screen.findByText("pi-extensions");
+    // 默认收起：展开区内容不渲染（未暂存/已暂存均不出现）
+    expect(screen.queryByText(/未暂存/)).toBeNull();
+    expect(screen.queryByText(/已暂存/)).toBeNull();
+    // 展开后出现
+    fireEvent.click(screen.getAllByTitle("展开")[0]);
+    expect(await screen.findByText(/已暂存（1）/)).toBeTruthy();
+    expect(screen.getByText(/未暂存（1）/)).toBeTruthy();
+  });
+});

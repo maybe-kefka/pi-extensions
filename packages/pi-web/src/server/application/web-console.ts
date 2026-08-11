@@ -4,6 +4,7 @@
  * 不直接做 RPC 派发（interface/rpc-handler）与传输细节（infrastructure/server）。
  */
 
+import { connect as netConnect } from "node:net";
 import { randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -19,6 +20,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { createCoalescer, type Coalescer } from "../infrastructure/coalescer.js";
 import { probePrivileged } from "../domain/privilege-probe.js";
+import { portAlive } from "../infrastructure/net-probe.js";
 import { startWebServer, WebServerError, type WebServerHandle } from "../infrastructure/server.js";
 import { makeEvent, serialize } from "../domain/protocol.js";
 import { buildState } from "../domain/state.js";
@@ -30,7 +32,7 @@ import {
   stateFilePath,
   type AgentEntry,
 } from "../domain/registry.js";
-import { expandSkillChips, type SkillLookupEntry } from "../domain/skill-expand.js";
+import { expandSkillChips, skillLookupFrom } from "../domain/skill-expand.js";
 import { askRegistry } from "../domain/web-ask.js";
 import { mapEvent } from "../interface/events.js";
 import { isStaleError } from "../domain/fork-util.js";
@@ -77,25 +79,6 @@ export interface WebConsoleState {
 
 
 
-/** R22：从扩展 API 收集 skill 元数据（与 rpc-handler 同款；sendLocalMessage 用） */
-function skillLookupFrom(api: { getCommands: () => { name: string; source: string; sourceInfo?: { path: string; baseDir?: string } }[] }): SkillLookupEntry[] {
-  const out: SkillLookupEntry[] = [];
-  for (const c of api.getCommands()) {
-    if (c.source !== "skill" || !c.sourceInfo?.path) continue;
-    const name = c.name.replace(/^skill:/, "");
-    try {
-      out.push({
-        name,
-        path: c.sourceInfo.path,
-        baseDir: c.sourceInfo.baseDir ?? c.sourceInfo.path,
-        content: readFileSync(c.sourceInfo.path, "utf-8"),
-      });
-    } catch {
-      // 文件不可读的 skill 跳过
-    }
-  }
-  return out;
-}
 
 export function createWebConsole(): WebConsole {
   return new WebConsole({
@@ -264,6 +247,37 @@ export class WebConsole {
     this.broadcastAgentList();
     if (open) await this.openBrowser(server.url);
     return { url: server.url };
+  }
+
+  /**
+   * /web 语义编排（index.ts 只接线——决策树收进应用层）：
+   * 同 cwd 已有存活宿主 → 注册；残留状态文件（宿主死）→ 清理后作为宿主启动。
+   */
+  async startOrConnect(cwd: string, port: number, open: boolean): Promise<{ url: string; mode: "host" | "agent" }> {
+    const shared = WebConsole.readStateFile(cwd);
+    if (shared) {
+      if (!(await portAlive(shared.port, netConnect))) {
+        WebConsole.clearStateFile(cwd);
+      } else {
+        const { url } = this.connectToHost(cwd);
+        return { url, mode: "agent" };
+      }
+    }
+    const { url } = await this.start(port, open, cwd);
+    return { url, mode: "host" };
+  }
+
+  /** spawn 实例自动注册（宿主注入的 env）；返回是否注册 */
+  autoRegisterIfNeeded(cwd: string): boolean {
+    if (!process.env.PI_WEB_HOST_URL || this.isRunning() || this.isAgent()) return false;
+    try {
+      const { url } = this.connectToHost(cwd);
+      console.log(`[pi-web] 已自动注册共享 web 控制台：${url}`);
+      return true;
+    } catch (err) {
+      console.log(`[pi-web] 自动注册失败：${err instanceof Error ? err.message : String(err)}`);
+      return false;
+    }
   }
 
   /** 写宿主状态文件（.pi/web.json——后续 /web 进程据此注册） */
@@ -462,11 +476,12 @@ export class WebConsole {
       this.state.flushTimer = null;
     }
     this.state.coalescer = null;
+    const wasHost = this.state.server !== null;
     const server = this.state.server;
     this.state.server = null;
     this.state.token = "";
     // 仅宿主清状态文件（agent 模式退出不影响共享服务）
-    if (this.state.server === null && !this.state.agent && this.state.cwd) {
+    if (wasHost && !this.state.agent && this.state.cwd) {
       WebConsole.clearStateFile(this.state.cwd);
     }
     this.state.cwd = null;

@@ -295,15 +295,6 @@ export default function App() {
       });
   }, []);
 
-  // R26 session-follow：拉取当前会话历史（切换完成时 + 连接建立时共用；失败延迟重试一次）
-  const loadHistory = useCallback((retry = true) => {
-    rpcRef.current
-      ?.request<{ messages: HistoryMessage[] }>("pi:chatHistory", { processId: "host" })
-      .then((r) => dispatchToProcess("host", { type: "history", messages: r.messages ?? [] }))
-      .catch(() => {
-        if (retry) setTimeout(() => loadHistory(false), 400);
-      });
-  }, [dispatchToProcess]);
 
   // 连接建立后拉取初始数据
   useEffect(() => {
@@ -320,7 +311,6 @@ export default function App() {
         if (sf) dispatchWs({ kind: "open-chat", sessionId: sf, name });
       })
       .catch((e) => toast.error(`getState: ${e.message}`));
-    loadHistory(false);
     refreshSessions();
     c.request<ModelInfo[]>("pi:listModels").then(setModels).catch(() => undefined);
   }, [conn, refreshSessions]);
@@ -350,12 +340,6 @@ export default function App() {
   }, [conn, refreshPicker]);
 
   // R25：web 提问工具回答 → RPC 通道（resolve 服务器端阻塞的 execute）
-  const answerAsk = useCallback((toolCallId: string, answer: unknown) => {
-    rpcRef.current?.request("web-ask:answer", { toolCallId, answer }).catch((e) => {
-      toast.error(`回答提交失败: ${e.message}`);
-    });
-  }, []);
-
   const compact = useCallback(() => {
     rpcRef.current?.request("pi:compact").catch((e) => toast.error(`compact: ${e.message}`));
   }, []);
