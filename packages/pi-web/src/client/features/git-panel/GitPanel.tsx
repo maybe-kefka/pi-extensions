@@ -5,6 +5,7 @@ import {
   ArrowUpFromLine,
   Check,
   ChevronDown,
+  Cloud,
   ChevronRight,
   CirclePlus,
   GitBranch,
@@ -18,6 +19,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/shared/ui/button";
+import { Input } from "@/shared/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/shared/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/shared/ui/popover";
 import { statusMarker } from "@/entities/files/git-status";
@@ -69,12 +71,16 @@ export function RepoItem({
   const [committing, setCommitting] = useState(false);
   const [confirmAll, setConfirmAll] = useState(false);
   const [branches, setBranches] = useState<string[]>([]);
+  const [remotes, setRemotes] = useState<string[]>([]);
   const [currentBranch, setCurrentBranch] = useState<string | null>(null);
   const [creatingBranch, setCreatingBranch] = useState(false);
   const [newBranchName, setNewBranchName] = useState("");
   const [confirmOp, setConfirmOp] = useState<{ kind: "merge" | "rebase" | "delete"; branch: string } | null>(null);
   const [toolOpen, setToolOpen] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerQuery, setPickerQuery] = useState("");
+  const [pickerStep, setPickerStep] = useState<"list" | "create">("list");
+  const [selectedBase, setSelectedBase] = useState<string | null>(null);
 
   const refreshBrief = useCallback(async () => {
     setRefreshing(true);
@@ -91,11 +97,13 @@ export function RepoItem({
 
   const loadBranches = useCallback(async () => {
     try {
-      const r = await request<{ isRepo: boolean; current: string | null; branches: string[] }>("pi:gitBranches", { repoRoot: repo.root });
+      const r = await request<{ isRepo: boolean; current: string | null; branches: string[]; remotes: string[] }>("pi:gitBranches", { repoRoot: repo.root });
       setCurrentBranch(r.current);
       setBranches(r.branches);
+      setRemotes(r.remotes ?? []);
     } catch {
       setBranches([]);
+      setRemotes([]);
     }
   }, [request, repo.root]);
 
@@ -185,6 +193,59 @@ export function RepoItem({
     if (expanded) void refreshStatus();
   }, [expanded, refreshStatus, gitRefreshKey]);
 
+  const afterBranchChange = useCallback(async () => {
+    await loadBranches();
+    await refreshBrief();
+    if (expanded) await refreshStatus();
+  }, [loadBranches, refreshBrief, expanded, refreshStatus]);
+
+  const pickerSwitch = useCallback(
+    async (branch: string, isRemote: boolean) => {
+      try {
+        if (isRemote) await request("pi:gitSwitchRemote", { remote: branch, repoRoot: repo.root });
+        else await request("pi:gitSwitch", { branch, repoRoot: repo.root });
+        toast.success(`已切换到 ${isRemote ? branch : branch}`);
+        setPickerOpen(false);
+        void afterBranchChange();
+      } catch (e) {
+        toast.error(`切换失败：${e instanceof Error ? e.message : String(e)}`);
+      }
+    },
+    [request, repo.root, afterBranchChange],
+  );
+
+  const pickerCommitCreate = useCallback(async () => {
+    const name = pickerQuery.trim();
+    if (name === "" || !selectedBase) return;
+    try {
+      await request("pi:gitCreateBranch", { name, base: selectedBase, repoRoot: repo.root });
+      toast.success(`已创建并切换到 ${name}`);
+      setPickerOpen(false);
+      void afterBranchChange();
+    } catch (e) {
+      toast.error(`创建失败：${e instanceof Error ? e.message : String(e)}`);
+    }
+  }, [pickerQuery, selectedBase, request, repo.root, afterBranchChange]);
+
+  const pickerEnter = useCallback(() => {
+    const q = pickerQuery.trim();
+    if (q === "") return;
+    // 精确匹配：本地/远程分支 → 直接切换
+    if (branches.includes(q)) {
+      void pickerSwitch(q, false);
+      return;
+    }
+    if (remotes.includes(q)) {
+      void pickerSwitch(q, true);
+      return;
+    }
+    // 不存在 → 内联创建第二步
+    setSelectedBase(null);
+    setPickerStep("create");
+  }, [pickerQuery, branches, remotes, pickerSwitch]);
+
+
+
 
   const stagePath = useCallback(
     async (path: string | null) => {
@@ -245,6 +306,12 @@ export function RepoItem({
   const unstaged = status.filter((s) => !s.staged);
   const staged = status.filter((s) => s.staged);
 
+  // 弹窗列表：输入过滤（大小写不敏感）
+  const q = pickerQuery.trim().toLowerCase();
+  const pickLocal = branches.filter((b) => b.toLowerCase().includes(q));
+  const pickRemote = remotes.filter((r) => r.toLowerCase().includes(q));
+  const pickBases = [...branches, ...remotes];
+
   return (
     <div className="border-border border-b">
       <div className="flex items-center gap-1.5 px-2 py-1.5 text-xs">
@@ -261,7 +328,10 @@ export function RepoItem({
           <button
             className="bg-muted text-muted-foreground hover:bg-primary/20 hover:text-primary cursor-pointer rounded px-1 py-0.5 font-mono text-[10px]"
             title={`当前分支 ${repo.branch}（点击选择）`}
-            onClick={() => setPickerOpen(true)}
+            onClick={() => {
+              setPickerOpen(true);
+              void loadBranches();
+            }}
           >
             {repo.branch}
           </button>
@@ -463,6 +533,101 @@ export function RepoItem({
           )}
 
 
+
+      <Dialog
+        open={pickerOpen}
+        onOpenChange={(open) => {
+          setPickerOpen(open);
+          if (open) {
+            setPickerQuery("");
+            setPickerStep("list");
+            setSelectedBase(null);
+            void loadBranches();
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>选择分支 · {repo.name}</DialogTitle>
+            <DialogDescription>输入新名称回车可创建分支</DialogDescription>
+          </DialogHeader>
+          <Input
+            autoFocus
+            value={pickerQuery}
+            onChange={(e) => {
+              setPickerQuery(e.target.value);
+              if (pickerStep === "create") setPickerStep("list");
+            }}
+            placeholder="分支名（输入新名回车创建）"
+            onKeyDown={(e) => {
+              if (e.key === "Enter") pickerEnter();
+            }}
+          />
+          {pickerStep === "create" ? (
+            <div className="mt-1">
+              <div className="text-muted-foreground mb-1 text-[10px] font-semibold tracking-wide uppercase">从哪个分支创建「{pickerQuery.trim()}」？</div>
+              <div className="scrollbar-thin max-h-40 overflow-y-auto">
+                {pickBases.map((b) => (
+                  <button
+                    key={b}
+                    className={`flex w-full cursor-pointer items-center gap-1.5 rounded px-1.5 py-1 text-left text-[11px] ${selectedBase === b ? "bg-primary/10 text-primary" : "hover:bg-muted"}`}
+                    onClick={() => setSelectedBase(b)}
+                  >
+                    <GitBranch className="text-muted-foreground size-3 shrink-0" />
+                    <span className="min-w-0 flex-1 truncate">{b}</span>
+                    {selectedBase === b && <Check className="size-3 shrink-0" />}
+                  </button>
+                ))}
+              </div>
+              <DialogFooter className="mt-2">
+                <Button variant="outline" size="sm" className="h-7 text-[11px]" onClick={() => setPickerStep("list")}>
+                  取消
+                </Button>
+                <Button size="sm" className="h-7 text-[11px]" disabled={!selectedBase} onClick={() => void pickerCommitCreate()}>
+                  创建
+                </Button>
+              </DialogFooter>
+            </div>
+          ) : (
+            <div className="mt-1">
+              <div className="text-muted-foreground mb-1 text-[10px] font-semibold tracking-wide uppercase">本地分支</div>
+              <div className="scrollbar-thin max-h-32 overflow-y-auto">
+                {pickLocal.map((b) => {
+                  const isCurrent = b === currentBranch;
+                  return (
+                    <button
+                      key={b}
+                      disabled={isCurrent}
+                      title={isCurrent ? "当前分支" : `切换到 ${b}`}
+                      className={`flex w-full cursor-pointer items-center gap-1.5 rounded px-1.5 py-1 text-left text-[11px] ${isCurrent ? "text-muted-foreground cursor-default opacity-60" : "hover:bg-muted"}`}
+                      onClick={() => void pickerSwitch(b, false)}
+                    >
+                      {isCurrent ? <Check className="size-3 shrink-0" /> : <GitBranch className="text-muted-foreground size-3 shrink-0" />}
+                      <span className="min-w-0 flex-1 truncate">{b}</span>
+                    </button>
+                  );
+                })}
+                {pickLocal.length === 0 && <div className="text-muted-foreground px-1.5 py-1 text-[11px]">无匹配分支</div>}
+              </div>
+              <div className="text-muted-foreground mt-2 mb-1 text-[10px] font-semibold tracking-wide uppercase">远程分支</div>
+              <div className="scrollbar-thin max-h-32 overflow-y-auto">
+                {pickRemote.map((r) => (
+                  <button
+                    key={r}
+                    title={`创建跟踪分支并切换到 ${r}`}
+                    className="hover:bg-muted flex w-full cursor-pointer items-center gap-1.5 rounded px-1.5 py-1 text-left text-[11px]"
+                    onClick={() => void pickerSwitch(r, true)}
+                  >
+                    <Cloud className="text-muted-foreground size-3 shrink-0" />
+                    <span className="min-w-0 flex-1 truncate">{r}</span>
+                  </button>
+                ))}
+                {pickRemote.length === 0 && <div className="text-muted-foreground px-1.5 py-1 text-[11px]">无匹配远程分支</div>}
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={confirmOp !== null} onOpenChange={(open) => !open && setConfirmOp(null)}>
         <DialogContent>

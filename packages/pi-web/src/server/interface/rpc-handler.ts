@@ -447,6 +447,16 @@ async function handleRequest(
       return { ok: true };
     }
 
+    case "pi:gitSwitchRemote": {
+      // git-panel-polish：点远程分支 → 创建跟踪分支并切换（本地同名直接切）
+      const ctx = requireCtxOf();
+      const remote = typeof params.remote === "string" ? params.remote : "";
+      if (remote === "") throw new WebServerError(-32602, "remote 必填");
+      const r = await switchOrTrack(ctx.cwd, remote, await gitRunnerFor(ctx, params));
+      if (!r.ok) throw new WebServerError(-32603, r.error);
+      return { ok: true };
+    }
+
     case "pi:gitBranchCreate": {
       const ctx = requireCtxOf();
       const name = typeof params.name === "string" ? params.name : "";

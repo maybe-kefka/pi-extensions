@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 // GitPanel 多仓库列表测试：空态/多项/brief 徽标/展开折叠/刷新
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { GitPanel, RepoItem, type GitStatusEntry, type RepoInfo } from "./GitPanel";
 import type { RpcClient } from "@/shared/api/rpc";
 
@@ -301,5 +301,78 @@ describe("review/ticket04 回归：commit 触发键", () => {
     expect(calls.some((c) => c.m === "pi:gitCommit")).toBe(false);
     fireEvent.keyDown(ta, { key: "Enter", shiftKey: true });
     expect(calls.some((c) => c.m === "pi:gitCommit")).toBe(true);
+  });
+});
+
+describe("ticket06：分支选择弹窗", () => {
+  afterEach(cleanup);
+
+  function renderPicker(overrides: Record<string, unknown> = {}) {
+    const calls: string[] = [];
+    const request = (async (method: string, params: Record<string, unknown> = {}) => {
+      calls.push(`${method}:${JSON.stringify(params)}`);
+      if (method === "pi:gitRepos") return { repos: REPOS };
+      if (method === "pi:gitStatus") return { isRepo: true, entries: [], aggregated: {} };
+      if (method === "pi:gitBranches")
+        return { isRepo: true, current: "main", branches: ["main", "feat"], remotes: ["origin/main", "origin/dev"], ...overrides };
+      if (method === "pi:gitSwitch") return { ok: true };
+      if (method === "pi:gitSwitchRemote") return { ok: true };
+      if (method === "pi:gitCreateBranch") return { ok: true };
+      throw new Error(`unexpected ${method}`);
+    }) as RpcClient["request"];
+    const ui = render(<GitPanel request={request} />);
+    return { calls, request, ...ui };
+  }
+
+  it("点分支名徽标 → 弹窗出现（本地/远程分组，当前分支不可点）", async () => {
+    renderPicker();
+    await screen.findByText("pi-extensions");
+    fireEvent.click(screen.getByTitle(/当前分支 main/));
+    expect(await screen.findByRole("dialog")).toBeTruthy();
+    expect(await screen.findByText("本地分支")).toBeTruthy();
+    expect(screen.getByText("远程分支")).toBeTruthy();
+    expect(await screen.findByText("origin/dev")).toBeTruthy();
+    // 弹窗内的 feat 列表项（另一个 repo 的徽标也叫 feat——取 dialog 内的）
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getAllByText("feat").length).toBeGreaterThan(0);
+    // 当前分支 main 标记且不可点（Check 图标）
+    const mainItem = within(dialog).getAllByText("main")[0];
+    expect(mainItem.closest("button")?.disabled).toBe(true);
+  });
+
+  it("点本地分支 → pi:gitSwitch + 弹窗关闭", async () => {
+    const { calls } = renderPicker();
+    await screen.findByText("pi-extensions");
+    fireEvent.click(screen.getByTitle(/当前分支 main/));
+    await screen.findByRole("dialog");
+    const dialog = await screen.findByRole("dialog");
+    const featItem = within(dialog).getAllByText("feat")[0];
+    fireEvent.click(featItem.closest("button")!);
+    await waitFor(() => expect(calls.some((c) => c.startsWith("pi:gitSwitch:"))).toBe(true));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  });
+
+  it("点远程分支 → pi:gitSwitchRemote（创建跟踪分支并切换）", async () => {
+    const { calls } = renderPicker();
+    await screen.findByText("pi-extensions");
+    fireEvent.click(screen.getByTitle(/当前分支 main/));
+    await screen.findByRole("dialog");
+    fireEvent.click(await screen.findByText("origin/dev"));
+    await waitFor(() => expect(calls.some((c) => c.startsWith("pi:gitSwitchRemote:"))).toBe(true));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  });
+
+  it("输入不存在的新名回车 → 内联'从哪个分支创建' → 确认 → pi:gitCreateBranch", async () => {
+    const { calls } = renderPicker();
+    await screen.findByText("pi-extensions");
+    fireEvent.click(screen.getByTitle(/当前分支 main/));
+    await screen.findByRole("dialog");
+    fireEvent.change(screen.getByPlaceholderText(/分支名/), { target: { value: "hotfix" } });
+    fireEvent.keyDown(screen.getByPlaceholderText(/分支名/), { key: "Enter" });
+    expect(await screen.findByText(/从哪个分支创建/)).toBeTruthy();
+    // base 列表含本地+远程
+    fireEvent.click(within(screen.getByRole("dialog")).getByText("origin/main"));
+    fireEvent.click(screen.getByRole("button", { name: "创建" }));
+    expect(calls.some((c) => c.includes("pi:gitCreateBranch") && c.includes("hotfix") && c.includes("origin/main"))).toBe(true);
   });
 });
