@@ -28,8 +28,8 @@ export function SessionPanel(props: SessionPanelProps) {
   return (
     <div className="scrollbar-thin scrollbar-gutter-stable flex h-full flex-col gap-3 overflow-y-auto p-3">
       <Card className="gap-2 py-3">
-        <CardHeader className="flex-row items-center justify-between px-4 py-0">
-          <CardTitle className="text-xs font-semibold tracking-wide uppercase">会话</CardTitle>
+        <div className="flex items-center justify-between px-4">
+          <span className="text-xs font-semibold tracking-wide uppercase">会话</span>
           <Button
             variant="ghost"
             size="icon"
@@ -39,7 +39,7 @@ export function SessionPanel(props: SessionPanelProps) {
           >
             <RefreshCw />
           </Button>
-        </CardHeader>
+        </div>
         <CardContent className="px-4">
           <SessionList
             sessions={sessions}

@@ -25,3 +25,10 @@ describe("WaterCup（垂直水杯进度条）", () => {
     expect(water.style.height).toBe("50%");
   });
 });
+
+  it("与 input 同高调宽：h-10 + w-3.5（同块布局）", () => {
+    render(<WaterCup percent={0.3} />);
+    const cup = screen.getByRole("progressbar");
+    expect(cup.className).toContain("h-10");
+    expect(cup.className).toContain("w-3.5");
+  });

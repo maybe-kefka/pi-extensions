@@ -5,7 +5,6 @@ import { initialState, type StreamAction, type StreamState } from "@/entities/ch
 import type { AgentInfo } from "@/entities/chat/types";
 import { isTransitionalAction, toAction } from "@/entities/chat/events";
 import type { CommandInfo, FileGroup, HistoryMessage, ModelInfo, PiEvent, SessionInfo, SkillInfo, TreeNode, WebState } from "@/entities/chat/types";
-import { Header } from "@/app/ui/Header";
 import { ChatTab } from "@/features/chat-stream/ChatTab";
 import { ChatEmptyGuide } from "@/features/chat-stream/ChatEmptyGuide";
 import { FilesTree } from "@/features/files/FilesTree";
@@ -27,6 +26,7 @@ import {
   chatOpenAction,
   diffAgentTabs,
   markChatDead,
+  moveTab,
   openDiffTab,
   openFile,
   renameChatTab,
@@ -163,7 +163,8 @@ export default function App() {
         | { kind: "rename-chat"; sessionId: string; name: string }
         | { kind: "open-chat"; sessionId: string; name: string }
         | { kind: "close-chat"; sessionId: string }
-        | { kind: "dead-chat"; sessionId: string },
+        | { kind: "dead-chat"; sessionId: string }
+        | { kind: "move"; fromId: string; toId: string },
     ): WorkspaceState => {
       switch (a.kind) {
         case "open":
@@ -186,6 +187,8 @@ export default function App() {
           return closeChatTab(s, a.sessionId);
         case "dead-chat":
           return markChatDead(s, a.sessionId);
+        case "move":
+          return moveTab(s, a.fromId, a.toId);
       }
     },
     undefined,
@@ -573,7 +576,6 @@ export default function App() {
 
   return (
     <div className="flex h-dvh flex-col bg-background text-foreground">
-      <Header conn={conn} />
       <div className="flex min-h-0 flex-1">
         <ActivityBar
           active={panel}
@@ -609,6 +611,7 @@ export default function App() {
             tabs={workspace.tabs}
             active={workspace.active}
             onActivate={(id) => dispatchWs({ kind: "activate", id })}
+            onMove={(fromId, toId) => dispatchWs({ kind: "move", fromId, toId })}
             onClose={(id) => {
               if (chatSessionOf(id) !== null) {
                 // chat 与 file 同级：直接关闭；spawn 实例同步杀进程（TUI 注册者保留注册）
@@ -625,10 +628,6 @@ export default function App() {
               } else {
                 dispatchWs({ kind: "close", id });
               }
-            }}
-            onSave={() => {
-              const active = workspace.active;
-              if (chatSessionOf(active) === null) void editorRefs.current[active]?.save();
             }}
           />
       <div className="min-h-0 flex-1">

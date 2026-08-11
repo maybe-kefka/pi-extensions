@@ -108,6 +108,8 @@ ${WEB_ASK_GUIDELINES}` };
 // 模块级单例：factory 每次重跑（会话切换）时保留 server/token/coalescer/privileged 续链，
 // 只重绑 api/ctx——RPC 闭包与事件广播始终指向同一实例（否则切换后广播断、RPC 用旧 api）
 const webConsole = createWebConsole();
+/** web_ask 工具注入守卫（连接成功注入一次——factory 重跑不重复） */
+let webAskInjected = false;
 
 export default function (pi: ExtensionAPI): void {
   // multi-instance：扩展入口路径（spawn 新实例用——宿主/注册者都设置）
@@ -130,11 +132,18 @@ export default function (pi: ExtensionAPI): void {
   // multi-instance：spawn 实例自动注册（宿主注入的环境变量）——不等 /web
   webConsole.autoRegisterIfNeeded(process.cwd());
 
-  // R25：web 提问工具（阻塞等待回答）
-  registerWebAskTools(pi);
-
   // 每次 factory 运行（startup / 会话切换）都重绑当前 api
   webConsole.bindApi(pi);
+
+  // R25：web 提问工具——连接 web 成功（agent 注册）才注入（未开 web 不注入——LLM 不会调用看不到回答的工具）
+  webConsole.onConnected(() => {
+    if (webAskInjected) return;
+    webAskInjected = true;
+    const api = webConsole.state.api;
+    if (api) {
+      registerWebAskTools(api);
+    }
+  });
 
   // ---- 会话生命周期 ----
   pi.on("session_start", (_event, ctx) => {

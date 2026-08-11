@@ -458,6 +458,12 @@ export class WebConsole {
     });
   }
 
+  /** 连接成功回调（agent 注册完成——web_ask 注入时机；index 接线） */
+  private onConnectedCb: (() => void) | null = null;
+  onConnected(cb: () => void): void {
+    this.onConnectedCb = cb;
+  }
+
   /** agent 模式：重发 hello（session_start 后会话信息更新） */
   refreshAgentHello(): void {
     const agent = this.state.agent;
@@ -522,6 +528,7 @@ export class WebConsole {
       }
       if (msg.type === "welcome" && this.state.agent) {
         this.state.agent.processId = msg.processId ?? "";
+        this.onConnectedCb?.();
         return;
       }
       if (msg.type === "command" && this.state.agent) {

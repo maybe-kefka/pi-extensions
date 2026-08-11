@@ -169,3 +169,40 @@ describe("EditorPane 防抖保存", () => {
   });
 });
 
+
+describe("EditorPane 工具栏（06：文件视图 header）", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  it("dirty 时显示保存按钮（点击触发保存 RPC）；干净时不显示", async () => {
+    const { request, calls } = makeRequest();
+    const ref = createRef<EditorPaneHandle>();
+    render(<EditorPane path="a.ts" request={request} ref={ref} />);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    // 初始干净：无保存按钮
+    expect(screen.queryByText("保存")).toBeNull();
+    // 编辑 → dirty → 保存按钮出现 → 点击触发写盘
+    const cm = screen.getByTestId("cm") as HTMLTextAreaElement;
+    fireEvent.change(cm, { target: { value: "old!" } });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    const saveBtn = screen.getByText("保存");
+    fireEvent.click(saveBtn);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(calls.some((c) => c.startsWith("pi:writeFile"))).toBe(true);
+  });
+
+  it("工具栏有撤销/重做/重新加载按钮（vscode 风格）", async () => {
+    const { request } = makeRequest();
+    const ref = createRef<EditorPaneHandle>();
+    render(<EditorPane path="a.ts" request={request} ref={ref} />);
+    expect(screen.getByTitle("撤销")).toBeTruthy();
+    expect(screen.getByTitle("重做")).toBeTruthy();
+    expect(screen.getByTitle(/重新加载/)).toBeTruthy();
+  });
+});

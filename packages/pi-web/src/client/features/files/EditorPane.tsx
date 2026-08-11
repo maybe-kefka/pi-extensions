@@ -1,6 +1,9 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useReducer, useRef, useState } from "react";
 import { keymap } from "@codemirror/view";
 import CodeMirror from "@uiw/react-codemirror";
+import type { EditorView } from "@codemirror/view";
+import { redo, undo } from "@codemirror/commands";
+import { RotateCcw, Save, Undo2, Redo2 } from "lucide-react";
 import { css } from "@codemirror/lang-css";
 import { html } from "@codemirror/lang-html";
 import { javascript } from "@codemirror/lang-javascript";
@@ -100,6 +103,7 @@ export const EditorPane = forwardRef<EditorPaneHandle, EditorPaneProps>(function
   const [edit, dispatch] = useReducer(reducer, EMPTY, initialEditState);
   const filePathRef = useRef<string | null>(null);
 
+  const viewRef = useRef<EditorView | null>(null);
   const loadFile = useCallback(
     async (p: string) => {
       try {
@@ -228,6 +232,42 @@ export const EditorPane = forwardRef<EditorPaneHandle, EditorPaneProps>(function
         <span className="text-muted-foreground text-xs tabular-nums">{fmtSize(file.size)}</span>
         {edit.saving && <Badge variant="secondary">保存中…</Badge>}
         {modeNote}
+        <div className="ml-auto flex items-center gap-0.5">
+          <button
+            className="hover:bg-muted text-muted-foreground hover:text-foreground flex size-6 cursor-pointer items-center justify-center rounded"
+            title="撤销"
+            onClick={() => viewRef.current && undo(viewRef.current)}
+          >
+            <Undo2 className="size-3.5" />
+          </button>
+          <button
+            className="hover:bg-muted text-muted-foreground hover:text-foreground flex size-6 cursor-pointer items-center justify-center rounded"
+            title="重做"
+            onClick={() => viewRef.current && redo(viewRef.current)}
+          >
+            <Redo2 className="size-3.5" />
+          </button>
+          {edit.dirty && (
+            <button
+              className="bg-primary/10 text-primary hover:bg-primary/20 ml-1 flex cursor-pointer items-center gap-1 rounded px-2 py-1 text-xs font-medium"
+              onClick={() => void doSave(edit)}
+              title="保存 (Ctrl+S)"
+            >
+              <Save className="size-3.5" />
+              保存
+            </button>
+          )}
+          <button
+            className="hover:bg-muted text-muted-foreground hover:text-foreground flex size-6 cursor-pointer items-center justify-center rounded"
+            title="重新加载（丢弃未保存改动）"
+            onClick={() => {
+              if (edit.dirty && !window.confirm("丢弃未保存的修改并从磁盘重新加载？")) return;
+              void loadFile(path);
+            }}
+          >
+            <RotateCcw className="size-3.5" />
+          </button>
+        </div>
       </div>
       <div className="min-h-0 flex-1 overflow-hidden">
         {file.mode === "text" ? (
@@ -237,6 +277,9 @@ export const EditorPane = forwardRef<EditorPaneHandle, EditorPaneProps>(function
             height="100%"
             style={{ height: "100%", fontSize: 13 }}
             extensions={[langExt(langForFile(file.name)), createEditorTheme(), ctrlSKeymap]}
+            onCreateEditor={(view) => {
+              viewRef.current = view;
+            }}
             readOnly={!editable}
             onChange={(v) => dispatch({ kind: "content", content: v })}
             basicSetup={{ lineNumbers: true, foldGutter: true, highlightActiveLine: false }}

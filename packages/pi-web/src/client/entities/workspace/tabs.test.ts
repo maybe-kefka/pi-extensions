@@ -5,6 +5,7 @@ import {
   chatOpenAction,
   diffAgentTabs,
   markChatDead,
+  moveTab,
   type WorkspaceTab,
   chatTabId,
   chatSessionOf,
@@ -293,3 +294,27 @@ describe("断线标记（agent 退出 → tab dead；重开复活）", () => {
     expect(d.join).toEqual([{ sessionFile: "/s/1.jsonl", sessionName: "A" }]);
     expect(d.leave).toEqual([]);
   });
+
+describe("moveTab（拖拽调序）", () => {
+  const tabs: WorkspaceTab[] = [
+    { kind: "file", path: "/a.ts", name: "a.ts", dirty: false, preview: false },
+    { kind: "chat", sessionId: "/s/1.jsonl", name: "A" },
+    { kind: "file", path: "/b.ts", name: "b.ts", dirty: false, preview: false },
+  ];
+  it("前移（chat 拖到最前）", () => {
+    const s: WorkspaceState = { tabs, active: "/a.ts" };
+    const m = moveTab(s, chatTabId("/s/1.jsonl"), "/a.ts");
+    expect(m.tabs.map((t) => (t.kind === "file" ? t.path : t.kind === "chat" ? t.sessionId : ""))).toEqual(["/s/1.jsonl", "/a.ts", "/b.ts"]);
+    expect(m.active).toBe("/a.ts"); // 激活不变
+  });
+  it("后移（a.ts 拖到最后）", () => {
+    const s: WorkspaceState = { tabs, active: "" };
+    const m = moveTab(s, "/a.ts", "/b.ts");
+    expect(m.tabs.map((t) => (t.kind === "file" ? t.path : t.kind === "chat" ? t.sessionId : ""))).toEqual(["/s/1.jsonl", "/b.ts", "/a.ts"]);
+  });
+  it("非法 id（不存在）→ 状态不变", () => {
+    const s: WorkspaceState = { tabs, active: "" };
+    expect(moveTab(s, "/nope.ts", "/a.ts")).toBe(s);
+    expect(moveTab(s, "/a.ts", "/nope.ts")).toBe(s);
+  });
+});

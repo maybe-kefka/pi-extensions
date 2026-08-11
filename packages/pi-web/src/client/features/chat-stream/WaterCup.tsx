@@ -14,7 +14,7 @@ export function WaterCup({ percent }: { percent: number | null | undefined }) {
   return (
     <div
       title={`上下文占用 ${label}`}
-      className="bg-muted relative h-16 w-2.5 shrink-0 overflow-hidden rounded-md"
+      className="bg-muted relative h-10 w-3.5 shrink-0 overflow-hidden rounded-md"
       role="progressbar"
       aria-valuenow={Math.round(p * 100)}
       aria-valuemin={0}

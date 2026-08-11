@@ -214,3 +214,16 @@ export function chatLeaveAction(tabs: WorkspaceTab[], sessionId: string): "keep"
   if (!t || t.kind !== "chat") return "close";
   return t.dead === true ? "keep" : "close";
 }
+
+/** 拖拽调序：把 fromId 的 tab 移到 toId 的 tab 位置（激活不变）；任一不存在 → 状态不变 */
+export function moveTab(state: WorkspaceState, fromId: string, toId: string): WorkspaceState {
+  const idOf = (t: WorkspaceTab): string =>
+    t.kind === "file" ? t.path : t.kind === "diff" ? diffTabId(t.path) : chatTabId(t.sessionId);
+  const from = state.tabs.findIndex((t) => idOf(t) === fromId);
+  const to = state.tabs.findIndex((t) => idOf(t) === toId);
+  if (from === -1 || to === -1 || from === to) return state;
+  const tabs = [...state.tabs];
+  const [moved] = tabs.splice(from, 1);
+  tabs.splice(to, 0, moved);
+  return { ...state, tabs };
+}
