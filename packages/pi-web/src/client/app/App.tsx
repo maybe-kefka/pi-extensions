@@ -259,10 +259,14 @@ export default function App() {
         } else {
           dispatchToProcess("host", action);
         }
-        // R26 session-follow：会话切换完成 → 列表/高亮/历史跟随（服务端 session_start 广播）
+        // R26 session-follow（T7 修订）：会话切换完成 → 会话列表刷新 + 宿主 tab 历史跟随
+        // （不切换激活 tab、不开新 tab——宿主 tab 内容随进程 session 更新）
         if (evt.type === "session_switch_ready") {
           refreshSessions();
-          loadHistory(true);
+          rpcRef.current
+            ?.request<{ messages: HistoryMessage[] }>("pi:chatHistory", { processId: "host" })
+            .then((r) => dispatchToProcess("host", { type: "history", messages: r.messages ?? [] }))
+            .catch(() => undefined);
         }
         // R26 session-follow：特权状态广播（TUI 切换 → 立即降级提示；重跑 /web → 自动恢复）
         if (action.type === "privilege_status") {
@@ -507,11 +511,8 @@ export default function App() {
         <ActivityBar
           active={panel}
           onSelect={(p) => {
+            // 活动栏只切侧边栏——主区内容由 tab 决定（chat tab 常驻，主区不空）
             setPanel(p);
-            // 打开文件面板且无文件 tab 时进入文件浏览态（主区空态提示）
-            if (p === "files" && !workspace.tabs.some((t) => t.kind === "file")) {
-              dispatchWs({ kind: "activate", id: "files" });
-            }
           }}
         />
         {panel !== null && (
@@ -526,7 +527,7 @@ export default function App() {
               <FilesTree
                 request={getRequest()}
                 onOpenFile={(path, name, preview) => dispatchWs({ kind: "open", path, name, preview })}
-                activePath={chatProcessOf(workspace.active) !== null || workspace.active === "files" ? null : workspace.active}
+                activePath={chatProcessOf(workspace.active) !== null ? null : workspace.active}
                 gitRefreshKey={gitRefreshKey}
                 onOpenDiff={(path) => dispatchWs({ kind: "open-diff", path, name: path.split("/").pop() ?? path })}
               />
@@ -550,7 +551,7 @@ export default function App() {
                 dispatchWs({ kind: "close", id });
                 return;
               }
-              if (id !== "files" && tabDirty(workspace, id)) {
+              if (tabDirty(workspace, id)) {
                 setPendingClose(id);
               } else {
                 dispatchWs({ kind: "close", id });
@@ -558,7 +559,7 @@ export default function App() {
             }}
             onSave={() => {
               const active = workspace.active;
-              if (chatProcessOf(active) === null && active !== "files") void editorRefs.current[active]?.save();
+              if (chatProcessOf(active) === null) void editorRefs.current[active]?.save();
             }}
             onNewChat={() => {
               rpcRef.current?.request("pi:newChat").catch((e: Error) => toast.error(`新建会话失败: ${e.message}`));
@@ -618,11 +619,7 @@ export default function App() {
                 <DiffSplitView path={t.path} request={getRequest()} repoRoot={t.repoRoot} />
               </div>
             ))}
-          {(workspace.active === "files" || diffPathOf(workspace.active) !== null) && chatProcessOf(workspace.active) === null && !workspace.tabs.some((t) => (t.kind === "file" ? t.path === workspace.active : false)) && !workspace.tabs.some((t) => t.kind === "diff" && workspace.active === `diff:${t.path}`) && (
-            <div className="text-muted-foreground flex h-full items-center justify-center text-sm">
-              从左侧选择文件打开
-            </div>
-          )}
+
         </div>
       )}
       </main>

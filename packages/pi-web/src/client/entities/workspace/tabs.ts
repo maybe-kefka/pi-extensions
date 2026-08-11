@@ -27,9 +27,6 @@ export function chatProcessOf(active: string): string | null {
   return active.startsWith("chat:") ? active.slice("chat:".length) : null;
 }
 
-/** 文件浏览态（无文件 tab 时的树+空编辑器视图，非真实 tab） */
-export const FILES_VIEW_ID = "files";
-
 export function initialState(processId = HOST_PROCESS_ID, name = "聊天"): WorkspaceState {
   return { tabs: [{ kind: "chat", processId, name }], active: chatTabId(processId) };
 }
@@ -82,7 +79,7 @@ export function activateTab(state: WorkspaceState, id: string): WorkspaceState {
   const exists = state.tabs.some((t) =>
     t.kind === "file" ? t.path === id : t.kind === "diff" ? diffTabId(t.path) === id : t.kind === "chat" ? chatTabId(t.processId) === id : false,
   );
-  if (!exists && id !== FILES_VIEW_ID) return state;
+  if (!exists) return state;
   return { ...state, active: id };
 }
 

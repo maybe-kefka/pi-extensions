@@ -81,10 +81,6 @@ describe("workspace tab 状态机", () => {
     expect(chatTabId("host")).toBe("chat:host");
   });
 
-  it("文件浏览态可激活（无文件 tab 时）", () => {
-    const s = activateTab(initialState(), "files");
-    expect(s.active).toBe("files");
-  });
 
   it("打开文件后浏览态切到文件", () => {
     const s = openFile(activateTab(initialState(), "files"), "a.ts", "a.ts");
