@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FolderTree, RefreshCw } from "lucide-react";
-import { Button } from "@/shared/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/shared/ui/dialog";
-import { Input } from "@/shared/ui/input";
+import { Button } from "@/shared/ui";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/shared/ui";
+import { Input } from "@/shared/ui";
 import { toast } from "sonner";
-import type { RpcClient } from "@/shared/api/rpc";
+import type { RpcClient } from "@/shared/api";
 import {
   applyListing,
   collapseDir,
@@ -13,8 +13,8 @@ import {
   setDirState,
   type DirEntryDto,
   type TreeState,
-} from "@/entities/files/tree";
-import { gitStatusLabel, type GitInfoDto } from "@/entities/files/git-info";
+} from "@/entities/files";
+import { gitStatusLabel, type GitInfoDto } from "@/entities/files";
 import { TreeView } from "./TreeView";
 
 export interface FilesTreeProps {
@@ -44,7 +44,7 @@ export function FilesTree({ request, onOpenFile, activePath, gitRefreshKey = 0, 
   const inflight = useRef(new Set<string>());
 
   const loadDir = useCallback(
-    async (path: string, state: TreeState): Promise<void> => {
+    async (path: string): Promise<void> => {
       if (inflight.current.has(path)) return;
       inflight.current.add(path);
       setTree((prev) => setDirState(prev, path, { loading: true }));
@@ -74,13 +74,12 @@ export function FilesTree({ request, onOpenFile, activePath, gitRefreshKey = 0, 
 
   // 首屏加载根目录 + git 信息与状态
   useEffect(() => {
-    void loadDir("", tree);
+    void loadDir("");
     request<GitInfoDto>("pi:gitInfo")
       .then(setGitInfo)
       .catch(() => setGitInfo({ isRepo: false }));
     void loadGitStatus();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [loadDir]);
 
   // 外部刷新信号（保存后联动）
   useEffect(() => {
@@ -94,7 +93,7 @@ export function FilesTree({ request, onOpenFile, activePath, gitRefreshKey = 0, 
       if (node.children !== null) {
         setTree((prev) => collapseDir(prev, path));
       } else {
-        void loadDir(path, tree);
+        void loadDir(path);
       }
     },
     [tree, loadDir],
@@ -104,7 +103,7 @@ export function FilesTree({ request, onOpenFile, activePath, gitRefreshKey = 0, 
     setError(null);
     const fresh = createRootTree();
     setTree(fresh);
-    void loadDir("", fresh);
+    void loadDir("");
     void loadGitStatus();
   }, [loadDir, loadGitStatus]);
 
@@ -117,7 +116,7 @@ export function FilesTree({ request, onOpenFile, activePath, gitRefreshKey = 0, 
         await request("pi:rename", { path, newName: trimmed });
         // 重命名后重载父目录
         const dir = path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
-        void loadDir(dir, tree);
+        void loadDir(dir);
         void loadGitStatus();
       } catch (e) {
         toast.error(`重命名失败：${e instanceof Error ? e.message : String(e)}`);
@@ -132,7 +131,7 @@ export function FilesTree({ request, onOpenFile, activePath, gitRefreshKey = 0, 
       try {
         const r = await request<{ removedCount: number }>("pi:delete", { path });
         const dir = path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
-        void loadDir(dir, tree);
+        void loadDir(dir);
         void loadGitStatus();
         toast.success(`已删除 ${path}（${r.removedCount} 项）`);
       } catch (e) {
@@ -156,7 +155,7 @@ export function FilesTree({ request, onOpenFile, activePath, gitRefreshKey = 0, 
         await request("pi:touch", { path });
         onOpenFile(path, name, false);
       }
-      void loadDir(newTarget.dir, tree);
+      void loadDir(newTarget.dir);
       void loadGitStatus();
     } catch (e) {
       toast.error(`新建失败：${e instanceof Error ? e.message : String(e)}`);

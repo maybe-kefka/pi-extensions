@@ -12,13 +12,13 @@ import { markdown } from "@codemirror/lang-markdown";
 import { python } from "@codemirror/lang-python";
 import { AlertTriangle, FileLock2 } from "lucide-react";
 import { toast } from "sonner";
-import { Badge } from "@/shared/ui/badge";
-import { Button } from "@/shared/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/shared/ui/dialog";
-import type { RpcClient } from "@/shared/api/rpc";
-import { langForFile, type SupportedLang } from "@/entities/files/lang";
-import { createEditorTheme } from "@/entities/files/editor-theme";
-import { isEditable, type OpenedFile } from "@/entities/files/editor";
+import { Badge } from "@/shared/ui";
+import { Button } from "@/shared/ui";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/shared/ui";
+import type { RpcClient } from "@/shared/api";
+import { langForFile, type SupportedLang } from "@/entities/files";
+import { createEditorTheme } from "@/features/files";
+import { isEditable, type OpenedFile } from "@/entities/files";
 import {
   editContent,
   initialEditState,
@@ -28,7 +28,7 @@ import {
   reloadFromDisk,
   resolveConflictOverwrite,
   type EditState,
-} from "@/entities/files/save-state";
+} from "@/entities/files";
 
 function langExt(lang: SupportedLang | null) {
   switch (lang) {
@@ -192,6 +192,13 @@ export const EditorPane = forwardRef<EditorPaneHandle, EditorPaneProps>(function
     onDirtyChange?.(path, edit.dirty);
   }, [edit.dirty, path, onDirtyChange]);
 
+  // CodeMirror 扩展数组稳定（每次渲染重建会触发 reconfigure；无条件 hooks——须在条件 return 前）
+  const extensions = useMemo(
+    () => (file ? [langExt(langForFile(file.name)), createEditorTheme(), ctrlSKeymap] : []),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [file?.name],
+  );
+
   const reloadFromDisk = useCallback(async () => {
     if (!file) return;
     try {
@@ -276,7 +283,7 @@ export const EditorPane = forwardRef<EditorPaneHandle, EditorPaneProps>(function
             theme="none"
             height="100%"
             style={{ height: "100%", fontSize: 13 }}
-            extensions={[langExt(langForFile(file.name)), createEditorTheme(), ctrlSKeymap]}
+            extensions={extensions}
             onCreateEditor={(view) => {
               viewRef.current = view;
             }}

@@ -1,4 +1,4 @@
-import { isValidElement, Suspense, useState, type ReactNode } from "react";
+import { isValidElement, Suspense, useEffect, useRef, useState, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
@@ -20,12 +20,16 @@ function nodeText(node: ReactNode): string {
 
 function CodeBlock({ language, className, children }: { language: string; className?: string; children: ReactNode }) {
   const [copied, setCopied] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const text = nodeText(children);
+  // 卸载清理复制状态定时器（防卸载后 setState）
+  useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current); }, []);
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(text);
       setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
+      if (timerRef.current) clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(() => setCopied(false), 1500);
     } catch {
       /* 剪贴板不可用（非安全上下文等）时静默 */
     }

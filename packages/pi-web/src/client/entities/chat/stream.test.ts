@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { metaEquals, pickStreamMeta } from "./stream";
 import {
   bubbleActiveThinking,
   bubbleStreaming,
@@ -677,5 +678,34 @@ describe("R25 compact 锚定", () => {
     expect(done.anchorBubbleId).toBeNull();
     const s2 = streamReducer(done, { type: "session_start" });
     expect(s2.compacting).toBeNull();
+  });
+});
+
+describe("pickStreamMeta / metaEquals（App 订阅元数据——防流式 delta 整树重渲染）", () => {
+  it("pickStreamMeta 只取元数据字段（bubbles/tools 等大字段不带上抛）", () => {
+    const st = {
+      ...initialState,
+      sessionFile: "/s.jsonl",
+      sessionName: "会话",
+      model: { provider: "p", id: "m", name: "模型" },
+      thinkingLevel: "low",
+      availableThinkingLevels: ["low", "high"],
+      bridge: { status: {}, widget: null, notifies: [] },
+    };
+    const meta = pickStreamMeta(st);
+    expect(meta.sessionFile).toBe("/s.jsonl");
+    expect(meta.sessionName).toBe("会话");
+    expect(meta.model?.id).toBe("m");
+    expect(meta).not.toHaveProperty("bubbles");
+    expect(meta).not.toHaveProperty("tools");
+  });
+
+  it("metaEquals：仅会话元数据差异才为 false（bubbles 差异无关）", () => {
+    const a = pickStreamMeta(initialState);
+    const b = pickStreamMeta({ ...initialState, sessionName: "新名" });
+    expect(metaEquals(a, a)).toBe(true);
+    expect(metaEquals(a, b)).toBe(false);
+    const c = pickStreamMeta({ ...initialState, bubbles: [{ id: "x", role: "assistant", turns: [], streaming: false }] as never });
+    expect(metaEquals(a, c)).toBe(true);
   });
 });

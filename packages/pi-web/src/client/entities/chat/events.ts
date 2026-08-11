@@ -1,5 +1,5 @@
 import type { StreamAction } from "./stream";
-import type { PiEvent } from "./types";
+import type { PiEvent } from "./chat-model";
 
 /**
  * 服务器 pi:event → reducer action 映射（纯函数）。

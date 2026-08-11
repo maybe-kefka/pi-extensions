@@ -798,3 +798,38 @@ export function streamReducer(state: StreamState, action: StreamAction): StreamS
       return state;
   }
 }
+
+// ---- 会话元数据（App 侧订阅的最小集——流式 delta 高频，只上报元数据避免整棵 App 重渲染）----
+
+export interface StreamStateMeta {
+  sessionFile: string | null;
+  sessionName: string | null;
+  model: StreamState["model"];
+  thinkingLevel: string | null;
+  availableThinkingLevels: string[];
+  bridge: StreamState["bridge"];
+}
+
+/** 从完整 StreamState 提取元数据子集（App 每 delta 只接收这个） */
+export function pickStreamMeta(st: StreamState): StreamStateMeta {
+  return {
+    sessionFile: st.sessionFile,
+    sessionName: st.sessionName,
+    model: st.model,
+    thinkingLevel: st.thinkingLevel,
+    availableThinkingLevels: st.availableThinkingLevels,
+    bridge: st.bridge,
+  };
+}
+
+/** 元数据比较（App setState bail out：无变化返回 prev，React 跳过重渲染） */
+export function metaEquals(a: StreamStateMeta, b: StreamStateMeta): boolean {
+  return (
+    a.sessionFile === b.sessionFile &&
+    a.sessionName === b.sessionName &&
+    a.thinkingLevel === b.thinkingLevel &&
+    JSON.stringify(a.model) === JSON.stringify(b.model) &&
+    JSON.stringify(a.availableThinkingLevels) === JSON.stringify(b.availableThinkingLevels) &&
+    JSON.stringify(a.bridge) === JSON.stringify(b.bridge)
+  );
+}

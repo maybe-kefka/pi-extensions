@@ -1,18 +1,18 @@
 import { memo, startTransition, useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { toast } from "sonner";
-import { createRpcClient, type RpcClient } from "@/shared/api/rpc";
-import { initialState, type StreamAction, type StreamState } from "@/entities/chat/stream";
-import type { AgentInfo } from "@/entities/chat/types";
-import { isTransitionalAction, toAction } from "@/entities/chat/events";
-import type { CommandInfo, FileGroup, HistoryMessage, ModelInfo, PiEvent, SessionInfo, SkillInfo, TreeNode, WebState } from "@/entities/chat/types";
-import { ChatTab } from "@/features/chat-stream/ChatTab";
-import { ChatEmptyGuide } from "@/features/chat-stream/ChatEmptyGuide";
-import { FilesTree } from "@/features/files/FilesTree";
-import { EditorPane } from "@/features/files/EditorPane";
-import { DiffSplitView } from "@/features/files/DiffSplitView";
-import { TabsBar } from "@/features/editor-tabs/TabsBar";
-import { Button } from "@/shared/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/shared/ui/dialog";
+import { createRpcClient, type RpcClient } from "@/shared/api";
+import { initialState, metaEquals, pickStreamMeta, type StreamAction, type StreamState, type StreamStateMeta } from "@/entities/chat";
+import type { AgentInfo } from "@/entities/chat";
+import { isTransitionalAction, toAction } from "@/entities/chat";
+import type { CommandInfo, FileGroup, HistoryMessage, ModelInfo, PiEvent, SessionInfo, SkillInfo, TreeNode, WebState } from "@/entities/chat";
+import { ChatTab } from "@/pages/chat";
+import { ChatEmptyGuide } from "@/features/chat-stream";
+import { FilesTree } from "@/features/files";
+import { EditorPane } from "@/features/files";
+import { DiffSplitView } from "@/features/files";
+import { TabsBar } from "@/features/editor-tabs";
+import { Button } from "@/shared/ui";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/shared/ui";
 import {
   activateTab,
   chatSessionOf,
@@ -34,17 +34,17 @@ import {
   setDirty,
   tabDirty,
   type WorkspaceState,
-} from "@/entities/workspace/tabs";
-import type { EditorPaneHandle } from "@/features/files/EditorPane";
-import { clampPanelWidth, loadPanelWidth, savePanelWidth } from "@/entities/workspace/layout";
-import { ActivityBar, type ActivityPanel } from "@/features/activity-bar/ActivityBar";
-import { SessionPanel } from "@/features/sessions/SessionPanel";
-import { SettingsPanel } from "@/features/settings/SettingsPanel";
-import { GitPanel } from "@/features/git-panel/GitPanel";
-import { InputBar } from "@/features/input-bar/InputBar";
+} from "@/entities/workspace";
+import type { EditorPaneHandle } from "@/features/files";
+import { clampPanelWidth, loadPanelWidth, savePanelWidth } from "@/entities/workspace";
+import { ActivityBar, type ActivityPanel } from "@/features/activity-bar";
+import { SessionPanel } from "@/features/sessions";
+import { SettingsPanel } from "@/features/settings";
+import { GitPanel } from "@/features/git-panel";
+import { InputBar } from "@/features/input-bar";
 import { DisconnectBanner } from "@/app/ui/DisconnectBanner";
-import { TreeDialog } from "@/features/sessions/TreeDialog";
-import { Toaster } from "@/shared/ui/sonner";
+import { TreeDialog } from "@/features/sessions";
+import { Toaster } from "@/shared/ui";
 import { applyTheme, watchSystemScheme } from "@/app/apply-theme";
 import {
   loadPreference,
@@ -53,7 +53,7 @@ import {
   savePreference,
   type Scheme,
   type ThemePreference,
-} from "@/entities/theme/theme";
+} from "@/entities/theme";
 
 
 const InputBarMemo = memo(InputBar);
@@ -73,11 +73,15 @@ function sessionLabelFromFile(sf: string): string {
 }
 
 export default function App() {
-  const [hostState, setHostState] = useState(initialState);
+  const [hostState, setHostState] = useState<StreamStateMeta>({
+    sessionFile: null, sessionName: null, model: null, thinkingLevel: null, availableThinkingLevels: [], bridge: { status: {}, widget: null, notifies: [] },
+  });
   const [conn, setConn] = useState(initialState.conn);
-  /** 激活 chat tab 状态上报（会话元数据：sessionName/sessionFile/context——ChatTab 仅在激活时上报） */
-  const handleTabStateChange = useCallback((sessionId: string, st: typeof initialState) => {
-    if (sessionId === chatSessionOf(workspaceRef.current.active)) setHostState(st);
+  /** 激活 chat tab 状态上报（会话元数据——完整 stream state 高频变化不得上抛） */
+  const handleTabStateChange = useCallback((sessionId: string, meta: StreamStateMeta) => {
+    if (sessionId !== chatSessionOf(workspaceRef.current.active)) return;
+    // 元数据无变化 → 返回 prev（React bail out，跳过重渲染——流式 delta 期间 App 不重跑）
+    setHostState((prev) => (metaEquals(prev, meta) ? prev : { ...prev, ...meta }));
   }, []);
 
   /** 进程分发表：ChatTab 挂载时注册 dispatch（事件按 processId 路由） */
@@ -349,13 +353,19 @@ export default function App() {
     }
   }, []);
 
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // App 常驻：卸载清理重试定时器（防御性）
+  useEffect(() => () => { if (retryTimerRef.current) clearTimeout(retryTimerRef.current); }, []);
   const refreshSessions = useCallback((retry = true) => {
     // R26 session-follow：切换瞬间 ctx 可能未就绪（requireCtx 抛"切换中"）——失败延迟重试一次
     rpcRef.current
       ?.request<SessionInfo[]>("pi:listSessions")
       .then(setSessions)
       .catch(() => {
-        if (retry) setTimeout(() => refreshSessions(false), 400);
+        if (retry) {
+          if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+          retryTimerRef.current = setTimeout(() => refreshSessions(false), 400);
+        }
       });
   }, []);
 
@@ -367,7 +377,7 @@ export default function App() {
     c.request<WebState>("pi:getState")
       .then((st) => {
         // 先直接镜像会话元数据（ChatTab 未挂载时 state 事件会丢——激活 effect 需要 sessionFile）
-        setHostState((prev) => ({ ...prev, ...(st as unknown as Partial<StreamState>) }));
+        setHostState((prev) => ({ ...prev, ...pickStreamMeta(st as unknown as StreamState) }));
         dispatchToActiveChat({ type: "state", state: st as unknown as Record<string, unknown> });
         // 无注册者 → 空态引导；会话 tab 由注册者（agent_list / 会话管理打开）驱动
       })

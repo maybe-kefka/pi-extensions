@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client";
 import "./index.css";
 import App from "./App";
 import { ErrorBoundary } from "./ui/ErrorBoundary";
-import { TooltipProvider } from "@/shared/ui/tooltip";
+import { TooltipProvider } from "@/shared/ui";
 import { applyTheme } from "./apply-theme";
 
 // R26：主题——首帧前应用（避免闪屏）；系统深浅变化由 App 统一订阅（toast 联动同源）

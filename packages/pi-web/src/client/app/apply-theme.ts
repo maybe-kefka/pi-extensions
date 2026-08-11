@@ -3,7 +3,7 @@
  * 挂载 data-theme + .dark 到根元素；系统深浅变化监听。
  * 唯一 seam（主题引擎纯函数）见 entities/theme/theme.ts。
  */
-import { loadPreference, parseSystemScheme, resolveTheme, type ThemePreference } from "@/entities/theme/theme";
+import { loadPreference, parseSystemScheme, resolveTheme, type ThemePreference } from "@/entities/theme";
 
 /** 应用当前偏好（缺省读 localStorage）到 documentElement。 */
 export function applyTheme(preference?: ThemePreference): void {
