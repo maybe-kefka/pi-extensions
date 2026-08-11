@@ -71,6 +71,11 @@ export default function App() {
     dispatchWs({ kind: "agent-closed", processId });
   }, []);
 
+  // host 会话名变化 → chat tab 标题同步
+  useEffect(() => {
+    if (hostState.sessionName) dispatchWs({ kind: "rename-chat", processId: "host", name: hostState.sessionName });
+  }, [hostState.sessionName]);
+
   /** host tab 状态上报（会话元数据：sessionName/sessionFile/context/streaming——低频使用） */
   const handleTabStateChange = useCallback((processId: string, st: typeof initialState) => {
     if (processId === "host") setHostState(st);
@@ -235,7 +240,7 @@ export default function App() {
           }
           return;
         }
-        if (evt.type === "agent-list") {
+        if (evt.type === "agent_list") {
           const agents = (evt as { agents?: Array<{ processId: string; sessionName: string | null }> }).agents ?? [];
           setWorkspaceAgents(agents);
           return;
@@ -538,7 +543,14 @@ export default function App() {
             sessionName={hostState.sessionName ?? "聊天"}
             onActivate={(id) => dispatchWs({ kind: "activate", id })}
             onClose={(id) => {
-              if (chatProcessOf(id) === null && id !== "files" && tabDirty(workspace, id)) {
+              const pid = chatProcessOf(id);
+              if (pid !== null) {
+                // multi-instance：关闭 chat tab = 通知宿主（spawned 终止 / external 注销）
+                rpcRef.current?.request("pi:chatClose", { processId: pid }).catch(() => undefined);
+                dispatchWs({ kind: "close", id });
+                return;
+              }
+              if (id !== "files" && tabDirty(workspace, id)) {
                 setPendingClose(id);
               } else {
                 dispatchWs({ kind: "close", id });
@@ -547,6 +559,9 @@ export default function App() {
             onSave={() => {
               const active = workspace.active;
               if (chatProcessOf(active) === null && active !== "files") void editorRefs.current[active]?.save();
+            }}
+            onNewChat={() => {
+              rpcRef.current?.request("pi:newChat").catch((e: Error) => toast.error(`新建会话失败: ${e.message}`));
             }}
           />
       {chatProcessOf(workspace.active) !== null ? (

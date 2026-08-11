@@ -110,6 +110,19 @@ ${WEB_ASK_GUIDELINES}` };
 const webConsole = createWebConsole();
 
 export default function (pi: ExtensionAPI): void {
+  // multi-instance：扩展入口路径（spawn 新实例用——宿主/注册者都设置）
+  webConsole.setExtensionPath(new URL(import.meta.url).pathname);
+
+  // multi-instance：spawn 实例自动注册（宿主注入的环境变量）——不等 /web
+  if (process.env.PI_WEB_HOST_URL && !webConsole.isRunning() && !webConsole.isAgent()) {
+    try {
+      const { url } = webConsole.connectToHost(process.cwd());
+      console.log(`[pi-web] 已自动注册共享 web 控制台：${url}`);
+    } catch (err) {
+      console.log(`[pi-web] 自动注册失败：${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
   // 幂等：重复注册只覆盖 handleRequest 闭包（引用的仍是单例 state）
   registerRpcHandler(webConsole);
 
@@ -122,6 +135,10 @@ export default function (pi: ExtensionAPI): void {
   // ---- 会话生命周期 ----
   pi.on("session_start", (_event, ctx) => {
     webConsole.bindCtx(ctx);
+    // multi-instance：agent 模式会话信息变化 → 重发 hello（宿主更新 sessionFile/name）
+    if (webConsole.isAgent()) {
+      webConsole.refreshAgentHello();
+    }
     if (webConsole.isRunning()) {
       // R26 session-follow：切换后主动探测特权有效性（TUI 切换 → stale → 降级提示立即生效；
       // web 内切换 → withSession 续链 → ok，不降级）

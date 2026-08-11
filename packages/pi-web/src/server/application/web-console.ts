@@ -7,6 +7,7 @@
 import { randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { spawn } from "node:child_process";
 import WebSocket from "ws";
 import { fileURLToPath } from "node:url";
 import {
@@ -212,11 +213,18 @@ export class WebConsole {
       },
       agentEvents: {
         onAgentHello: (info) => {
-          const processId = this.state.registry.nextProcessId("external");
+          const kind = info.kind === "spawned" ? "spawned" : "external";
+          // 已注册（session_start 后重发 hello）→ 更新会话信息
+          const existing = this.state.registry.list().find((a) => a.pid === info.pid);
+          if (existing) {
+            this.state.registry.add({ ...existing, sessionFile: info.sessionFile ?? existing.sessionFile, sessionName: info.sessionName ?? existing.sessionName });
+            return existing.processId;
+          }
+          const processId = this.state.registry.nextProcessId(kind);
           this.state.registry.add({
             processId,
             pid: info.pid,
-            kind: "external",
+            kind,
             sessionFile: info.sessionFile,
             sessionName: info.sessionName,
             cwd: info.cwd,
@@ -291,6 +299,76 @@ export class WebConsole {
     return this.state.agent !== null;
   }
 
+  /** agent 模式：重发 hello（session_start 后会话信息更新） */
+  refreshAgentHello(): void {
+    const agent = this.state.agent;
+    if (!agent || agent.ws.readyState !== agent.ws.OPEN) return;
+    agent.ws.send(
+      JSON.stringify({
+        type: "hello",
+        pid: process.pid,
+        cwd: this.state.cwd,
+        sessionFile: this.state.ctx?.sessionManager.getSessionFile() ?? null,
+        sessionName: this.state.ctx?.sessionManager.getSessionName() ?? null,
+        kind: process.env.PI_WEB_HOST_KIND ?? "external",
+      }),
+    );
+  }
+
+  /** 扩展入口路径（spawn 新实例用；index.ts 启动时注册） */
+  private extensionPath: string | null = null;
+  setExtensionPath(p: string): void {
+    this.extensionPath = p;
+  }
+
+  /** 新建会话：spawn 对等 pi 实例（环境变量自动注册） */
+  spawnAgent(): void {
+    if (!this.state.server || !this.state.token) throw new WebServerError(1, "宿主未运行");
+    if (!this.extensionPath) throw new WebServerError(1, "扩展路径未知，无法 spawn");
+    const cwd = this.state.cwd ?? process.cwd();
+    const url = `ws://127.0.0.1:${this.state.server.port}/agent?token=${encodeURIComponent(this.state.token)}`;
+    // spawn 对等 pi 实例：pi 是 node 脚本（argv[0]=node、argv[1]=pi 入口）
+    const exe = process.execPath || process.argv[0];
+    const piEntry = process.argv[1] ?? "";
+    const child = spawn(exe, piEntry ? [piEntry, "--mode", "rpc", "--extension", this.extensionPath] : ["--mode", "rpc", "--extension", this.extensionPath], {
+      cwd,
+      env: {
+        ...process.env,
+        PI_WEB_HOST_URL: url,
+        PI_WEB_HOST_KIND: "spawned",
+      },
+      // stdin 保持打开（pipe 不写）：stdio ignore 会让 pi 因 stdin EOF 立即退出
+      stdio: ["pipe", "ignore", "ignore"],
+    });
+    child.on("error", () => {
+      /* spawn 失败静默（RPC 已返回 ok——注册失败由 agent_list 缺失体现） */
+    });
+    child.unref();
+  }
+
+  /** 关闭 chat tab：spawned → 终止进程；external → 注销（进程继续） */
+  closeAgent(processId: string): void {
+    const entry = this.state.registry.get(processId);
+    if (!entry) return;
+    if (entry.kind === "spawned") {
+      try {
+        process.kill(entry.pid);
+      } catch {
+        /* 已退出 */
+      }
+      this.state.registry.remove(processId);
+      this.broadcastAgentList();
+      return;
+    }
+    if (entry.kind === "external") {
+      try {
+        this.state.server?.sendAgentCommand(processId, { command: "deregister" });
+      } catch {
+        /* 未连接 */
+      }
+    }
+  }
+
   /** agent 模式的宿主 URL（重跑 /web 显示用） */
   agentHostUrl(): string | null {
     return this.state.agent?.hostUrl ?? null;
@@ -315,6 +393,7 @@ export class WebConsole {
           cwd,
           sessionFile: this.state.ctx?.sessionManager.getSessionFile() ?? null,
           sessionName: this.state.ctx?.sessionManager.getSessionName() ?? null,
+          kind: process.env.PI_WEB_HOST_KIND ?? "external",
         }),
       );
     };
@@ -353,6 +432,9 @@ export class WebConsole {
         await this.sendLocalMessage(msg.text.trim(), msg.deliverAs);
       } else if (command === "abort") {
         this.requireCtx().abort();
+      } else if (command === "deregister") {
+        // 宿主注销本进程：断开连接（进程继续运行）
+        this.state.agent?.ws.close();
       }
     } catch (err) {
       this.state.agent?.ws.send(JSON.stringify({ type: "command-result", ok: false, error: err instanceof Error ? err.message : String(err) }));
@@ -418,7 +500,10 @@ export class WebConsole {
     const server = this.state.server;
     this.state.server = null;
     this.state.token = "";
-    if (this.state.cwd) WebConsole.clearStateFile(this.state.cwd);
+    // 仅宿主清状态文件（agent 模式退出不影响共享服务）
+    if (this.state.server === null && !this.state.agent && this.state.cwd) {
+      WebConsole.clearStateFile(this.state.cwd);
+    }
     this.state.cwd = null;
     this.state.registry = new RegistryStore();
     if (server) await server.stop();

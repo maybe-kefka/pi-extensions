@@ -37,7 +37,13 @@ export interface AgentConnection {
 
 export interface AgentEvents {
   /** 注册者 hello（新进程入列）；返回 processId */
-  onAgentHello: (info: { pid: number; cwd: string; sessionFile: string | null; sessionName: string | null }) => string;
+  onAgentHello: (info: {
+    pid: number;
+    cwd: string;
+    sessionFile: string | null;
+    sessionName: string | null;
+    kind?: string;
+  }) => string;
   /** 注册者事件上行（转发浏览器，附加 processId） */
   onAgentEvent: (processId: string, event: Record<string, unknown>) => void;
   /** 注册者断开（进程表移除 + 浏览器 tab 关闭） */
@@ -138,6 +144,7 @@ export async function startWebServer(options: WebServerOptions): Promise<WebServ
             cwd: typeof msg.cwd === "string" ? msg.cwd : "",
             sessionFile: typeof msg.sessionFile === "string" ? msg.sessionFile : null,
             sessionName: typeof msg.sessionName === "string" ? msg.sessionName : null,
+            kind: typeof msg.kind === "string" ? msg.kind : "external",
           });
           agentInfoByWs.set(ws, { processId });
           ws.send(JSON.stringify({ type: "welcome", processId }));
