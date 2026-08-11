@@ -272,3 +272,34 @@ describe("review 回归：分支行 hover 操作可达", () => {
     expect(row.querySelector('button[title="合并到当前分支"]')).toBeTruthy();
   });
 });
+
+describe("review/ticket04 回归：commit 触发键", () => {
+  afterEach(cleanup);
+
+  function renderWithStaged() {
+    const calls: Array<{ m: string; p: unknown }> = [];
+    const request = (async (m: string, p?: unknown) => {
+      calls.push({ m, p });
+      if (m === "pi:gitRepos") return { repos: REPOS };
+      if (m === "pi:gitStatus") return { isRepo: true, entries: [{ path: "a.ts", status: "M", staged: true }], aggregated: {} };
+      if (m === "pi:gitBranches") return { isRepo: true, current: "main", branches: ["main"] };
+      if (m === "pi:gitCommit") return { ok: true };
+      if (m === "pi:gitRepos") return { repos: REPOS };
+      throw new Error(`unexpected ${m}`);
+    }) as RpcClient["request"];
+    const ui = render(<GitPanel request={request} />);
+    return { calls, ui };
+  }
+
+  it("Enter 不触发提交（换行）；Shift+Enter 触发", async () => {
+    const { calls } = renderWithStaged();
+    await screen.findByText("pi-extensions");
+    fireEvent.click(screen.getAllByTitle("展开")[0]);
+    const ta = await screen.findByPlaceholderText(/提交信息/);
+    fireEvent.change(ta, { target: { value: "feat: x" } });
+    fireEvent.keyDown(ta, { key: "Enter" });
+    expect(calls.some((c) => c.m === "pi:gitCommit")).toBe(false);
+    fireEvent.keyDown(ta, { key: "Enter", shiftKey: true });
+    expect(calls.some((c) => c.m === "pi:gitCommit")).toBe(true);
+  });
+});

@@ -376,12 +376,22 @@ export function RepoItem({
             <div className="mb-1.5 flex items-center gap-1.5">
               <textarea
                 value={commitMessage}
-                onChange={(e) => setCommitMessage(e.target.value)}
-                placeholder="提交信息（Ctrl+Enter）"
-                rows={2}
-                className="border-input bg-background text-foreground placeholder:text-muted-foreground min-h-0 flex-1 resize-none rounded border px-2 py-1 text-[11px] outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+                onChange={(e) => {
+                  setCommitMessage(e.target.value);
+                  // auto-grow：内容高度自适应（一行收起，多行展开）
+                  const el = e.target;
+                  el.style.height = "auto";
+                  el.style.height = `${el.scrollHeight}px`;
+                }}
+                placeholder="提交信息（Ctrl/Shift+Enter 提交）"
+                rows={1}
+                className="border-input bg-background text-foreground placeholder:text-muted-foreground max-h-32 min-h-0 flex-1 resize-none overflow-y-auto rounded border px-2 py-1 text-[11px] leading-4 outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
                 onKeyDown={(e) => {
-                  if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) void commit(false);
+                  // Enter 天然换行；Shift+Enter 与 Ctrl/Meta+Enter 提交（vscode 语义）
+                  if (e.key === "Enter" && (e.ctrlKey || e.metaKey || e.shiftKey)) {
+                    e.preventDefault();
+                    void commit(false);
+                  }
                 }}
               />
               <Button
