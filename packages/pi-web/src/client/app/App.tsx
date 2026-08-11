@@ -462,6 +462,7 @@ export default function App() {
                 onOpenFile={(path, name, preview) => dispatchWs({ kind: "open", path, name, preview })}
                 activePath={workspace.active === "chat" || workspace.active === "files" ? null : workspace.active}
                 gitRefreshKey={gitRefreshKey}
+                onOpenDiff={(path) => dispatchWs({ kind: "open-diff", path, name: path.split("/").pop() ?? path })}
               />
             )}
             {panel === "git" && <GitPanel request={getRequest()} gitRefreshKey={gitRefreshKey} onOpenFile={(path, repoRoot) => dispatchWs({ kind: "open-diff", path, name: path.split("/").pop() ?? path, repoRoot })} />}

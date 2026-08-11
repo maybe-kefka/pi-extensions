@@ -1,5 +1,11 @@
-import { useRef } from "react";
-import { ChevronDown, ChevronRight, File, FilePlus2, Folder, FolderOpen, FolderPlus, Pencil, Trash2 } from "lucide-react";
+import { useRef, type ReactNode } from "react";
+import { ChevronDown, ChevronRight, Copy, File, FilePlus2, Folder, FolderOpen, FolderPlus, GitCompareArrows, Pencil, Trash2 } from "lucide-react";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
+} from "@/shared/ui/context-menu";
 import type { FileTreeNode } from "@/entities/files/tree";
 import { statusColorVar, statusMarker } from "@/entities/files/git-status";
 
@@ -19,6 +25,10 @@ export interface TreeViewProps {
   onDelete: (path: string) => void;
   onNewFile: (dir: string) => void;
   onNewDir: (dir: string) => void;
+  /** 右键菜单：打开 diff（仅文件） */
+  onOpenDiff: (path: string) => void;
+  /** 右键菜单：复制路径 */
+  onCopyPath: (path: string) => void;
 }
 
 function Row({
@@ -35,6 +45,8 @@ function Row({
   onDelete,
   onNewFile,
   onNewDir,
+  onOpenDiff,
+  onCopyPath,
 }: {
   node: FileTreeNode;
   depth: number;
@@ -49,6 +61,8 @@ function Row({
   onDelete: (path: string) => void;
   onNewFile: (dir: string) => void;
   onNewDir: (dir: string) => void;
+  onOpenDiff: (path: string) => void;
+  onCopyPath: (path: string) => void;
 }) {
   const isDir = node.type === "dir";
   const expanded = node.children !== null;
@@ -56,29 +70,23 @@ function Row({
   const marker = node.path === "" ? undefined : gitStatus?.get(node.path);
   const dir = node.path === "" ? "" : node.path;
 
-  const ops = (
-    <span className="bg-background invisible absolute right-1 top-1/2 flex -translate-y-1/2 items-center gap-0.5 group-hover:visible">
-      {isDir && (
-        <>
-          <button title="新建文件" className="hover:text-foreground cursor-pointer p-0.5" onClick={(e) => { e.stopPropagation(); onNewFile(dir); }}>
-            <FilePlus2 className="size-3.5" />
-          </button>
-          <button title="新建文件夹" className="hover:text-foreground cursor-pointer p-0.5" onClick={(e) => { e.stopPropagation(); onNewDir(dir); }}>
-            <FolderPlus className="size-3.5" />
-          </button>
-        </>
-      )}
-      <button title="重命名" className="hover:text-foreground cursor-pointer p-0.5" onClick={(e) => { e.stopPropagation(); onRenameStart(node.path); }}>
-        <Pencil className="size-3.5" />
-      </button>
-      <button title="删除" className="hover:text-destructive cursor-pointer p-0.5" onClick={(e) => { e.stopPropagation(); onDelete(node.path); }}>
-        <Trash2 className="size-3.5" />
-      </button>
-    </span>
-  );
+  const menuItems = buildFileMenuItems({
+    isDir,
+    dir,
+    path: node.path,
+    onOpenFile,
+    onOpenDiff,
+    onRenameStart,
+    onDelete,
+    onNewFile,
+    onNewDir,
+    onCopyPath,
+  });
 
   return (
     <div>
+      <ContextMenu>
+        <ContextMenuTrigger asChild>
       <div className="group relative">
         <button
           className={`flex w-full cursor-pointer items-center gap-1.5 rounded px-2 py-1 text-left text-xs ${
@@ -131,8 +139,19 @@ function Row({
           {node.loading && <span className="text-muted-foreground">…</span>}
           {node.error && <span className="text-destructive">加载失败</span>}
         </button>
-        {ops}
       </div>
+        </ContextMenuTrigger>
+        <ContextMenuContent className="w-40">
+          {menuItems.map((m, i) => (
+            <ContextMenuItem key={m.label} onSelect={m.onSelect} className={m.danger ? "text-destructive" : ""}>
+              <span className="flex items-center gap-1.5">
+                {m.icon}
+                {m.label}
+              </span>
+            </ContextMenuItem>
+          ))}
+        </ContextMenuContent>
+      </ContextMenu>
       {isDir && expanded && node.children && (
         <div>
           {node.children.map((child) => (
@@ -151,6 +170,8 @@ function Row({
               onDelete={onDelete}
               onNewFile={onNewFile}
               onNewDir={onNewDir}
+              onOpenDiff={onOpenDiff}
+              onCopyPath={onCopyPath}
             />
           ))}
         </div>
@@ -159,9 +180,45 @@ function Row({
   );
 }
 
-/** 文件树（git 标记 + hover 操作 + 键盘导航：↑↓ 移动 / Enter 打开 / F2 重命名 / Delete 删除） */
+export interface FileMenuHandlers {
+  onOpenFile: (path: string, preview: boolean) => void;
+  onOpenDiff: (path: string) => void;
+  onRenameStart: (path: string) => void;
+  onDelete: (path: string) => void;
+  onNewFile: (dir: string) => void;
+  onNewDir: (dir: string) => void;
+  onCopyPath: (path: string) => void;
+}
+
+/** 右键菜单项构建（纯函数——回调映射可单测；jsdom 无法触发 radix select） */
+export function buildFileMenuItems(input: {
+  isDir: boolean;
+  dir: string;
+  path: string;
+} & FileMenuHandlers): { label: string; icon: ReactNode; onSelect: () => void; danger?: boolean }[] {
+  const items: { label: string; icon: ReactNode; onSelect: () => void; danger?: boolean }[] = [];
+  if (input.isDir) {
+    items.push(
+      { label: "新建文件", icon: <FilePlus2 className="size-3.5" />, onSelect: () => input.onNewFile(input.dir) },
+      { label: "新建文件夹", icon: <FolderPlus className="size-3.5" />, onSelect: () => input.onNewDir(input.dir) },
+    );
+  } else {
+    items.push(
+      { label: "打开", icon: <File className="size-3.5" />, onSelect: () => input.onOpenFile(input.path, false) },
+      { label: "打开 diff", icon: <GitCompareArrows className="size-3.5" />, onSelect: () => input.onOpenDiff(input.path) },
+    );
+  }
+  items.push(
+    { label: "重命名", icon: <Pencil className="size-3.5" />, onSelect: () => input.onRenameStart(input.path) },
+    { label: "删除", icon: <Trash2 className="size-3.5" />, onSelect: () => input.onDelete(input.path), danger: true },
+    { label: "复制路径", icon: <Copy className="size-3.5" />, onSelect: () => input.onCopyPath(input.path) },
+  );
+  return items;
+}
+
+/** 文件树（git 标记 + 右键菜单 + 键盘导航：↑↓ 移动 / Enter 打开 / F2 重命名 / Delete 删除） */
 export function TreeView(props: TreeViewProps) {
-  const { nodes, selectedPath, gitStatus, renamingPath, onToggleDir, onOpenFile, onRenameStart, onRenameCommit, onRenameCancel, onDelete, onNewFile, onNewDir } = props;
+  const { nodes, selectedPath, gitStatus, renamingPath, onToggleDir, onOpenFile, onRenameStart, onRenameCommit, onRenameCancel, onDelete, onNewFile, onNewDir, onOpenDiff, onCopyPath } = props;
   const listRef = useRef<HTMLDivElement>(null);
 
   return (
@@ -220,6 +277,8 @@ export function TreeView(props: TreeViewProps) {
           onDelete={onDelete}
           onNewFile={onNewFile}
           onNewDir={onNewDir}
+          onOpenDiff={onOpenDiff}
+          onCopyPath={onCopyPath}
         />
       ))}
     </div>

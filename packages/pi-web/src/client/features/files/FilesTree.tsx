@@ -25,10 +25,12 @@ export interface FilesTreeProps {
   activePath: string | null;
   /** 外部刷新信号（保存文件后递增，联动刷新 git 状态） */
   gitRefreshKey?: number;
+  /** 右键菜单：打开 diff（App 注入 open-diff） */
+  onOpenDiff?: (path: string) => void;
 }
 
 /** 文件浏览树面板（目录树 + git 状态标记 + 新建/重命名/删除 + 键盘导航） */
-export function FilesTree({ request, onOpenFile, activePath, gitRefreshKey = 0 }: FilesTreeProps) {
+export function FilesTree({ request, onOpenFile, activePath, gitRefreshKey = 0, onOpenDiff }: FilesTreeProps) {
   const [tree, setTree] = useState<TreeState>(() => createRootTree());
   const [gitInfo, setGitInfo] = useState<GitInfoDto | null>(null);
   const [gitStatus, setGitStatus] = useState<Map<string, string>>(new Map());
@@ -203,6 +205,13 @@ export function FilesTree({ request, onOpenFile, activePath, gitRefreshKey = 0 }
           onNewDir={(dir) => {
             setNewName("");
             setNewTarget({ dir, type: "dir" });
+          }}
+          onOpenDiff={(path) => onOpenDiff?.(path)}
+          onCopyPath={(path) => {
+            navigator.clipboard.writeText(path).then(
+              () => toast.success(`已复制 ${path}`),
+              () => toast.error("复制失败"),
+            );
           }}
         />
       </div>
