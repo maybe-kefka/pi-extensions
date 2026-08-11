@@ -180,8 +180,12 @@ export class WebConsole {
     return this.state.server?.port ?? null;
   }
 
-  /** 启动服务（幂等：已在运行时返回 false 由命令层提示）；本进程成为宿主 */
-  async start(port: number, open: boolean, cwd: string): Promise<{ url: string }> {
+  /**
+   * 启动服务（幂等：已在运行时返回 false 由命令层提示）。
+   * selfRegister：本进程是否自注册为会话 tab——服务进程（--web）为 false（无会话）；
+   * 旧 /web 宿主语义为 true（02 起 /web 改为注册者后不再走此路径）。
+   */
+  async start(port: number, open: boolean, cwd: string, selfRegister = true): Promise<{ url: string }> {
     const token = randomBytes(24).toString("hex");
     if (!existsSync(join(WEB_DIR, "index.html"))) {
       throw new WebServerError(1, "前端未构建：请先运行 npm run build:web（构建到 dist/client）");
@@ -232,17 +236,19 @@ export class WebConsole {
     this.state.cwd = cwd;
     this.state.coalescer = createCoalescer(FLUSH_INTERVAL_MS);
     this.state.flushTimer = setInterval(() => this.drain(), FLUSH_INTERVAL_MS);
-    // 宿主自注册（本进程 tab 常驻）
-    this.state.registry.add({
-      processId: HOST_PROCESS_ID,
-      pid: process.pid,
-      kind: "host",
-      sessionFile: this.state.ctx?.sessionManager.getSessionFile() ?? null,
-      sessionName: this.state.ctx?.sessionManager.getSessionName() ?? null,
-      cwd,
-      connectedAt: Date.now(),
-    });
-    this.writeStateFile(cwd, { port: server.port, token, hostPid: process.pid, startedAt: Date.now() });
+    // 自注册（旧 /web 宿主语义）；服务进程（--web）不注册——无会话 tab
+    if (selfRegister) {
+      this.state.registry.add({
+        processId: HOST_PROCESS_ID,
+        pid: process.pid,
+        kind: "host",
+        sessionFile: this.state.ctx?.sessionManager.getSessionFile() ?? null,
+        sessionName: this.state.ctx?.sessionManager.getSessionName() ?? null,
+        cwd,
+        connectedAt: Date.now(),
+      });
+    }
+    this.writeStateFile(cwd, { port: server.port, token, serverPid: process.pid, startedAt: Date.now() });
     this.pushState();
     this.broadcastAgentList();
     if (open) await this.openBrowser(server.url);
@@ -281,7 +287,7 @@ export class WebConsole {
   }
 
   /** 写宿主状态文件（.pi/web.json——后续 /web 进程据此注册） */
-  private writeStateFile(cwd: string, state: { port: number; token: string; hostPid: number; startedAt: number }): void {
+  private writeStateFile(cwd: string, state: { port: number; token: string; serverPid: number; startedAt: number }): void {
     try {
       const dir = join(cwd, ".pi");
       mkdirSync(dir, { recursive: true });
@@ -292,7 +298,7 @@ export class WebConsole {
   }
 
   /** 读宿主状态文件；不存在/非法返回 null */
-  static readStateFile(cwd: string): { port: number; token: string; hostPid: number } | null {
+  static readStateFile(cwd: string): { port: number; token: string; serverPid: number } | null {
     try {
       return parseStateFile(readFileSync(stateFilePath(cwd), "utf8"));
     } catch {

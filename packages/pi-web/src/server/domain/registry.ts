@@ -7,7 +7,8 @@
 export interface WebStateFile {
   port: number;
   token: string;
-  hostPid: number;
+  /** 服务进程 pid（web 服务独立进程——旧格式 hostPid 兼容解析） */
+  serverPid: number;
   startedAt: number;
 }
 
@@ -33,9 +34,10 @@ export function parseStateFile(text: string): WebStateFile | null {
     const obj = JSON.parse(text) as Record<string, unknown>;
     if (typeof obj.port !== "number" || !Number.isInteger(obj.port)) return null;
     if (typeof obj.token !== "string" || obj.token.length < 8) return null;
-    if (typeof obj.hostPid !== "number") return null;
+    const serverPid = typeof obj.serverPid === "number" ? obj.serverPid : obj.hostPid;
+    if (typeof serverPid !== "number") return null;
     const startedAt = typeof obj.startedAt === "number" ? obj.startedAt : Date.now();
-    return { port: obj.port, token: obj.token, hostPid: obj.hostPid, startedAt };
+    return { port: obj.port, token: obj.token, serverPid, startedAt };
   } catch {
     return null;
   }

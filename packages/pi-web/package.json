@@ -11,6 +11,7 @@
   "files": [
     "src",
     "dist",
+    "bin",
     "README.md"
   ],
   "scripts": {
@@ -91,5 +92,8 @@
     "extensions": [
       "./dist/server/index.js"
     ]
+  },
+  "bin": {
+    "pi-web": "bin/pi-web.mjs"
   }
 }

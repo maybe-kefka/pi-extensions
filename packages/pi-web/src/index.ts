@@ -113,6 +113,16 @@ export default function (pi: ExtensionAPI): void {
   // multi-instance：扩展入口路径（spawn 新实例用——宿主/注册者都设置）
   webConsole.setExtensionPath(new URL(import.meta.url).pathname);
 
+  // web 服务独立进程（pi-web bin 注入 PI_WEB_SERVICE）：rpc 模式常驻，只起服务，不注册自己、无会话 tab
+  if (process.env.PI_WEB_SERVICE === "1") {
+    if (!webConsole.isRunning()) {
+      void webConsole.start(0, false, process.cwd(), false).catch((err) => {
+        console.error(`[pi-web] 服务启动失败：${err instanceof Error ? err.message : String(err)}`);
+        process.exit(1);
+      });
+    }
+  }
+
   // multi-instance：spawn 实例自动注册（宿主注入的环境变量）——不等 /web
   webConsole.autoRegisterIfNeeded(process.cwd());
 

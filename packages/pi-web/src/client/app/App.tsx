@@ -6,6 +6,7 @@ import { isTransitionalAction, toAction } from "@/entities/chat/events";
 import type { CommandInfo, FileGroup, HistoryMessage, ModelInfo, PiEvent, SessionInfo, SkillInfo, TreeNode, WebState } from "@/entities/chat/types";
 import { Header } from "@/app/ui/Header";
 import { ChatTab } from "@/features/chat-stream/ChatTab";
+import { ChatEmptyGuide } from "@/features/chat-stream/ChatEmptyGuide";
 import { FilesTree } from "@/features/files/FilesTree";
 import { EditorPane } from "@/features/files/EditorPane";
 import { DiffSplitView } from "@/features/files/DiffSplitView";
@@ -305,10 +306,7 @@ export default function App() {
         // 先直接镜像会话元数据（ChatTab 未挂载时 state 事件会丢——激活 effect 需要 sessionFile）
         setHostState((prev) => ({ ...prev, ...(st as unknown as Partial<StreamState>) }));
         dispatchToActiveChat({ type: "state", state: st as unknown as Record<string, unknown> });
-        // 默认打开当前会话的 chat tab（chat 与 file 同级——可开可关）
-        const sf = (st as unknown as { sessionFile?: string | null }).sessionFile;
-        const name = (st as unknown as { sessionName?: string | null }).sessionName ?? "聊天";
-        if (sf) dispatchWs({ kind: "open-chat", sessionId: sf, name });
+        // 无注册者 → 空态引导；会话 tab 由注册者（agent_list / 会话管理打开）驱动
       })
       .catch((e) => toast.error(`getState: ${e.message}`));
     refreshSessions();
@@ -548,11 +546,7 @@ export default function App() {
           />
       <div className="min-h-0 flex-1">
           <DisconnectBannerMemo conn={conn} />
-          {workspace.active === "" && (
-            <div className="text-muted-foreground flex h-full items-center justify-center text-sm">
-              从侧边栏打开会话或文件
-            </div>
-          )}
+          {workspace.active === "" && <ChatEmptyGuide />}
           {/* chat 与 file 同级常驻挂载（hidden 保状态——input/滚动不丢）；conn open 才挂 ChatTab */}
           {conn === "open" && workspace.tabs
             .filter((t) => t.kind === "chat")
