@@ -724,10 +724,10 @@ export function streamReducer(state: StreamState, action: StreamAction): StreamS
       return {
         ...state,
         sessionReason: action.reason ?? "startup",
-        // 会话切换 → 清空旧会话气泡与工具（含 compact 状态）
-        bubbles: [],
-        tools: [],
-        currentBubbleId: null,
+        // compact 压缩 → 清空（历史被替换，随后重拉）；会话切换不清（per-tab long-live——同会话状态保留）
+        bubbles: action.reason === "compact" ? [] : state.bubbles,
+        tools: action.reason === "compact" ? [] : state.tools,
+        currentBubbleId: action.reason === "compact" ? null : state.currentBubbleId,
         userCount: 0,
         compacting: null,
         processingToolResult: null,

@@ -182,18 +182,13 @@ export default function App() {
     if (hostState.sessionName && sid) dispatchWs({ kind: "rename-chat", sessionId: sid, name: hostState.sessionName });
   }, [hostState.sessionName, workspace.active]);
 
-  // 激活 chat tab：会话不同 → 切换进程会话（ready 后拉历史）；会话相同 → 直接拉历史
+  // 激活 chat tab：会话不同 → 切换进程会话（历史由 ChatTab 首次加载；切回不重拉）
   useEffect(() => {
     const sid = chatSessionOf(workspace.active);
     if (!sid || !hostState.sessionFile) return; // 会话信息未就绪（getState 未回）——等
-    if (hostState.sessionFile === sid) {
-      rpcRef.current
-        ?.request<{ messages: HistoryMessage[] }>("pi:getMessages")
-        .then((r) => dispatchToProcess(sid, { type: "history", messages: r.messages ?? [] }))
-        .catch(() => undefined);
-      return;
+    if (hostState.sessionFile !== sid) {
+      rpcRef.current?.request("pi:switchSession", { path: sid }).catch(() => undefined);
     }
-    rpcRef.current?.request("pi:switchSession", { path: sid }).catch(() => undefined);
   }, [workspace.active, hostState.sessionFile]);
 
   // R26：主题偏好（localStorage 持久化）+ 系统深浅（toast 联动）
@@ -263,31 +258,18 @@ export default function App() {
         } else {
           dispatchToActiveChat(action);
         }
-        // 会话切换完成：会话列表刷新 + 历史跟随（切换由激活 tab / 新建触发）
+        // 会话切换完成：会话列表刷新（历史由 ChatTab 自管——state 事件匹配后首次加载）
         if (evt.type === "session_switch_ready") {
           refreshSessions();
           if (pendingNewRef.current) {
-            // 新建会话：打开新会话的 chat tab 并拉历史
+            // 新建会话：打开新会话的 chat tab（历史由 ChatTab 首次激活加载）
             pendingNewRef.current = false;
             rpcRef.current?.request<WebState>("pi:getState").then((st) => {
               const sf = (st as unknown as { sessionFile?: string | null }).sessionFile;
               const raw = (st as unknown as { sessionName?: string | null }).sessionName;
               const name = raw || (sf ? sessionLabelFromFile(sf) : "聊天");
-              if (!sf) return;
-              dispatchWs({ kind: "open-chat", sessionId: sf, name });
-              rpcRef.current
-                ?.request<{ messages: HistoryMessage[] }>("pi:getMessages")
-                .then((r) => dispatchToProcess(sf, { type: "history", messages: r.messages ?? [] }))
-                .catch(() => undefined);
+              if (sf) dispatchWs({ kind: "open-chat", sessionId: sf, name });
             }).catch(() => undefined);
-            return;
-          }
-          const sid = chatSessionOf(workspaceRef.current.active);
-          if (sid) {
-            rpcRef.current
-              ?.request<{ messages: HistoryMessage[] }>("pi:getMessages")
-              .then((r) => dispatchToProcess(sid, { type: "history", messages: r.messages ?? [] }))
-              .catch(() => undefined);
           }
         }
         // R26 session-follow：特权状态广播（TUI 切换 → 立即降级提示；重跑 /web → 自动恢复）

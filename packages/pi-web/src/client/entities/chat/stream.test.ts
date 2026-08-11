@@ -233,19 +233,22 @@ describe("agent 状态与会话切换", () => {
     expect(reduce([{ type: "agent_settled" }], s3).streaming).toBe(false);
   });
 
-  it("session_start 清空气泡/工具/userCount", () => {
+  it("session_start：会话切换不清空（per-tab long-live）；compact 清空", () => {
     const s1 = reduce([
       { type: "message_start", message: { role: "user", content: "q" } },
-      { type: "message_start", message: { role: "assistant", content: [] } },
       { type: "tool_start", toolCallId: "t", toolName: "bash", args: {} },
     ]);
     expect(s1.bubbles).toHaveLength(1);
     expect(s1.tools).toHaveLength(1);
+    // 会话切换（resume/startup）：状态保留——切回已加载 tab 不丢内容
     const s2 = reduce([{ type: "session_start", reason: "resume" }], s1);
-    expect(s2.bubbles).toHaveLength(0);
-    expect(s2.tools).toHaveLength(0);
-    expect(s2.userCount).toBe(0);
+    expect(s2.bubbles).toHaveLength(1);
+    expect(s2.tools).toHaveLength(1);
     expect(s2.sessionReason).toBe("resume");
+    // compact：历史被替换 → 清空
+    const s3 = reduce([{ type: "session_start", reason: "compact" }], s2);
+    expect(s3.bubbles).toHaveLength(0);
+    expect(s3.tools).toHaveLength(0);
   });
 
   it("queue_update / notify / setStatus / setWidget / conn / state 保留行为", () => {

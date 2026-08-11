@@ -4,7 +4,7 @@
  * - 挂载时注册 dispatch 到 App 的进程分发表（事件按 processId 路由）
  * - 挂载时拉取该进程会话历史（pi:chatHistory）
  */
-import { memo, useEffect, useReducer, useCallback } from "react";
+import { memo, useCallback, useEffect, useReducer, useRef } from "react";
 import { initialState, streamReducer, type StreamAction, type StreamState } from "@/entities/chat/stream";
 import type { ConnState, RpcClient } from "@/shared/api/rpc";
 import { Chat } from "./Chat";
@@ -50,13 +50,15 @@ export const ChatTab = memo(function ChatTab({
   onStateChange,
 }: ChatTabProps) {
   const [state, dispatch] = useReducer(streamReducer, initialState);
+  /** 历史已加载标记（切回 tab 不重拉——reducer 状态 long-live） */
+  const loadedRef = useRef(false);
 
   // 全局连接状态同步（conn 事件只分发激活 tab——非激活 tab 的 reducer 需同步，避免误显"等待连接"）
   useEffect(() => {
     dispatch({ type: "conn", state: conn });
   }, [conn]);
 
-  // 激活时拉取进程状态兜底（挂载早于 getState 完成时 state 事件会丢——context/sessionFile 需补齐）
+  // 激活时拉取进程状态（sessionFile 用于判定进程当前会话——切回 tab 也刷新元数据，不重拉历史）
   useEffect(() => {
     if (!active) return;
     let cancelled = false;
@@ -69,6 +71,31 @@ export const ChatTab = memo(function ChatTab({
       cancelled = true;
     };
   }, [active, request]);
+
+  // compact 后重拉历史（压缩摘要替换旧气泡）
+  useEffect(() => {
+    if (!active || state.sessionReason !== "compact") return;
+    request<{ messages: HistoryMessage[] }>("pi:getMessages")
+      .then((r) => dispatch({ type: "history", messages: r.messages ?? [] }))
+      .catch(() => undefined);
+  }, [state.sessionReason, active, request]);
+
+  // 历史加载（仅首次）：进程当前会话 = 本 tab 会话（state.sessionFile 匹配）且未加载过才拉
+  // ——切回已加载 tab 不重拉，reducer 状态直接显示（long-live）
+  useEffect(() => {
+    if (!active || loadedRef.current) return;
+    if (!state.sessionFile || state.sessionFile !== sessionId) return; // 进程未切到本会话——等
+    loadedRef.current = true;
+    let cancelled = false;
+    request<{ messages: HistoryMessage[] }>("pi:getMessages")
+      .then((r) => {
+        if (!cancelled) dispatch({ type: "history", messages: r.messages ?? [] });
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [active, state.sessionFile, sessionId, request]);
 
   // 激活时注册分发器（进程当前会话 = 激活 tab——事件/历史按 sessionId 路由）
   useEffect(() => {
