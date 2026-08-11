@@ -16,7 +16,7 @@
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { parseArgs, USAGE } from "./server/interface/args.js";
-import { createWebConsole } from "./server/application/web-console.js";
+import { WebConsole, createWebConsole } from "./server/application/web-console.js";
 import { registerRpcHandler } from "./server/interface/rpc-handler.js";
 import { askAndWait, askRegistry, WEB_ASK_GUIDELINES } from "./server/domain/web-ask.js";
 const BROADCAST_EVENT_TYPES = [
@@ -160,6 +160,7 @@ export default function (pi: ExtensionAPI): void {
         return;
       }
       const opts = parsed.value;
+      const cwd = ctx.sessionManager.getCwd();
 
       if (opts.stop) {
         if (!webConsole.isRunning()) {
@@ -172,6 +173,11 @@ export default function (pi: ExtensionAPI): void {
       }
 
       if (webConsole.isRunning()) {
+        // 本进程已是宿主：显示已有服务（或注册进共享实例）
+        if (webConsole.isAgent()) {
+          ctx.ui.notify(webConsole.agentHostUrl() ?? "已连接共享 web 服务", "info");
+          return;
+        }
         if (opts.port !== 0 && opts.port !== webConsole.port) {
           ctx.ui.notify(`已在 ${webConsole.url} 运行；请先 /web --stop 再换端口`, "error");
           return;
@@ -183,8 +189,23 @@ export default function (pi: ExtensionAPI): void {
         return;
       }
 
+      // multi-instance：同 cwd 已有宿主（状态文件）→ 注册进共享实例，不起新服务
+      const shared = WebConsole.readStateFile(cwd);
+      if (shared) {
+        try {
+          const { url } = webConsole.connectToHost(cwd);
+          ctx.ui.notify(`已连接共享 web 控制台：${url}`, "info");
+          if (opts.open) await webConsole.openBrowser(url);
+          return;
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          ctx.ui.notify(`连接共享服务失败：${message}（可用 /web --stop 清理后重试）`, "error");
+          return;
+        }
+      }
+
       try {
-        const { url } = await webConsole.start(opts.port, opts.open);
+        const { url } = await webConsole.start(opts.port, opts.open, cwd);
         ctx.ui.notify(url, "info");
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);

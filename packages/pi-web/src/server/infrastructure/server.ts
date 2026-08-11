@@ -24,7 +24,24 @@ export interface WebServerHandle {
   url: string;
   clientCount: number;
   broadcast(message: string): void;
+  /** 向注册者进程下发命令（send/abort） */
+  sendAgentCommand(processId: string, command: Record<string, unknown>): void;
   stop(): Promise<void>;
+}
+
+export interface AgentConnection {
+  /** 注册者 WS 句柄（命令下行用） */
+  sendCommand(command: Record<string, unknown>): void;
+  close(): void;
+}
+
+export interface AgentEvents {
+  /** 注册者 hello（新进程入列）；返回 processId */
+  onAgentHello: (info: { pid: number; cwd: string; sessionFile: string | null; sessionName: string | null }) => string;
+  /** 注册者事件上行（转发浏览器，附加 processId） */
+  onAgentEvent: (processId: string, event: Record<string, unknown>) => void;
+  /** 注册者断开（进程表移除 + 浏览器 tab 关闭） */
+  onAgentClose: (processId: string) => void;
 }
 
 export interface WebServerOptions {
@@ -36,6 +53,8 @@ export interface WebServerOptions {
   handleRequest: (id: string | number, method: string, params: Record<string, unknown>) => Promise<unknown>;
   maxClients?: number;
   onClientChange?: (count: number) => void;
+  /** 注册者（对等 pi 实例）事件通道 */
+  agentEvents?: AgentEvents;
 }
 
 const DEFAULT_MAX_CLIENTS = 16;
@@ -83,15 +102,62 @@ export async function startWebServer(options: WebServerOptions): Promise<WebServ
     }
   });
 
+  const agentWss = new WebSocketServer({ noServer: true });
+  const agentInfoByWs = new WeakMap<WebSocket, { processId: string }>();
+
   server.on("upgrade", (req, socket, head) => {
     if (!isAuthorized(req)) {
       socket.destroy();
+      return;
+    }
+    const path = (req.url ?? "/").split("?")[0];
+    if (path === "/agent") {
+      agentWss.handleUpgrade(req, socket, head, (ws) => {
+        agentWss.emit("connection", ws, req);
+      });
       return;
     }
     wss.handleUpgrade(req, socket, head, (ws) => {
       wss.emit("connection", ws, req);
     });
   });
+
+  // 注册者通道：hello → welcome(processId)；event 上行；command 下行
+  if (options.agentEvents) {
+    agentWss.on("connection", (ws: WebSocket) => {
+      ws.on("message", (data) => {
+        let msg: { type?: string } & Record<string, unknown>;
+        try {
+          msg = JSON.parse(data.toString());
+        } catch {
+          return;
+        }
+        if (msg.type === "hello") {
+          const processId = options.agentEvents!.onAgentHello({
+            pid: typeof msg.pid === "number" ? msg.pid : -1,
+            cwd: typeof msg.cwd === "string" ? msg.cwd : "",
+            sessionFile: typeof msg.sessionFile === "string" ? msg.sessionFile : null,
+            sessionName: typeof msg.sessionName === "string" ? msg.sessionName : null,
+          });
+          agentInfoByWs.set(ws, { processId });
+          ws.send(JSON.stringify({ type: "welcome", processId }));
+          return;
+        }
+        const info = agentInfoByWs.get(ws);
+        if (!info) return;
+        if (msg.type === "event") {
+          options.agentEvents!.onAgentEvent(info.processId, (msg.event as Record<string, unknown>) ?? {});
+        }
+      });
+      ws.on("close", () => {
+        const info = agentInfoByWs.get(ws);
+        if (info) options.agentEvents!.onAgentClose(info.processId);
+      });
+      ws.on("error", () => {
+        /* close 处理 */
+      });
+    });
+  }
 
   function isAuthorized(req: IncomingMessage): boolean {
     const queryToken = extractToken(req.url ?? "/");
@@ -192,6 +258,16 @@ export async function startWebServer(options: WebServerOptions): Promise<WebServ
       for (const client of wss.clients) {
         if (client.readyState === client.OPEN) client.send(payload);
       }
+    },
+    sendAgentCommand(processId: string, command: Record<string, unknown>) {
+      let sent = false;
+      for (const ws of agentWss.clients) {
+        if (ws.readyState === ws.OPEN && agentInfoByWs.get(ws)?.processId === processId) {
+          ws.send(JSON.stringify({ type: "command", ...command }));
+          sent = true;
+        }
+      }
+      if (!sent) throw new Error(`agent 未连接：${processId}`);
     },
     async stop() {
       for (const client of wss.clients) {

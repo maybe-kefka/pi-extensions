@@ -5,8 +5,9 @@
  */
 
 import { randomBytes } from "node:crypto";
-import { existsSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import WebSocket from "ws";
 import { fileURLToPath } from "node:url";
 import {
   SessionManager,
@@ -20,6 +21,15 @@ import { probePrivileged } from "../domain/privilege-probe.js";
 import { startWebServer, WebServerError, type WebServerHandle } from "../infrastructure/server.js";
 import { makeEvent, serialize } from "../domain/protocol.js";
 import { buildState } from "../domain/state.js";
+import {
+  HOST_PROCESS_ID,
+  RegistryStore,
+  parseStateFile,
+  serializeStateFile,
+  stateFilePath,
+  type AgentEntry,
+} from "../domain/registry.js";
+import { expandSkillChips, type SkillLookupEntry } from "../domain/skill-expand.js";
 import { mapEvent } from "../interface/events.js";
 import { isStaleError } from "../domain/fork-util.js";
 
@@ -55,6 +65,34 @@ export interface WebConsoleState {
   privileged: ExtensionCommandContext | null;
   coalescer: Coalescer<Record<string, unknown>> | null;
   flushTimer: ReturnType<typeof setInterval> | null;
+  /** 多实例注册表（本进程为宿主时使用） */
+  registry: RegistryStore;
+  /** 本进程为注册者（agent 模式）时：宿主连接与分配的 processId */
+  agent: { ws: WebSocket; processId: string; hostUrl: string } | null;
+  /** 本进程 cwd（注册/状态文件用） */
+  cwd: string | null;
+}
+
+
+
+/** R22：从扩展 API 收集 skill 元数据（与 rpc-handler 同款；sendLocalMessage 用） */
+function skillLookupFrom(api: { getCommands: () => { name: string; source: string; sourceInfo?: { path: string; baseDir?: string } }[] }): SkillLookupEntry[] {
+  const out: SkillLookupEntry[] = [];
+  for (const c of api.getCommands()) {
+    if (c.source !== "skill" || !c.sourceInfo?.path) continue;
+    const name = c.name.replace(/^skill:/, "");
+    try {
+      out.push({
+        name,
+        path: c.sourceInfo.path,
+        baseDir: c.sourceInfo.baseDir ?? c.sourceInfo.path,
+        content: readFileSync(c.sourceInfo.path, "utf-8"),
+      });
+    } catch {
+      // 文件不可读的 skill 跳过
+    }
+  }
+  return out;
 }
 
 export function createWebConsole(): WebConsole {
@@ -66,6 +104,9 @@ export function createWebConsole(): WebConsole {
     privileged: null,
     coalescer: null,
     flushTimer: null,
+    registry: new RegistryStore(),
+    agent: null,
+    cwd: null,
   });
 }
 
@@ -154,8 +195,8 @@ export class WebConsole {
     return this.state.server?.port ?? null;
   }
 
-  /** 启动服务（幂等：已在运行时返回 false 由命令层提示） */
-  async start(port: number, open: boolean): Promise<{ url: string }> {
+  /** 启动服务（幂等：已在运行时返回 false 由命令层提示）；本进程成为宿主 */
+  async start(port: number, open: boolean, cwd: string): Promise<{ url: string }> {
     const token = randomBytes(24).toString("hex");
     if (!existsSync(join(WEB_DIR, "index.html"))) {
       throw new WebServerError(1, "前端未构建：请先运行 npm run build:web（构建到 dist/client）");
@@ -169,14 +210,203 @@ export class WebConsole {
       onClientChange: (count) => {
         this.state.ctx?.ui.setStatus("pi-web", count > 0 ? `web 客户端: ${count}` : undefined);
       },
+      agentEvents: {
+        onAgentHello: (info) => {
+          const processId = this.state.registry.nextProcessId("external");
+          this.state.registry.add({
+            processId,
+            pid: info.pid,
+            kind: "external",
+            sessionFile: info.sessionFile,
+            sessionName: info.sessionName,
+            cwd: info.cwd,
+            connectedAt: Date.now(),
+          });
+          this.broadcastAgentList();
+          return processId;
+        },
+        onAgentEvent: (processId, event) => {
+          this.broadcastAgentEvent(processId, event);
+        },
+        onAgentClose: (processId) => {
+          this.state.registry.remove(processId);
+          this.broadcastAgentList();
+          this.broadcast("agent_closed", { processId });
+        },
+      },
     });
     this.state.server = server;
     this.state.token = token;
+    this.state.cwd = cwd;
     this.state.coalescer = createCoalescer(FLUSH_INTERVAL_MS);
     this.state.flushTimer = setInterval(() => this.drain(), FLUSH_INTERVAL_MS);
+    // 宿主自注册（本进程 tab 常驻）
+    this.state.registry.add({
+      processId: HOST_PROCESS_ID,
+      pid: process.pid,
+      kind: "host",
+      sessionFile: this.state.ctx?.sessionManager.getSessionFile() ?? null,
+      sessionName: this.state.ctx?.sessionManager.getSessionName() ?? null,
+      cwd,
+      connectedAt: Date.now(),
+    });
+    this.writeStateFile(cwd, { port: server.port, token, hostPid: process.pid, startedAt: Date.now() });
     this.pushState();
+    this.broadcastAgentList();
     if (open) await this.openBrowser(server.url);
     return { url: server.url };
+  }
+
+  /** 写宿主状态文件（.pi/web.json——后续 /web 进程据此注册） */
+  private writeStateFile(cwd: string, state: { port: number; token: string; hostPid: number; startedAt: number }): void {
+    try {
+      const dir = join(cwd, ".pi");
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(stateFilePath(cwd), serializeStateFile(state), "utf8");
+    } catch {
+      /* 状态文件写失败不阻塞服务 */
+    }
+  }
+
+  /** 读宿主状态文件；不存在/非法返回 null */
+  static readStateFile(cwd: string): { port: number; token: string; hostPid: number } | null {
+    try {
+      return parseStateFile(readFileSync(stateFilePath(cwd), "utf8"));
+    } catch {
+      return null;
+    }
+  }
+
+  /** 清宿主状态文件（--stop 时） */
+  static clearStateFile(cwd: string): void {
+    try {
+      writeFileSync(stateFilePath(cwd), "", "utf8");
+    } catch {
+      /* 忽略 */
+    }
+  }
+
+  /** 本进程是否运行在 agent 模式（注册进宿主） */
+  isAgent(): boolean {
+    return this.state.agent !== null;
+  }
+
+  /** agent 模式的宿主 URL（重跑 /web 显示用） */
+  agentHostUrl(): string | null {
+    return this.state.agent?.hostUrl ?? null;
+  }
+
+  /**
+   * agent 模式：读宿主状态文件并注册（不启动服务）。
+   * 本进程事件经 WS 上行；宿主命令（send/abort）经 WS 下行执行。
+   */
+  connectToHost(cwd: string): { url: string } {
+    if (this.state.server) throw new WebServerError(1, "本进程已是宿主，无需注册");
+    const stateFile = WebConsole.readStateFile(cwd);
+    if (!stateFile) throw new WebServerError(1, "未发现共享 web 服务状态文件（.pi/web.json）");
+    const ws = new WebSocket(`ws://127.0.0.1:${stateFile.port}/agent?token=${encodeURIComponent(stateFile.token)}`);
+    this.state.agent = { ws, processId: "", hostUrl: `http://127.0.0.1:${stateFile.port}/?token=${encodeURIComponent(stateFile.token)}` };
+    this.state.cwd = cwd;
+    const onOpen = () => {
+      ws.send(
+        JSON.stringify({
+          type: "hello",
+          pid: process.pid,
+          cwd,
+          sessionFile: this.state.ctx?.sessionManager.getSessionFile() ?? null,
+          sessionName: this.state.ctx?.sessionManager.getSessionName() ?? null,
+        }),
+      );
+    };
+    const onMessage = (data: Buffer) => {
+      let msg: { type?: string; processId?: string; command?: string; text?: string; deliverAs?: string };
+      try {
+        msg = JSON.parse(data.toString());
+      } catch {
+        return;
+      }
+      if (msg.type === "welcome" && this.state.agent) {
+        this.state.agent.processId = msg.processId ?? "";
+        return;
+      }
+      if (msg.type === "command" && this.state.agent) {
+        void this.handleAgentCommand(msg.command ?? "", msg);
+      }
+    };
+    const onClose = () => {
+      this.state.agent = null;
+    };
+    ws.on("open", onOpen);
+    ws.on("message", onMessage);
+    ws.on("close", onClose);
+    ws.on("error", () => {
+      /* close 处理 */
+    });
+    return { url: this.state.agent.hostUrl };
+  }
+
+  /** agent 模式下的宿主命令执行 */
+  private async handleAgentCommand(command: string, msg: { text?: string; deliverAs?: string }): Promise<void> {
+    try {
+      if (command === "send") {
+        if (typeof msg.text !== "string" || msg.text.trim() === "") throw new WebServerError(-32602, "text 必须是非空字符串");
+        await this.sendLocalMessage(msg.text.trim(), msg.deliverAs);
+      } else if (command === "abort") {
+        this.requireCtx().abort();
+      }
+    } catch (err) {
+      this.state.agent?.ws.send(JSON.stringify({ type: "command-result", ok: false, error: err instanceof Error ? err.message : String(err) }));
+    }
+  }
+
+  /** 注册进程列表（浏览器初始化/变化时推送） */
+  agentList(): AgentEntry[] {
+    return this.state.registry.list();
+  }
+
+  /** 本进程（宿主或 agent）发送消息：chip 展开 + api.sendUserMessage */
+  async sendLocalMessage(text: string, deliverAs?: string): Promise<void> {
+    if (!this.state.api) throw new WebServerError(3, "扩展未就绪");
+    const expanded = expandSkillChips(text, skillLookupFrom(this.state.api));
+    await this.state.api.sendUserMessage(expanded, deliverAs === "steer" || deliverAs === "followUp" ? { deliverAs } : undefined);
+  }
+
+  /** 向指定进程下发命令（host 本地 / agent WS 下行） */
+  sendToProcess(processId: string, command: string, payload: Record<string, unknown>): void {
+    if (processId === HOST_PROCESS_ID) {
+      if (this.state.agent) throw new WebServerError(1, "本进程是注册者，无法执行宿主命令");
+      void this.handleAgentCommand(command, payload as { text?: string; deliverAs?: string });
+      return;
+    }
+    const entry = this.state.registry.get(processId);
+    if (!entry) throw new WebServerError(1, `进程未注册：${processId}`);
+    if (entry.kind === "external") {
+      this.state.server?.sendAgentCommand(processId, { command, ...payload });
+      return;
+    }
+    throw new WebServerError(1, `不支持的进程类型：${entry.kind}`);
+  }
+
+
+
+  /** 广播注册进程列表变化 */
+  broadcastAgentList(): void {
+    if (this.state.agent) return;
+    this.broadcast("agent_list", { agents: this.agentList() });
+  }
+
+  /** 广播注册者事件（包 processId——浏览器按进程分发；event 为扁平字段） */
+  broadcastAgentEvent(processId: string, event: Record<string, unknown>): void {
+    if (this.state.agent || !this.state.server || !this.state.coalescer) return;
+    const type = typeof event.type === "string" ? event.type : "unknown";
+    const mapped = mapEvent(type, event);
+    if (!mapped.fields) return;
+    const wrapped = makeEvent("agent-event", {
+      processId,
+      event: { type, ...mapped.fields },
+    }) as unknown as Record<string, unknown>;
+    this.state.coalescer.push(wrapped);
+    if (mapped.refreshState) this.pushState();
   }
 
   async stop(): Promise<void> {
@@ -188,6 +418,9 @@ export class WebConsole {
     const server = this.state.server;
     this.state.server = null;
     this.state.token = "";
+    if (this.state.cwd) WebConsole.clearStateFile(this.state.cwd);
+    this.state.cwd = null;
+    this.state.registry = new RegistryStore();
     if (server) await server.stop();
   }
 
@@ -196,6 +429,14 @@ export class WebConsole {
   // -------------------------------------------------------------------------
 
   broadcast(type: string, payload: Record<string, unknown>): void {
+    if (this.state.agent) {
+      // agent 模式：本进程事件上行宿主
+      const agent = this.state.agent;
+      if (agent.ws.readyState === agent.ws.OPEN) {
+        agent.ws.send(JSON.stringify({ type: "event", event: { type, ...payload } }));
+      }
+      return;
+    }
     if (!this.state.server || !this.state.coalescer) return;
     const mapped = mapEvent(type, payload);
     if (!mapped.fields) return;

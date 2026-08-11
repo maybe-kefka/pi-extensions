@@ -94,6 +94,35 @@ async function handleRequest(
       return { ok: true };
     }
 
+    case "pi:agentList": {
+      // multi-instance：注册进程列表（chat tab 数据源）
+      return { agents: console.agentList() };
+    }
+
+    case "pi:chatSend": {
+      // multi-instance：向指定进程发送（host 本地 / agent WS 下行）
+      const processId = typeof params.processId === "string" ? params.processId : "";
+      const text = typeof params.text === "string" ? params.text : "";
+      if (processId === "" || text.trim() === "") throw new WebServerError(-32602, "processId/text 必填");
+      try {
+        console.sendToProcess(processId, "send", { text: text.trim(), deliverAs: params.deliverAs });
+        return { ok: true };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        if (message.includes("Agent is already processing")) {
+          throw new WebServerError(2, `agent 正在处理，请指定 deliverAs（"steer" 打断 / "followUp" 排队）`);
+        }
+        throw new WebServerError(1, message);
+      }
+    }
+
+    case "pi:chatAbort": {
+      const processId = typeof params.processId === "string" ? params.processId : "";
+      if (processId === "") throw new WebServerError(-32602, "processId 必填");
+      console.sendToProcess(processId, "abort", {});
+      return { ok: true };
+    }
+
     case "pi:sendMessage": {
       const text = params.text;
       if (typeof text !== "string" || text.trim() === "") {
