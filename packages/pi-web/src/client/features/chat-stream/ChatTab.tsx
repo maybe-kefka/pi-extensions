@@ -117,6 +117,9 @@ export const ChatTab = memo(function ChatTab({
     [request, processId],
   );
 
+  // 稳定 getRequest（ContextPanel effect 依赖——防渲染循环）
+  const getRequestStable = useCallback(() => request, [request]);
+
   // 压缩：按进程路由（实例下行 compact；无进程 → 服务进程本地）
   const compact = useCallback(() => {
     request("pi:compact", processId ? { processId } : {}).catch(() => undefined);
@@ -156,7 +159,7 @@ export const ChatTab = memo(function ChatTab({
             </button>
           </PopoverTrigger>
           <PopoverContent align="start" side="top" className="mb-2">
-            <ContextPanel getRequest={() => request} onCompact={compact} processId={processId} />
+            <ContextPanel getRequest={getRequestStable} onCompact={compact} processId={processId} />
           </PopoverContent>
         </Popover>
         <div className="min-w-0 flex-1">

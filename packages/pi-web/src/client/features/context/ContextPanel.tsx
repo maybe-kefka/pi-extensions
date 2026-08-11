@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { RotateCcw, Sparkles } from "lucide-react";
 import { Button } from "@/shared/ui/button";
 import { Progress } from "@/shared/ui/progress";
@@ -39,12 +39,17 @@ export function ContextPanel({
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [reloadKey, setReloadKey] = useState(0);
+  // getRequest 用 ref（调用方可能传内联箭头——effect 依赖 ref 引用防渲染循环）
+  const getRequestRef = useRef(getRequest);
+  getRequestRef.current = getRequest;
+  const processIdRef = useRef(processId);
+  processIdRef.current = processId;
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setError(null);
-    getRequest()("pi:getContextBreakdown", processId ? { processId } : {})
+    getRequestRef.current()("pi:getContextBreakdown", processIdRef.current ? { processId: processIdRef.current } : {})
       .then((d) => {
         if (cancelled) return;
         setData(d as ContextBreakdownData);
@@ -58,7 +63,7 @@ export function ContextPanel({
     return () => {
       cancelled = true;
     };
-  }, [getRequest, reloadKey]);
+  }, [reloadKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const retry = useCallback(() => setReloadKey((k) => k + 1), []);
 
