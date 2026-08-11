@@ -74,6 +74,7 @@ export function RepoItem({
   const [newBranchName, setNewBranchName] = useState("");
   const [confirmOp, setConfirmOp] = useState<{ kind: "merge" | "rebase" | "delete"; branch: string } | null>(null);
   const [toolOpen, setToolOpen] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   const refreshBrief = useCallback(async () => {
     setRefreshing(true);
@@ -256,7 +257,18 @@ export function RepoItem({
         </button>
         <GitBranch className="text-muted-foreground size-3.5 shrink-0" />
         <span className="min-w-0 flex-1 truncate font-medium">{repo.name}</span>
-        {repo.branch && <span className="bg-muted text-muted-foreground rounded px-1 py-0.5 font-mono text-[10px]">{repo.branch}</span>}
+        {repo.branch && (
+          <button
+            className="bg-muted text-muted-foreground hover:bg-primary/20 hover:text-primary cursor-pointer rounded px-1 py-0.5 font-mono text-[10px]"
+            title={`当前分支 ${repo.branch}（点击选择）`}
+            onClick={() => setPickerOpen(true)}
+          >
+            {repo.branch}
+          </button>
+        )}
+        <button className="hover:bg-muted cursor-pointer rounded p-0.5" title="刷新" onClick={() => void refreshBrief()}>
+          <RefreshCw className={`size-3 ${refreshing ? "animate-spin" : ""}`} />
+        </button>
         {repo.behind > 0 && (
           <span className="text-blue-600 dark:text-blue-400 shrink-0 font-mono text-[10px]" title={`可拉取 ${repo.behind}`}>
             ↓{repo.behind}
@@ -267,9 +279,6 @@ export function RepoItem({
             ↑{repo.ahead}
           </span>
         )}
-        <button className="hover:bg-muted cursor-pointer rounded p-0.5" title="刷新" onClick={() => void refreshBrief()}>
-          <RefreshCw className={refreshing ? "animate-spin" : ""} />
-        </button>
         <Popover
           open={toolOpen}
           onOpenChange={(open) => {
@@ -391,32 +400,6 @@ export function RepoItem({
             <div className="text-muted-foreground py-1 text-[11px]">工作区干净</div>
           )}
 
-          {unstaged.length > 0 && (
-            <div className="mb-1">
-              <div className="text-muted-foreground flex items-center gap-1 py-0.5 text-[10px] font-semibold tracking-wide uppercase">
-                未暂存（{unstaged.length}）
-                <button className="hover:text-foreground ml-auto cursor-pointer" title="全部暂存" onClick={() => void stagePath(null)}>
-                  <CirclePlus className="size-3" />
-                </button>
-              </div>
-              {unstaged.map((e) => (
-                <div key={e.path} className="group flex items-center gap-1.5 py-0.5 text-[11px]">
-                  <span className="text-muted-foreground w-3 shrink-0 font-mono text-[10px]">{statusMarker(e.status)}</span>
-                  <span
-                    className="hover:text-primary min-w-0 flex-1 cursor-pointer truncate"
-                    title={e.path}
-                    onClick={() => onOpenFile?.(e.path, repo.root)}
-                  >
-                    {e.path}
-                  </span>
-                  <button title="暂存" className="hover:text-foreground text-muted-foreground shrink-0 cursor-pointer p-0.5" onClick={() => void stagePath(e.path)}>
-                    <ArrowUpFromLine className="size-3" />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-
           {staged.length > 0 && (
             <div>
               <div className="text-muted-foreground flex items-center gap-1 py-0.5 text-[10px] font-semibold tracking-wide uppercase">
@@ -443,7 +426,33 @@ export function RepoItem({
             </div>
           )}
         </div>
-      )}
+      )}          {unstaged.length > 0 && (
+            <div className="mb-1">
+              <div className="text-muted-foreground flex items-center gap-1 py-0.5 text-[10px] font-semibold tracking-wide uppercase">
+                未暂存（{unstaged.length}）
+                <button className="hover:text-foreground ml-auto cursor-pointer" title="全部暂存" onClick={() => void stagePath(null)}>
+                  <CirclePlus className="size-3" />
+                </button>
+              </div>
+              {unstaged.map((e) => (
+                <div key={e.path} className="group flex items-center gap-1.5 py-0.5 text-[11px]">
+                  <span className="text-muted-foreground w-3 shrink-0 font-mono text-[10px]">{statusMarker(e.status)}</span>
+                  <span
+                    className="hover:text-primary min-w-0 flex-1 cursor-pointer truncate"
+                    title={e.path}
+                    onClick={() => onOpenFile?.(e.path, repo.root)}
+                  >
+                    {e.path}
+                  </span>
+                  <button title="暂存" className="hover:text-foreground text-muted-foreground shrink-0 cursor-pointer p-0.5" onClick={() => void stagePath(e.path)}>
+                    <ArrowUpFromLine className="size-3" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+
 
       <Dialog open={confirmOp !== null} onOpenChange={(open) => !open && setConfirmOp(null)}>
         <DialogContent>
