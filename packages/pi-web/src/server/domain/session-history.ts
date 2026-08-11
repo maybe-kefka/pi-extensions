@@ -80,3 +80,14 @@ export function readSessionHistory(
   if (text === undefined) return null;
   return parseSessionEntries(parseSessionJsonl(text));
 }
+
+/** 会话 jsonl 首行 session meta 的 cwd（spawn 实例用——会话 cwd 优先于服务 cwd）；无 → null */
+export function parseSessionCwd(firstLine: string): string | null {
+  if (!firstLine) return null;
+  try {
+    const meta = JSON.parse(firstLine) as { cwd?: unknown };
+    return typeof meta.cwd === "string" && meta.cwd !== "" ? meta.cwd : null;
+  } catch {
+    return null;
+  }
+}

@@ -222,11 +222,6 @@ async function handleRequest(
       return { processId };
     }
 
-    case "pi:newSession": {
-      const result = await privilegedCall((priv) => priv.newSession(withPrivilegedRefresh({})));
-      return { cancelled: result.cancelled };
-    }
-
     case "pi:fork": {
       const userIndex = params.userIndex;
       if (typeof userIndex !== "number" || !Number.isInteger(userIndex) || userIndex < 0) {

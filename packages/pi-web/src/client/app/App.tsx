@@ -103,7 +103,7 @@ export default function App() {
   /** 注册进程表（agent_list 驱动 chat tab 生命周期） */
   const [agents, setAgents] = useState<AgentInfo[]>([]);
   /** 各会话实例的 context usage（usage_update 上行——水杯数据） */
-  const [usageBySession, setUsageBySession] = useState<Record<string, { percent: number | null }>>({});
+  const [usageBySession, setUsageBySession] = useState<Record<string, { percent: number | null; tokens: number | null; contextWindow: number | null }>>({});
   /** agents 最新引用（事件回调闭包读取——避免 stale） */
   const agentsRef = useRef<AgentInfo[]>([]);
   const [models, setModels] = useState<ModelInfo[]>([]);
@@ -265,7 +265,9 @@ export default function App() {
             const entry = agentsRef.current.find((ag) => ag.processId === pid);
             if (entry?.sessionFile) {
               const percent = typeof inner.percent === "number" ? inner.percent : null;
-              setUsageBySession((prev) => ({ ...prev, [entry.sessionFile as string]: { percent } }));
+              const tokens = typeof inner.tokens === "number" ? inner.tokens : null;
+              const contextWindow = typeof inner.contextWindow === "number" ? inner.contextWindow : null;
+              setUsageBySession((prev) => ({ ...prev, [entry.sessionFile as string]: { percent, tokens, contextWindow } }));
             }
             return;
           }
@@ -438,6 +440,12 @@ export default function App() {
     // 无实例：服务进程 spawn 独立实例 → agent_list 事件自动开 tab
     const c = rpcRef.current;
     if (!c) return;
+    // TUI 注册者（live external）正在使用的会话：不允许 spawn（jsonl 双写守卫）
+    const tuiOwned = agentsRef.current.some((ag) => ag.kind !== "spawned" && ag.sessionFile === path);
+    if (tuiOwned) {
+      toast.info("该会话由 TUI 进程使用中——先在 TUI 切走再在 web 打开");
+      return;
+    }
     c.request<{ processId: string }>("pi:openSession", { path })
       .then(() => undefined)
       .catch((e) => toast.error(`会话实例化失败：${e.message}`));
@@ -565,7 +573,7 @@ export default function App() {
 
   return (
     <div className="flex h-dvh flex-col bg-background text-foreground">
-      <Header conn={conn} state={hostState} onCompact={compact} getRequest={getRequest} />
+      <Header conn={conn} />
       <div className="flex min-h-0 flex-1">
         <ActivityBar
           active={panel}
@@ -636,7 +644,7 @@ export default function App() {
                   name={t.name}
                   processId={agents.find((ag) => ag.sessionFile === t.sessionId)?.processId ?? ""}
                   dead={t.kind === "chat" && t.dead === true}
-                  usage={usageBySession[t.sessionId]?.percent ?? null}
+                  usage={usageBySession[t.sessionId] ?? null}
                   onRevive={(sid) => openChat(sid, t.kind === "chat" ? t.name : "聊天")}
                   active={chatTabId(t.sessionId) === workspace.active}
                   request={getRequest()}

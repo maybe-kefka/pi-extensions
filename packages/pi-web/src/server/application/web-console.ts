@@ -21,7 +21,8 @@ import {
 import { createCoalescer, type Coalescer } from "../infrastructure/coalescer.js";
 import { probePrivileged } from "../domain/privilege-probe.js";
 import { portAlive } from "../infrastructure/net-probe.js";
-import { resolveConnectAction, resolveTuiSessionSwitch } from "../domain/orchestrate.js";
+import { resolveConnectAction, resolveSessionInstance, resolveTuiSessionSwitch } from "../domain/orchestrate.js";
+import { parseSessionCwd } from "../domain/session-history.js";
 import type { WebStateFile } from "../domain/registry.js";
 import { newSessionSpawnSpec, sessionInstanceSpawnSpec, webServiceSpawnSpec } from "../domain/spawn-spec.js";
 import { startWebServer, WebServerError, type WebServerHandle } from "../infrastructure/server.js";
@@ -273,6 +274,16 @@ export class WebConsole {
     return { url: server.url };
   }
 
+  /** 轮询等待条件成立（spawn 就绪探测）——20s 超时 */
+  private async waitFor(predicate: () => boolean | Promise<boolean>, what: string): Promise<void> {
+    const deadline = Date.now() + 20_000;
+    while (Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 300));
+      if (await predicate()) return;
+    }
+    throw new WebServerError(1, `${what}超时（20s）`);
+  }
+
   /** 终止 spawn 实例（TUI 接管排他）——SIGTERM 优雅；WS close 触发 onAgentClose 清理 */
   killAgent(processId: string): void {
     const entry = this.state.registry.get(processId);
@@ -305,14 +316,9 @@ export class WebConsole {
       stdio: ["pipe", "ignore", "ignore"],
     });
     child.unref();
-    const deadline = Date.now() + 20_000;
-    while (Date.now() < deadline) {
-      await new Promise((r) => setTimeout(r, 300));
-      // 新实例 hello 带创建的 sessionFile（无 sessionFile 的注册者不算——等就绪）
-      const entry = this.state.registry.list().find((a) => a.pid === child.pid && a.sessionFile);
-      if (entry) return entry.processId;
-    }
-    throw new WebServerError(1, "新建会话实例启动超时（20s）");
+    // 新实例 hello 带创建的 sessionFile（无 sessionFile 的注册者不算——等就绪）
+    await this.waitFor(() => this.state.registry.list().some((a) => a.pid === child.pid && !!a.sessionFile), "新建会话实例启动");
+    return this.state.registry.list().find((a) => a.pid === child.pid && !!a.sessionFile)!.processId;
   }
 
   /**
@@ -346,19 +352,19 @@ export class WebConsole {
       stdio: ["pipe", "ignore", "ignore"],
     });
     child.unref();
-    const deadline = Date.now() + 20_000;
-    while (Date.now() < deadline) {
-      await new Promise((r) => setTimeout(r, 300));
+    await this.waitFor(async () => {
       const sf = WebConsole.readStateFile(cwd);
-      if (sf && (await portAlive(sf.port, netConnect))) return;
-    }
-    throw new WebServerError(1, "web 服务进程启动超时（20s）");
+      return !!sf && (await portAlive(sf.port, netConnect));
+    }, "web 服务进程启动");
   }
 
   /** 会话实例幂等：注册表已有该会话 → 返回 processId；否则 spawn 新实例并等注册 */
   async spawnSessionInstance(sessionFile: string, hostUrl: string): Promise<string> {
-    const existing = this.state.registry.list().find((a) => a.sessionFile === sessionFile);
-    if (existing) return existing.processId;
+    // 幂等：注册表已有该会话（含 TUI 注册者）→ 复用
+    if (resolveSessionInstance(this.state.registry.list(), sessionFile) === "existing") {
+      const e = this.state.registry.list().find((a) => a.sessionFile === sessionFile);
+      if (e) return e.processId;
+    }
     if (!this.extensionPath) throw new WebServerError(1, "扩展路径未知，无法 spawn 会话实例");
     const spec = sessionInstanceSpawnSpec({
       execPath: process.execPath,
@@ -367,7 +373,14 @@ export class WebConsole {
       sessionFile,
       hostUrl,
     });
-    const cwd = this.state.cwd ?? process.cwd();
+    // 会话 cwd 优先（jsonl 首行 meta；无则服务 cwd——同项目场景一致）
+    let cwd = this.state.cwd ?? process.cwd();
+    try {
+      const firstLine = readFileSync(sessionFile, "utf8").split("\n", 1)[0] ?? "";
+      cwd = parseSessionCwd(firstLine) ?? cwd;
+    } catch {
+      /* 文件不可读 → 服务 cwd */
+    }
     // 清除 PI_WEB_SERVICE（继承自服务进程环境——否则子进程误入服务模式不注册）
     const env = { ...process.env, ...spec.env };
     delete env.PI_WEB_SERVICE;
@@ -378,31 +391,11 @@ export class WebConsole {
       stdio: ["pipe", "ignore", "ignore"],
     });
     child.unref();
-    const deadline = Date.now() + 20_000;
-    while (Date.now() < deadline) {
-      await new Promise((r) => setTimeout(r, 300));
-      const entry = this.state.registry.list().find((a) => a.sessionFile === sessionFile);
-      if (entry) return entry.processId;
-    }
-    throw new WebServerError(1, "会话实例启动超时（20s）");
-  }
-
-  /**
-   * /web 语义编排（index.ts 只接线——决策树收进应用层）：
-   * 同 cwd 已有存活宿主 → 注册；残留状态文件（宿主死）→ 清理后作为宿主启动。
-   */
-  async startOrConnect(cwd: string, port: number, open: boolean): Promise<{ url: string; mode: "host" | "agent" }> {
-    const shared = WebConsole.readStateFile(cwd);
-    if (shared) {
-      if (!(await portAlive(shared.port, netConnect))) {
-        WebConsole.clearStateFile(cwd);
-      } else {
-        const { url } = this.connectToHost(cwd);
-        return { url, mode: "agent" };
-      }
-    }
-    const { url } = await this.start(port, open, cwd);
-    return { url, mode: "host" };
+    await this.waitFor(
+      () => this.state.registry.list().some((a) => a.sessionFile === sessionFile),
+      "会话实例启动",
+    );
+    return this.state.registry.list().find((a) => a.sessionFile === sessionFile)!.processId;
   }
 
   /** spawn 实例自动注册（宿主注入的 env）；返回是否注册 */
@@ -513,7 +506,7 @@ export class WebConsole {
           cwd,
           sessionFile: this.state.ctx?.sessionManager.getSessionFile() ?? null,
           sessionName: this.state.ctx?.sessionManager.getSessionName() ?? null,
-          kind: process.env.PI_WEB_HOST_KIND ?? "external",
+          kind: process.env.PI_WEB_HOST_KIND ?? "tui",
         }),
       );
       // 周期上报 usage（水杯水位）——注册者视角

@@ -33,18 +33,18 @@
 9. 作为用户，我希望在 TUI 侧切到某会话时，web 里该会话的实例自动让位（被杀）、tab 标记接管并切换到 TUI 当前会话，这样 jsonl 不会两个进程同时写。
 10. 作为用户，我希望 chat input 左侧有一个垂直水杯进度条显示当前会话的 context 占用，这样我在输入时就能看到水位。
 11. 作为用户，我希望水杯按占用分级变色（绿/黄/红），这样临近上限时有告警。
-12. 作为用户，我希望点击水杯看到上下文占用详情（分类面板），这样可判断该压缩/清理了。
+12. 作为用户，我希望点击水杯看到当前会话实例的上下文占用详情（percent/tokens/window），这样可判断该压缩/清理了。
 13. 作为用户，我希望 web 打开且无任何注册进程时显示引导（提示在 pi 里运行 /web），这样不困惑为什么是空的。
 14. 作为用户，我希望实例意外退出（崩溃/被杀）时 tab 显示断线状态且可重新拉起，这样不卡死在加载态。
 15. 作为用户，我希望每个 tab 的上下文占用实时反映（实例上报 usage），这样水杯水位是活的。
 
 ## Implementation Decisions
 
-- **服务进程模式**：index 检测 `--web`（argv 或 bin 包装）→ 只启动 web 服务 + 注册表，**不注册自己、不提供会话 tab**。`--mode rpc` 常驻、无 TUI。
+- **服务进程模式**：`pi-web` bin（`PI_WEB_SERVICE=1` + `pi --mode rpc --extension <入口>`）→ 只启动 web 服务 + 注册表，**不注册自己、不提供会话 tab**。`--mode rpc` 常驻、无 TUI。注：pi CLI 对未知参数报错退出（`Unknown option`），`pi --web` 字面不可行——服务模式标志走环境变量。
 - **状态文件**：`.pi/web.json` 角色反转——**服务进程写**（端口/token/pid），注册者读。旧字段 hostPid 语义改为 serverPid（schema 兼容演进）。
-- **注册协议扩展**（registry 已有 seam）：hello 带 `kind: "tui" | "spawned"` + sessionFile/sessionName；新增 **usage 上报**（事件 `usage_update`：percent/contextWindow/categories——事件触发 + 周期兜底）；welcome 回 processId。
-- **spawn 会话实例**：`pi --mode rpc --extension <入口> --session <file>` + `PI_WEB_URL` 环境变量自动注册；cwd = 会话 cwd（session jsonl 的 cwd 字段）；stdin pipe 保活（既有冒烟教训）；SIGTERM 优雅终止（tab 关闭时）。
-- **TUI 注册者 tab**：TUI 进程注册后其当前会话 = 一个 tab（普通注册者 tab，可关；注册本身保留，重开即回）；TUI session_start → 更新该 tab 的会话绑定 + 编排杀撞车实例。
+- **注册协议扩展**（registry 已有 seam）：hello 带 `kind: "tui" | "spawned"`（注册者默认 tui；spawn 实例 spawned）+ sessionFile/sessionName；新增 **usage 上报**（事件 `usage_update`：percent/tokens/contextWindow——ContextUsage 无 categories 字段——message_end/agent_settled/session_start 事件触发 + 5s 周期兜底；服务端 mapEvent 白名单透传）；welcome 回 processId。
+- **spawn 会话实例**：`pi --mode rpc --extension <入口> --session <file>` + `PI_WEB_URL` 环境变量自动注册；cwd = 会话 cwd（jsonl 首行 session meta 的 cwd 字段，不可读回退服务 cwd）；env 必须清除 PI_WEB_SERVICE（否则子进程误入服务模式）；stdin pipe 保活；SIGTERM 优雅终止（tab 关闭时）。
+- **TUI 注册者 tab**：TUI 进程注册后其当前会话 = 一个 tab（普通注册者 tab，可关；注册本身保留，重开即回）；TUI session_start → 更新该 tab 的会话绑定 + 编排杀撞车实例。TUI 正在使用的会话（live external/tui 注册者）不允许 web spawn（双写守卫——提示先切走）。
 - **客户端路由**：tab 标识 = 会话（sessionFile），进程与会话 1:1；事件按 processId → 会话 → tab 分发（既有 dispatchToProcess 扩展）；发送/中止/回答 → 服务进程 → 命令下行到对应进程（TUI/spawn 统一）。
 - **编排逻辑**：服务端"事件 → 动作"决策抽成纯函数（spawn 服务、spawn 实例、杀撞车实例、激活跟随 tab、usage 更新、断线标记）——web-console 只做 IO 接线。
 - **spawn 参数构造**：纯函数（argv/env 序列化——防引号/顺序回归）。

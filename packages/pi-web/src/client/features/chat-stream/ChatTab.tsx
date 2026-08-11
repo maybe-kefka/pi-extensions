@@ -10,7 +10,6 @@ import type { ConnState, RpcClient } from "@/shared/api/rpc";
 import { Chat } from "./Chat";
 import { Button } from "@/shared/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/shared/ui/popover";
-import { ContextPanel } from "@/features/context/ContextPanel";
 import { WaterCup } from "./WaterCup";
 import { InputBar } from "@/features/input-bar/InputBar";
 import type { CommandInfo, SkillInfo, FileGroup, HistoryMessage } from "@/entities/chat/types";
@@ -24,8 +23,8 @@ export interface ChatTabProps {
   processId: string;
   /** 断线（实例已退出）——显示提示 + 重新拉起 */
   dead: boolean;
-  /** 该会话实例的 context usage（0-1；水杯水位） */
-  usage: number | null;
+  /** 该会话实例的 context usage（水杯水位 + 详情） */
+  usage: { percent: number | null; tokens: number | null; contextWindow: number | null } | null;
   /** 重新拉起（respawn 同会话实例） */
   onRevive: (sessionId: string) => void;
   /** 是否激活（激活才注册事件分发——进程当前会话 = 激活 tab 的会话） */
@@ -98,13 +97,11 @@ export const ChatTab = memo(function ChatTab({
     };
   }, [active, processId, request]);
 
-  // 激活时注册分发器（进程当前会话 = 激活 tab——事件/历史按 sessionId 路由）
+  // 挂载即注册分发器（事件按 sessionId 路由——后台 tab 流式事件不丢；同会话单 tab 无冲突）
   useEffect(() => {
-    if (active) {
-      onRegisterDispatch(sessionId, dispatch);
-      return () => onUnregisterDispatch(sessionId);
-    }
-  }, [active, sessionId, onRegisterDispatch, onUnregisterDispatch]);
+    onRegisterDispatch(sessionId, dispatch);
+    return () => onUnregisterDispatch(sessionId);
+  }, [sessionId, onRegisterDispatch, onUnregisterDispatch]);
 
   // 状态上报（App 镜像激活 tab——会话元数据用）
   useEffect(() => {
@@ -149,11 +146,20 @@ export const ChatTab = memo(function ChatTab({
         <Popover>
           <PopoverTrigger asChild>
             <button className="cursor-pointer pb-1" title="上下文占用（点击查看详情）">
-              <WaterCup percent={usage} />
+              <WaterCup percent={usage?.percent ?? null} />
             </button>
           </PopoverTrigger>
           <PopoverContent align="start" side="top" className="mb-2">
-            <ContextPanel getRequest={() => request} onCompact={() => undefined} />
+            <div className="flex min-w-32 flex-col gap-1 text-xs">
+              <div className="text-muted-foreground font-semibold">上下文占用</div>
+              <div className="tabular-nums">
+                {usage?.percent == null ? "—" : `${(usage.percent * 100).toFixed(1)}%`}
+                <span className="text-muted-foreground">
+                  {" "}（{usage?.tokens == null ? "—" : usage.tokens.toLocaleString()} / {usage?.contextWindow?.toLocaleString() ?? "—"}）
+                </span>
+              </div>
+              <div className="text-muted-foreground">数据来自当前会话实例</div>
+            </div>
           </PopoverContent>
         </Popover>
         <div className="min-w-0 flex-1">

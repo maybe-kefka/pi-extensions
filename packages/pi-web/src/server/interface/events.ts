@@ -132,6 +132,10 @@ export function mapEvent(type: string, payload: unknown): MappedEvent {
       // 注册进程表变化：透传全量（客户端按 agents 列表 diff chat tab 生命周期）
       return { fields: p as Dict, refreshState: false };
 
+    case "usage_update":
+      // 注册者 context usage 上报（水杯进度条数据）——透传全量，不得丢弃
+      return { fields: p as Dict, refreshState: false };
+
     default:
       return { fields: null, refreshState: false };
   }

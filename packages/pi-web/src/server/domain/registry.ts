@@ -12,7 +12,7 @@ export interface WebStateFile {
   startedAt: number;
 }
 
-export type AgentKind = "host" | "spawned" | "external";
+export type AgentKind = "host" | "tui" | "spawned" | "external";
 
 export interface AgentEntry {
   processId: string;

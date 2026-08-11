@@ -149,3 +149,11 @@ describe("注册进程表事件透传", () => {
     expect(closed.fields?.processId).toBe("p-1");
   });
 });
+
+describe("usage_update 透传", () => {
+  it("usage_update 全量透传（水杯数据——不得被 mapEvent 丢弃）", () => {
+    const u = mapEvent("usage_update", { percent: 0.42, tokens: 1000, contextWindow: 8000, categories: [] });
+    expect(u.fields?.percent).toBe(0.42);
+    expect(u.fields?.categories).toEqual([]);
+  });
+});

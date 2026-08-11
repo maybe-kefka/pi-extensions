@@ -166,6 +166,10 @@ export default function (pi: ExtensionAPI): void {
   for (const type of BROADCAST_EVENT_TYPES) {
     on(type, (event) => {
       broadcast(webConsole, type, event);
+      // 事件触发 usage 上报（agent 模式——水位及时更新；周期兜底在 connectToHost）
+      if (type === "message_end" || type === "agent_settled" || type === "session_start") {
+        webConsole.reportUsage();
+      }
     });
   }
 

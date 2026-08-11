@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseSessionEntries, parseSessionJsonl, readSessionHistory } from "./session-history";
+import { parseSessionCwd, parseSessionEntries, parseSessionJsonl, readSessionHistory } from "./session-history";
 
 describe("parseSessionJsonl", () => {
   it("逐行解析；空行/坏行跳过", () => {
@@ -68,5 +68,16 @@ describe("readSessionHistory", () => {
     const history = readSessionHistory("/s/a.jsonl", (p) => files[p]);
     expect(history).toHaveLength(2);
     expect(readSessionHistory("/s/missing.jsonl", (p) => files[p])).toBeNull();
+  });
+});
+
+describe("parseSessionCwd（会话 jsonl 首行 cwd——spawn 用）", () => {
+  it("首行 session meta 的 cwd", () => {
+    expect(parseSessionCwd('{"type":"session","version":3,"cwd":"/repo/a"}')).toBe("/repo/a");
+  });
+  it("无 cwd / 非法 → null", () => {
+    expect(parseSessionCwd('{"type":"session"}')).toBeNull();
+    expect(parseSessionCwd("not json")).toBeNull();
+    expect(parseSessionCwd("")).toBeNull();
   });
 });
