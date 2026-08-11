@@ -163,7 +163,7 @@ export function FilesTree({ request, onOpenFile, activePath, gitRefreshKey = 0 }
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex items-center gap-2 border-b px-3 py-1.5">
+      <div className="flex h-9 shrink-0 items-center gap-2 border-b px-3">
         <FolderTree className="text-muted-foreground size-4" />
         <span className="truncate text-sm font-semibold">文件浏览</span>
         <div className="ml-auto flex items-center gap-1">
@@ -178,7 +178,7 @@ export function FilesTree({ request, onOpenFile, activePath, gitRefreshKey = 0 }
         </span>
       </div>
       {error && <div className="bg-destructive/10 text-destructive px-3 py-1 text-xs">{error}</div>}
-      <div className="min-h-0 flex-1">
+      <div className="flex min-h-0 flex-1 flex-col">
         <TreeView
           nodes={tree.nodes}
           selectedPath={activePath}

@@ -515,9 +515,9 @@ export function GitPanel({ request, onOpenFile, gitRefreshKey = 0 }: GitPanelPro
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex items-center gap-2 border-b px-3 py-1.5">
+      <div className="flex h-9 shrink-0 items-center gap-2 border-b px-3">
         <GitBranch className="text-muted-foreground size-4" />
-        <span className="text-sm font-semibold">git 控制</span>
+        <span className="text-sm font-semibold">源代码管理</span>
         <span className="text-muted-foreground text-[11px]">{repos.length} 仓库</span>
         <Button variant="ghost" size="icon" className="ml-auto size-7" title="重新扫描仓库" onClick={() => void refresh()}>
           <RefreshCw className={loading ? "animate-spin" : ""} />
