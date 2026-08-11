@@ -10,6 +10,7 @@ import type { ConnState, RpcClient } from "@/shared/api/rpc";
 import { Chat } from "./Chat";
 import { Button } from "@/shared/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/shared/ui/popover";
+import { ContextPanel } from "@/features/context/ContextPanel";
 import { WaterCup } from "./WaterCup";
 import { InputBar } from "@/features/input-bar/InputBar";
 import type { CommandInfo, SkillInfo, FileGroup, HistoryMessage } from "@/entities/chat/types";
@@ -116,6 +117,11 @@ export const ChatTab = memo(function ChatTab({
     [request, processId],
   );
 
+  // 压缩：按进程路由（实例下行 compact；无进程 → 服务进程本地）
+  const compact = useCallback(() => {
+    request("pi:compact", processId ? { processId } : {}).catch(() => undefined);
+  }, [request, processId]);
+
   const abort = useCallback(() => {
     if (!processId) return;
     request("pi:chatAbort", { processId }).catch(() => undefined);
@@ -141,7 +147,7 @@ export const ChatTab = memo(function ChatTab({
         </div>
       )}
       <Chat state={state} dispatch={dispatch} onFork={onFork} onAnswerAsk={answerAsk} />
-      <div className="flex items-start gap-2 px-3">
+      <div className="flex items-start gap-2 border-t px-3">
         {/* 水杯进度条：per-tab 实例 context 占用；点击查看详情 */}
         <Popover>
           <PopoverTrigger asChild>
@@ -150,20 +156,12 @@ export const ChatTab = memo(function ChatTab({
             </button>
           </PopoverTrigger>
           <PopoverContent align="start" side="top" className="mb-2">
-            <div className="flex min-w-32 flex-col gap-1 text-xs">
-              <div className="text-muted-foreground font-semibold">上下文占用</div>
-              <div className="tabular-nums">
-                {usage?.percent == null ? "—" : `${(usage.percent * 100).toFixed(1)}%`}
-                <span className="text-muted-foreground">
-                  {" "}（{usage?.tokens == null ? "—" : usage.tokens.toLocaleString()} / {usage?.contextWindow?.toLocaleString() ?? "—"}）
-                </span>
-              </div>
-              <div className="text-muted-foreground">数据来自当前会话实例</div>
-            </div>
+            <ContextPanel getRequest={() => request} onCompact={compact} />
           </PopoverContent>
         </Popover>
         <div className="min-w-0 flex-1">
           <InputBar
+            bordered={false}
             busy={state.streaming}
             queue={state.queue}
             conn={conn}

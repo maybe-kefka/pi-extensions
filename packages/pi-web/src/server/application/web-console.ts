@@ -562,6 +562,12 @@ export class WebConsole {
         await this.sendLocalMessage(msg.text.trim(), msg.deliverAs);
       } else if (command === "abort") {
         this.requireCtx().abort();
+      } else if (command === "compact") {
+        this.requireCtx().compact({
+          onError: (e: Error) => {
+            this.broadcast("notify", { message: `压缩失败：${e.message}`, notifyType: "error" });
+          },
+        });
       } else if (command === "ask-answer") {
         // multi-instance：web 提问回答路由（本进程 registry）
         const toolCallId = typeof msg.toolCallId === "string" ? msg.toolCallId : "";
@@ -599,7 +605,7 @@ export class WebConsole {
     }
     const entry = this.state.registry.get(processId);
     if (!entry) throw new WebServerError(1, `进程未注册：${processId}`);
-    if (entry.kind === "external" || entry.kind === "spawned") {
+    if (entry.kind === "external" || entry.kind === "spawned" || entry.kind === "tui") {
       this.state.server?.sendAgentCommand(processId, { command, ...payload });
       return;
     }

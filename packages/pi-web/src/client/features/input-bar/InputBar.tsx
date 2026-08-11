@@ -22,11 +22,13 @@ export function InputBar(props: {
   commands: CommandInfo[];
   files: FileGroup[];
   pickerLoading: boolean;
+  /** 顶部 border（ChatTab 全宽 border 盖过进度条时传 false） */
+  bordered?: boolean;
   onSend: (text: string) => void;
   onAbort: () => void;
   onPickerOpen: () => void;
 }) {
-  const { busy, queue, conn, skills, commands, files, pickerLoading, onSend, onAbort, onPickerOpen } = props;
+  const { busy, queue, conn, skills, commands, files, pickerLoading, bordered = true, onSend, onAbort, onPickerOpen } = props;
   const [hasInput, setHasInput] = useState(false);
   // mention 状态机用 ref 同步更新（连续按键同 tick 时 React 批量更新会让第二次 keydown 读到旧状态，
   // 导致 space 后紧跟 / 的触发序列丢失）；tick 仅驱动渲染
@@ -359,7 +361,7 @@ export function InputBar(props: {
   const queued = queue.followUp.length;
 
   return (
-    <footer className="border-t p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+    <footer className={`p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] ${bordered ? "border-t" : ""}`}>
       {queued > 0 && (
         <div className="text-muted-foreground mb-2 flex items-center gap-1.5 text-xs">
           <span className="bg-muted size-1.5 animate-pulse rounded-full" />
