@@ -1,7 +1,7 @@
 import { memo, startTransition, useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { toast } from "sonner";
 import { createRpcClient, type RpcClient } from "@/shared/api/rpc";
-import { initialState, type StreamAction } from "@/entities/chat/stream";
+import { initialState, type StreamAction, type StreamState } from "@/entities/chat/stream";
 import { isTransitionalAction, toAction } from "@/entities/chat/events";
 import type { CommandInfo, FileGroup, HistoryMessage, ModelInfo, PiEvent, SessionInfo, SkillInfo, TreeNode, WebState } from "@/entities/chat/types";
 import { Header } from "@/app/ui/Header";
@@ -182,13 +182,18 @@ export default function App() {
     if (hostState.sessionName && sid) dispatchWs({ kind: "rename-chat", sessionId: sid, name: hostState.sessionName });
   }, [hostState.sessionName, workspace.active]);
 
-  // 激活 chat tab ≠ 进程当前会话 → 切换会话（tab 打开/切换时）
+  // 激活 chat tab：会话不同 → 切换进程会话（ready 后拉历史）；会话相同 → 直接拉历史
   useEffect(() => {
     const sid = chatSessionOf(workspace.active);
-    if (!sid) return;
-    if (hostState.sessionFile && hostState.sessionFile !== sid) {
-      rpcRef.current?.request("pi:switchSession", { path: sid }).catch(() => undefined);
+    if (!sid || !hostState.sessionFile) return; // 会话信息未就绪（getState 未回）——等
+    if (hostState.sessionFile === sid) {
+      rpcRef.current
+        ?.request<{ messages: HistoryMessage[] }>("pi:getMessages")
+        .then((r) => dispatchToProcess(sid, { type: "history", messages: r.messages ?? [] }))
+        .catch(() => undefined);
+      return;
     }
+    rpcRef.current?.request("pi:switchSession", { path: sid }).catch(() => undefined);
   }, [workspace.active, hostState.sessionFile]);
 
   // R26：主题偏好（localStorage 持久化）+ 系统深浅（toast 联动）
@@ -324,7 +329,9 @@ export default function App() {
     const c = rpcRef.current;
     c.request<WebState>("pi:getState")
       .then((st) => {
-        dispatchToProcess("host", { type: "state", state: st as unknown as Record<string, unknown> });
+        // 先直接镜像会话元数据（ChatTab 未挂载时 state 事件会丢——激活 effect 需要 sessionFile）
+        setHostState((prev) => ({ ...prev, ...(st as unknown as Partial<StreamState>) }));
+        dispatchToActiveChat({ type: "state", state: st as unknown as Record<string, unknown> });
         // 默认打开当前会话的 chat tab（chat 与 file 同级——可开可关）
         const sf = (st as unknown as { sessionFile?: string | null }).sessionFile;
         const name = (st as unknown as { sessionName?: string | null }).sessionName ?? "聊天";

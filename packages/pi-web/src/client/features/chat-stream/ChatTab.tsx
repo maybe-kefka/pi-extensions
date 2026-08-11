@@ -56,6 +56,20 @@ export const ChatTab = memo(function ChatTab({
     dispatch({ type: "conn", state: conn });
   }, [conn]);
 
+  // 激活时拉取进程状态兜底（挂载早于 getState 完成时 state 事件会丢——context/sessionFile 需补齐）
+  useEffect(() => {
+    if (!active) return;
+    let cancelled = false;
+    request<Record<string, unknown>>("pi:getState")
+      .then((st) => {
+        if (!cancelled) dispatch({ type: "state", state: st });
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [active, request]);
+
   // 激活时注册分发器（进程当前会话 = 激活 tab——事件/历史按 sessionId 路由）
   useEffect(() => {
     if (active) {
