@@ -3,6 +3,7 @@
  * pi:sendMessage / pi:listFiles 等 18 个客户端方法；校验 → 领域/应用层调用 → 返回。
  */
 
+import { readFileSync } from "node:fs";
 import type { ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { WebServerError } from "../infrastructure/server.js";
 import {
@@ -17,7 +18,7 @@ import {
 import { expandSkillChips, skillLookupFrom } from "../domain/skill-expand.js";
 import { resolveCloseAgent } from "../domain/orchestrate.js";
 import { askRegistry } from "../domain/web-ask.js";
-import { readFileSync } from "node:fs";
+
 import { listFiles } from "../domain/file-lister.js";
 import { resolveUserEntryId } from "../domain/fork-util.js";
 import { truncateTree } from "../domain/tree.js";
@@ -158,7 +159,7 @@ async function handleRequest(
       try {
         // R22：只展开 chip 标记内的 skill（skill:name → XML；file 标记剥路径）——
         // sendUserMessage 硬编码 expandPromptTemplates:false，pi 内核不展开（基线 SPEC §40）
-        const expanded = expandSkillChips(text.trim(), skillLookupFrom(state.api));
+        const expanded = expandSkillChips(text.trim(), skillLookupFrom({ ...state.api, readFile: (p) => readFileSync(p, "utf-8") }));
         state.api.sendUserMessage(expanded, deliverAs ? { deliverAs } : undefined);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);

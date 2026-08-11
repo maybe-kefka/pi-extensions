@@ -4,7 +4,7 @@
  * - entries 解析逻辑从 rpc-handler getMessages 提取（单一来源）
  */
 
-import { messageTextOf, messageThinkingOf, messageToolCalls } from "../infrastructure/http-util.js";
+import { messageTextOf, messageThinkingOf, messageToolCalls } from "./message-accessors.js";
 
 export interface SessionEntryLike {
   type?: string;

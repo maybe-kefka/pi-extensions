@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mapEvent, requiresStateRefresh } from "./events.js";
+import { mapEvent, requiresStateRefresh } from "./map-event.js";
 
 describe("mapEvent — 消息流", () => {
   it("message_start / message_end 透传整份 message", () => {

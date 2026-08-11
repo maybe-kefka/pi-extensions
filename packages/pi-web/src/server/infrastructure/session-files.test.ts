@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { deleteSessionFile, validateDeletableSession } from "./session-files.js";
+import { validateDeletableSession } from "../domain/session-file-rules.js";
+import { deleteSessionFile } from "./session-files.js";
 
 describe("validateDeletableSession", () => {
   const dir = "/tmp/pi-sessions";

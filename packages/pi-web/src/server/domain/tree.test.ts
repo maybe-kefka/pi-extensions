@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { truncateTree } from "./tree.js";
-import type { TreeNode } from "../../client/entities/chat/types.js";
+import type { TreeNode } from "../../client/entities/chat/chat-model.js";
 
 function node(id: string, children: TreeNode[] = []): TreeNode {
   return {

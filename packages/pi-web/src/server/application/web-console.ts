@@ -38,7 +38,7 @@ import {
 } from "../domain/registry.js";
 import { expandSkillChips, skillLookupFrom } from "../domain/skill-expand.js";
 import { askRegistry } from "../domain/web-ask.js";
-import { mapEvent } from "../interface/events.js";
+import { mapEvent } from "../domain/map-event.js";
 import { isStaleError } from "../domain/fork-util.js";
 
 const FLUSH_INTERVAL_MS = 60;
@@ -592,7 +592,7 @@ export class WebConsole {
   /** 本进程（宿主或 agent）发送消息：chip 展开 + api.sendUserMessage */
   async sendLocalMessage(text: string, deliverAs?: string): Promise<void> {
     if (!this.state.api) throw new WebServerError(3, "扩展未就绪");
-    const expanded = expandSkillChips(text, skillLookupFrom(this.state.api));
+    const expanded = expandSkillChips(text, skillLookupFrom({ ...this.state.api, readFile: (p) => readFileSync(p, "utf-8") }));
     await this.state.api.sendUserMessage(expanded, deliverAs === "steer" || deliverAs === "followUp" ? { deliverAs } : undefined);
   }
 

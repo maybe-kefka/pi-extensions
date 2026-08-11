@@ -8,6 +8,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import type { AddressInfo } from "node:net";
 import { WebSocketServer, type WebSocket } from "ws";
 import { extractToken, mimeTypeFor, safeResolveWebPath, tokenEquals } from "./http-util.js";
+import { isStaleError } from "../domain/fork-util.js";
 import { makeError, parseMessage, RPC_ERROR, serialize, type RpcResponse } from "../domain/protocol.js";
 
 export class WebServerError extends Error {
@@ -208,7 +209,7 @@ export async function startWebServer(options: WebServerOptions): Promise<WebServ
     } catch (err) {
       if (err instanceof WebServerError) {
         response = makeError(msg.id, err.code, err.message);
-      } else if (err instanceof Error && err.message.includes("stale")) {
+      } else if (isStaleError(err)) {
         response = makeError(msg.id, 3, "会话切换中，请重试");
       } else {
         response = makeError(msg.id, 1, err instanceof Error ? err.message : String(err));
