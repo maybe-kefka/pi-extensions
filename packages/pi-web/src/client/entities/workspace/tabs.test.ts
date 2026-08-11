@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   activateTab,
+  chatLeaveAction,
   chatOpenAction,
   diffAgentTabs,
+  markChatDead,
   type WorkspaceTab,
   chatTabId,
   chatSessionOf,
@@ -261,3 +263,33 @@ describe("chatOpenAction（会话管理点击决策）", () => {
     expect(chatOpenAction(s, agents, "/s/2.jsonl")).toEqual({ kind: "spawn" });
   });
 });
+
+describe("断线标记（agent 退出 → tab dead；重开复活）", () => {
+  it("markChatDead：标记断线不关 tab；不存在忽略", () => {
+    const s: WorkspaceState = { tabs: [{ kind: "chat", sessionId: "/s/1.jsonl", name: "A" }], active: "" };
+    const d = markChatDead(s, "/s/1.jsonl");
+    expect(d.tabs[0]).toMatchObject({ kind: "chat", sessionId: "/s/1.jsonl", dead: true });
+    expect(markChatDead(s, "/s/nope.jsonl")).toBe(s);
+  });
+
+  it("chatLeaveAction：dead 的 tab 保持（断线）；非 dead 关闭（TUI 切换）", () => {
+    const tabs: WorkspaceTab[] = [
+      { kind: "chat", sessionId: "/s/1.jsonl", name: "A", dead: true },
+      { kind: "chat", sessionId: "/s/2.jsonl", name: "B" },
+    ];
+    expect(chatLeaveAction(tabs, "/s/1.jsonl")).toBe("keep");
+    expect(chatLeaveAction(tabs, "/s/2.jsonl")).toBe("close");
+  });
+});
+
+  it("dead tab 的打开 → spawn（重新拉起）而非 activate", () => {
+    const s: WorkspaceState = { tabs: [{ kind: "chat", sessionId: "/s/1.jsonl", name: "A", dead: true }], active: "" };
+    expect(chatOpenAction(s, [], "/s/1.jsonl")).toEqual({ kind: "spawn" });
+  });
+
+  it("dead tab 的会话重新注册 → join（重建复活）", () => {
+    const tabs: WorkspaceTab[] = [{ kind: "chat", sessionId: "/s/1.jsonl", name: "A", dead: true }];
+    const d = diffAgentTabs({ tabs, active: "" }, [{ sessionFile: "/s/1.jsonl", sessionName: "A" }]);
+    expect(d.join).toEqual([{ sessionFile: "/s/1.jsonl", sessionName: "A" }]);
+    expect(d.leave).toEqual([]);
+  });

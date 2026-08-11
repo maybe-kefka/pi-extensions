@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveConnectAction, resolveSessionInstance, resolveTuiSessionSwitch } from "./orchestrate.js";
+import { resolveConnectAction, resolveCloseAgent, resolveSessionInstance, resolveTuiSessionSwitch } from "./orchestrate.js";
 import type { WebStateFile } from "./registry.js";
 
 const stateFile: WebStateFile = { port: 3939, token: "abc12345def", serverPid: 1, startedAt: 1 };
@@ -47,5 +47,13 @@ describe("resolveTuiSessionSwitch（TUI 切会话 → 杀撞车实例）", () =>
   it("目标会话就是 TUI 自己的当前会话 → 不杀（自己不能杀自己）", () => {
     const r = resolveTuiSessionSwitch(agents, "p-1", "/s/old.jsonl");
     expect(r.kill).toEqual([]);
+  });
+});
+
+describe("resolveCloseAgent（关 tab 杀实例）", () => {
+  it("spawned → kill；external/不存在 → skip", () => {
+    expect(resolveCloseAgent({ kind: "spawned" })).toBe("kill");
+    expect(resolveCloseAgent({ kind: "external" })).toBe("skip");
+    expect(resolveCloseAgent(null)).toBe("skip");
   });
 });

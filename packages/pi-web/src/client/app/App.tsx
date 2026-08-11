@@ -23,8 +23,10 @@ import {
   diffPathOf,
   initialState as initialWorkspace,
   openChatTab,
+  chatLeaveAction,
   chatOpenAction,
   diffAgentTabs,
+  markChatDead,
   openDiffTab,
   openFile,
   renameChatTab,
@@ -160,7 +162,8 @@ export default function App() {
         | { kind: "promote"; path: string }
         | { kind: "rename-chat"; sessionId: string; name: string }
         | { kind: "open-chat"; sessionId: string; name: string }
-        | { kind: "close-chat"; sessionId: string },
+        | { kind: "close-chat"; sessionId: string }
+        | { kind: "dead-chat"; sessionId: string },
     ): WorkspaceState => {
       switch (a.kind) {
         case "open":
@@ -181,6 +184,8 @@ export default function App() {
           return openChatTab(s, a.sessionId, a.name);
         case "close-chat":
           return closeChatTab(s, a.sessionId);
+        case "dead-chat":
+          return markChatDead(s, a.sessionId);
       }
     },
     undefined,
@@ -263,6 +268,13 @@ export default function App() {
           }
           return;
         }
+        // agent 进程退出 → 对应 tab 断线标记（保留 + 可重新拉起）
+        if (evt.type === "agent_closed") {
+          const pid = typeof evt.processId === "string" ? evt.processId : "";
+          const entry = agentsRef.current.find((ag) => ag.processId === pid);
+          if (entry?.sessionFile) dispatchWs({ kind: "dead-chat", sessionId: entry.sessionFile });
+          return;
+        }
         // TUI 接管提示（TUI 切到 web 已实例化的会话 → 该实例被杀）
         if (evt.type === "tui_takeover") {
           toast.info("该会话已由 TUI 接管，实例已释放");
@@ -317,10 +329,19 @@ export default function App() {
     agentsRef.current = list;
     const diff = diffAgentTabs(workspaceRef.current, list);
     for (const j of diff.join) {
+      // dead 的 tab 重建复活（reducer 状态已随实例死亡丢失——历史由 ChatTab 重拉）
+      if (chatLeaveAction(workspaceRef.current.tabs, j.sessionFile) === "keep") {
+        dispatchWs({ kind: "close-chat", sessionId: j.sessionFile });
+      }
       dispatchWs({ kind: "open-chat", sessionId: j.sessionFile, name: j.sessionName ?? sessionLabelFromFile(j.sessionFile) });
       dispatchWs({ kind: "activate", id: chatTabId(j.sessionFile) });
     }
-    for (const sid of diff.leave) dispatchWs({ kind: "close-chat", sessionId: sid });
+    for (const sid of diff.leave) {
+      // dead（断线保留待重拉）保持；正常消失（TUI 切换）关闭
+      if (chatLeaveAction(workspaceRef.current.tabs, sid) === "close") {
+        dispatchWs({ kind: "close-chat", sessionId: sid });
+      }
+    }
   }, []);
 
   const refreshSessions = useCallback((retry = true) => {
@@ -585,7 +606,12 @@ export default function App() {
             onActivate={(id) => dispatchWs({ kind: "activate", id })}
             onClose={(id) => {
               if (chatSessionOf(id) !== null) {
-                // chat 与 file 同级：直接关闭（不切会话——进程保持当前）
+                // chat 与 file 同级：直接关闭；spawn 实例同步杀进程（TUI 注册者保留注册）
+                const sid = chatSessionOf(id) as string;
+                const entry = agents.find((ag) => ag.sessionFile === sid);
+                if (entry && entry.kind === "spawned") {
+                  rpcRef.current?.request("pi:closeAgent", { processId: entry.processId }).catch(() => undefined);
+                }
                 dispatchWs({ kind: "close", id });
                 return;
               }
@@ -612,6 +638,8 @@ export default function App() {
                   sessionId={t.sessionId}
                   name={t.name}
                   processId={agents.find((ag) => ag.sessionFile === t.sessionId)?.processId ?? ""}
+                  dead={t.kind === "chat" && t.dead === true}
+                  onRevive={(sid) => openChat(sid, t.kind === "chat" ? t.name : "聊天")}
                   active={chatTabId(t.sessionId) === workspace.active}
                   request={getRequest()}
                   conn={conn}

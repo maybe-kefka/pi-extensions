@@ -8,6 +8,7 @@ import { memo, useCallback, useEffect, useReducer, useRef } from "react";
 import { initialState, streamReducer, type StreamAction, type StreamState } from "@/entities/chat/stream";
 import type { ConnState, RpcClient } from "@/shared/api/rpc";
 import { Chat } from "./Chat";
+import { Button } from "@/shared/ui/button";
 import { InputBar } from "@/features/input-bar/InputBar";
 import type { CommandInfo, SkillInfo, FileGroup, HistoryMessage } from "@/entities/chat/types";
 
@@ -18,6 +19,10 @@ export interface ChatTabProps {
   name: string;
   /** 服务该会话的注册进程（TUI 注册者 / spawn 实例）；空 = 无进程（禁用发送） */
   processId: string;
+  /** 断线（实例已退出）——显示提示 + 重新拉起 */
+  dead: boolean;
+  /** 重新拉起（respawn 同会话实例） */
+  onRevive: (sessionId: string) => void;
   /** 是否激活（激活才注册事件分发——进程当前会话 = 激活 tab 的会话） */
   active: boolean;
   request: RpcClient["request"];
@@ -39,6 +44,8 @@ export const ChatTab = memo(function ChatTab({
   sessionId,
   name: _name,
   processId,
+  dead,
+  onRevive,
   active,
   request,
   conn,
@@ -122,6 +129,14 @@ export const ChatTab = memo(function ChatTab({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
+      {dead && (
+        <div className="bg-muted/60 flex items-center justify-between gap-2 border-b px-3 py-1.5 text-xs">
+          <span className="text-muted-foreground">实例已退出——会话内容保留在磁盘</span>
+          <Button size="sm" variant="outline" className="h-6 cursor-pointer text-xs" onClick={() => onRevive(sessionId)}>
+            重新拉起
+          </Button>
+        </div>
+      )}
       <Chat state={state} dispatch={dispatch} onFork={onFork} onAnswerAsk={answerAsk} />
       <InputBar
         busy={state.streaming}

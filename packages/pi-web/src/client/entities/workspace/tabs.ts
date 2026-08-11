@@ -6,7 +6,7 @@
 export type WorkspaceTab =
   | { kind: "file"; path: string; name: string; dirty: boolean; preview: boolean }
   | { kind: "diff"; path: string; name: string; repoRoot?: string }
-  | { kind: "chat"; sessionId: string; name: string };
+  | { kind: "chat"; sessionId: string; name: string; dead?: boolean };
 
 export interface WorkspaceState {
   tabs: WorkspaceTab[];
@@ -170,15 +170,17 @@ export function diffAgentTabs(
   state: WorkspaceState,
   agents: AgentTabInfo[],
 ): { join: { sessionFile: string; sessionName: string | null }[]; leave: string[] } {
-  const openSessions = new Set(state.tabs.filter((t) => t.kind === "chat").map((t) => t.sessionId));
+  const chatTabs = state.tabs.filter((t): t is Extract<WorkspaceTab, { kind: "chat" }> => t.kind === "chat");
   const join: { sessionFile: string; sessionName: string | null }[] = [];
   const seen = new Set<string>();
   for (const a of agents) {
     if (!a.sessionFile || seen.has(a.sessionFile)) continue;
     seen.add(a.sessionFile);
-    if (!openSessions.has(a.sessionFile)) join.push({ sessionFile: a.sessionFile, sessionName: a.sessionName });
+    // 未开 / dead（断线待重建复活）→ join
+    const existing = chatTabs.find((t) => t.sessionId === a.sessionFile);
+    if (!existing || existing.dead === true) join.push({ sessionFile: a.sessionFile, sessionName: a.sessionName });
   }
-  const leave = [...openSessions].filter((sid) => !seen.has(sid));
+  const leave = chatTabs.filter((t) => !seen.has(t.sessionId)).map((t) => t.sessionId);
   return { join, leave };
 }
 
@@ -188,7 +190,27 @@ export function chatOpenAction(
   agents: { sessionFile: string | null }[],
   sessionId: string,
 ): { kind: "activate" } | { kind: "open"; name: string } | { kind: "spawn" } {
-  if (state.tabs.some((t) => t.kind === "chat" && t.sessionId === sessionId)) return { kind: "activate" };
+  const existing = state.tabs.find((t) => t.kind === "chat" && t.sessionId === sessionId) as
+    | Extract<WorkspaceTab, { kind: "chat" }>
+    | undefined;
+  // dead（断线）tab：重新拉起 = 重新 spawn（join 后重建复活）
+  if (existing) return existing.dead === true ? { kind: "spawn" } : { kind: "activate" };
   if (agents.some((a) => a.sessionFile === sessionId)) return { kind: "open", name: sessionId.split("/").pop() ?? "聊天" };
   return { kind: "spawn" };
+}
+
+/** 标记 chat tab 断线（agent 退出——实例崩溃/被杀）；不存在忽略 */
+export function markChatDead(state: WorkspaceState, sessionId: string): WorkspaceState {
+  if (!state.tabs.some((t) => t.kind === "chat" && t.sessionId === sessionId)) return state;
+  return {
+    ...state,
+    tabs: state.tabs.map((t) => (t.kind === "chat" && t.sessionId === sessionId ? { ...t, dead: true } : t)),
+  };
+}
+
+/** 会话消失时 tab 的处置：dead（断线保留待重拉）→ keep；正常 → close */
+export function chatLeaveAction(tabs: WorkspaceTab[], sessionId: string): "keep" | "close" {
+  const t = tabs.find((x) => x.kind === "chat" && x.sessionId === sessionId);
+  if (!t || t.kind !== "chat") return "close";
+  return t.dead === true ? "keep" : "close";
 }

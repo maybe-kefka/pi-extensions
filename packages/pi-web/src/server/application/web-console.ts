@@ -239,10 +239,10 @@ export class WebConsole {
           this.broadcastAgentEvent(processId, event);
         },
         onAgentClose: (processId) => {
-          console.log(`[pi-web] agent close: ${processId}`);
           this.state.registry.remove(processId);
-          this.broadcastAgentList();
+          // 顺序：先 agent_closed（客户端标记断线）再 agent_list（leave 对 dead tab 保持）
           this.broadcast("agent_closed", { processId });
+          this.broadcastAgentList();
         },
       },
     });
@@ -334,9 +334,12 @@ export class WebConsole {
       hostUrl,
     });
     const cwd = this.state.cwd ?? process.cwd();
+    // 清除 PI_WEB_SERVICE（继承自服务进程环境——否则子进程误入服务模式不注册）
+    const env = { ...process.env, ...spec.env };
+    delete env.PI_WEB_SERVICE;
     const child = spawn(spec.execPath, spec.argv, {
       cwd,
-      env: { ...process.env, ...spec.env },
+      env,
       detached: true,
       stdio: ["pipe", "ignore", "ignore"],
     });

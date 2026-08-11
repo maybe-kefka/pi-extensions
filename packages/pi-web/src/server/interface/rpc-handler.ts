@@ -14,6 +14,7 @@ import {
   type ConversationTokens,
 } from "../domain/context-breakdown.js";
 import { expandSkillChips, skillLookupFrom } from "../domain/skill-expand.js";
+import { resolveCloseAgent } from "../domain/orchestrate.js";
 import { askRegistry } from "../domain/web-ask.js";
 import { readFileSync } from "node:fs";
 import { listFiles } from "../domain/file-lister.js";
@@ -125,6 +126,15 @@ async function handleRequest(
         }
         throw new WebServerError(1, message);
       }
+    }
+
+    case "pi:closeAgent": {
+      // 关 tab 释放实例：spawned → 杀；external（TUI 注册者）→ 保留注册
+      const processId = typeof params.processId === "string" ? params.processId : "";
+      if (processId === "") throw new WebServerError(-32602, "processId 必填");
+      const entry = console.agentList().find((ag) => ag.processId === processId) ?? null;
+      if (resolveCloseAgent(entry) === "kill") console.killAgent(processId);
+      return { ok: true };
     }
 
     case "pi:chatAbort": {

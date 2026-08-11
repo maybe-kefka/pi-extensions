@@ -34,3 +34,8 @@ export function resolveTuiSessionSwitch(
     .map((a) => a.processId);
   return { kill };
 }
+
+/** 关闭 agent 决策：spawned（web 实例）→ kill；external（TUI 注册者）→ 保留注册 */
+export function resolveCloseAgent(entry: { kind: string } | null): "kill" | "skip" {
+  return entry?.kind === "spawned" ? "kill" : "skip";
+}
