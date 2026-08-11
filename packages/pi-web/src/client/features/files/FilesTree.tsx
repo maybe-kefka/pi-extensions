@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Eye, FolderTree, RefreshCw } from "lucide-react";
+import { FolderTree, RefreshCw } from "lucide-react";
 import { Button } from "@/shared/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/shared/ui/dialog";
 import { Input } from "@/shared/ui/input";
@@ -29,7 +29,7 @@ export interface FilesTreeProps {
 
 /** 文件浏览树面板（目录树 + git 状态标记 + 新建/重命名/删除 + 键盘导航） */
 export function FilesTree({ request, onOpenFile, activePath, gitRefreshKey = 0 }: FilesTreeProps) {
-  const [tree, setTree] = useState<TreeState>(() => createRootTree({ showExcluded: false, showHidden: false }));
+  const [tree, setTree] = useState<TreeState>(() => createRootTree());
   const [gitInfo, setGitInfo] = useState<GitInfoDto | null>(null);
   const [gitStatus, setGitStatus] = useState<Map<string, string>>(new Map());
   const [loading, setLoading] = useState(false);
@@ -49,8 +49,6 @@ export function FilesTree({ request, onOpenFile, activePath, gitRefreshKey = 0 }
       try {
         const { entries } = await request<{ entries: DirEntryDto[] }>("pi:listDir", {
           path,
-          showExcluded: state.showExcluded,
-          showHidden: state.showHidden,
         });
         setTree((prev) => applyListing(prev, path, entries));
       } catch (e) {
@@ -102,24 +100,11 @@ export function FilesTree({ request, onOpenFile, activePath, gitRefreshKey = 0 }
 
   const refresh = useCallback(() => {
     setError(null);
-    const fresh = createRootTree({ showExcluded: tree.showExcluded, showHidden: tree.showHidden });
+    const fresh = createRootTree();
     setTree(fresh);
     void loadDir("", fresh);
     void loadGitStatus();
-  }, [tree.showExcluded, tree.showHidden, loadDir, loadGitStatus]);
-
-  const toggleShow = useCallback(
-    (patch: { showExcluded?: boolean; showHidden?: boolean }) => {
-      setError(null);
-      const next = createRootTree({
-        showExcluded: patch.showExcluded ?? tree.showExcluded,
-        showHidden: patch.showHidden ?? tree.showHidden,
-      });
-      setTree(next);
-      void loadDir("", next);
-    },
-    [tree.showExcluded, tree.showHidden, loadDir],
-  );
+  }, [loadDir, loadGitStatus]);
 
   const commitRename = useCallback(
     async (path: string, newName: string) => {
@@ -176,38 +161,12 @@ export function FilesTree({ request, onOpenFile, activePath, gitRefreshKey = 0 }
     }
   }, [newTarget, newName, request, tree, loadDir, loadGitStatus, onOpenFile]);
 
-  const statusLine = useMemo(() => {
-    const parts: string[] = [];
-    if (tree.showExcluded) parts.push("显示排除目录");
-    if (tree.showHidden) parts.push("显示隐藏文件");
-    return parts.join(" · ") || "默认过滤：node_modules/.git/dist/.pi 与隐藏文件";
-  }, [tree.showExcluded, tree.showHidden]);
-
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex items-center gap-2 border-b px-3 py-1.5">
         <FolderTree className="text-muted-foreground size-4" />
         <span className="truncate text-sm font-semibold">文件浏览</span>
         <div className="ml-auto flex items-center gap-1">
-          <Button
-            variant={tree.showExcluded ? "secondary" : "ghost"}
-            size="sm"
-            className="h-6 px-2 text-xs"
-            onClick={() => toggleShow({ showExcluded: !tree.showExcluded })}
-            title="显示 node_modules/.git/dist/.pi"
-          >
-            排除项
-          </Button>
-          <Button
-            variant={tree.showHidden ? "secondary" : "ghost"}
-            size="sm"
-            className="h-6 px-2 text-xs"
-            onClick={() => toggleShow({ showHidden: !tree.showHidden })}
-            title="显示 .env 等隐藏文件"
-          >
-            <Eye className="mr-1 size-3" />
-            隐藏
-          </Button>
           <Button variant="ghost" size="icon" className="size-7" onClick={refresh} title="刷新目录树">
             <RefreshCw className={loading ? "animate-spin" : ""} />
           </Button>
@@ -217,7 +176,6 @@ export function FilesTree({ request, onOpenFile, activePath, gitRefreshKey = 0 }
         <span className="bg-muted text-muted-foreground truncate rounded px-1.5 py-0.5 font-mono text-[11px]">
           {gitStatusLabel(gitInfo)}
         </span>
-        <span className="text-muted-foreground truncate text-[11px]">{statusLine}</span>
       </div>
       {error && <div className="bg-destructive/10 text-destructive px-3 py-1 text-xs">{error}</div>}
       <div className="min-h-0 flex-1">

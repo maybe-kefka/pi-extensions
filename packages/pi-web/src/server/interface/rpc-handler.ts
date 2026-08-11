@@ -312,9 +312,7 @@ async function handleRequest(
       // files 迭代：单目录列举（按需展开），路径白名单由安全域校验
       const ctx = requireCtxOf();
       const relPath = typeof params.path === "string" ? params.path : "";
-      const showExcluded = params.showExcluded === true;
-      const showHidden = params.showHidden === true;
-      const entries = await listDir(ctx.cwd, relPath, { showExcluded, showHidden }, realFs);
+      const entries = await listDir(ctx.cwd, relPath, realFs);
       if (entries === null) {
         throw new WebServerError(-32602, `目录不存在或越权：${relPath || "(根)"}`);
       }

@@ -5,7 +5,7 @@ import {
   createRootTree,
   findNode,
   setDirState,
-  setShowOptions,
+
   type FileTreeNode,
   type TreeState,
 } from "./tree.js";
@@ -14,15 +14,13 @@ function node(path: string, type: "dir" | "file", children: FileTreeNode[] | nul
   return { path, name: path.split("/").pop() ?? path, type, children };
 }
 
-const root: TreeState = createRootTree({ showExcluded: false, showHidden: false });
+const root: TreeState = createRootTree();
 
 describe("createRootTree", () => {
-  it("初始只有一个未加载的根节点，开关透传", () => {
+  it("初始只有一个未加载的根节点", () => {
     expect(root.nodes).toHaveLength(1);
     expect(root.nodes[0].path).toBe("");
     expect(root.nodes[0].children).toBeNull();
-    expect(root.showExcluded).toBe(false);
-    expect(root.showHidden).toBe(false);
   });
 });
 
@@ -95,9 +93,4 @@ describe("setDirState / collapseDir / setShowOptions", () => {
     expect(findNode(reloaded.nodes, "a/new.ts")?.type).toBe("file");
   });
 
-  it("开关透传更新", () => {
-    const next = setShowOptions(root, { showHidden: true });
-    expect(next.showHidden).toBe(true);
-    expect(next.showExcluded).toBe(false);
-  });
 });

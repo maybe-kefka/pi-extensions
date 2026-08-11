@@ -27,15 +27,11 @@ export interface FileTreeNode {
 
 export interface TreeState {
   nodes: FileTreeNode[];
-  showExcluded: boolean;
-  showHidden: boolean;
 }
 
-export function createRootTree(state: Pick<TreeState, "showExcluded" | "showHidden">): TreeState {
+export function createRootTree(): TreeState {
   return {
     nodes: [{ path: "", name: "", type: "dir", children: null }],
-    showExcluded: state.showExcluded,
-    showHidden: state.showHidden,
   };
 }
 
@@ -109,6 +105,4 @@ export function collapseDir(state: TreeState, dirPath: string): TreeState {
 }
 
 /** 切换显示开关（保留已加载树；开关变化后下次展开按新规则拉取） */
-export function setShowOptions(state: TreeState, patch: { showExcluded?: boolean; showHidden?: boolean }): TreeState {
-  return { ...state, ...patch };
-}
+

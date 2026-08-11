@@ -16,13 +16,6 @@ export interface DirEntry {
   mtimeMs: number;
 }
 
-export interface ListDirOptions {
-  /** 显示被排除目录（node_modules/.git/dist/.pi） */
-  showExcluded?: boolean;
-  /** 显示隐藏文件（dot 开头） */
-  showHidden?: boolean;
-}
-
 export type FileMode = "text" | "binary" | "too-large";
 
 export interface ReadFileResult {
@@ -56,8 +49,6 @@ export interface FsLike {
 }
 
 /** 默认排除目录 */
-const EXCLUDED_DIRS = new Set(["node_modules", ".git", "dist", ".pi"]);
-
 /** 大文件阈值：超过即只读（text 模式拒绝保存） */
 export const LARGE_FILE_BYTES = 500 * 1024;
 
@@ -90,7 +81,6 @@ export function relOf(root: string, abs: string): string {
 export async function listDir(
   root: string,
   relPath: string,
-  opts: ListDirOptions,
   fs: FsLike,
 ): Promise<DirEntry[] | null> {
   const abs = resolveWithinRoot(root, relPath);
@@ -103,9 +93,7 @@ export async function listDir(
   }
   const entries: DirEntry[] = [];
   for (const name of names) {
-    const isHidden = name.startsWith(".");
-    if (isHidden && !opts.showHidden) continue;
-    if (!opts.showExcluded && EXCLUDED_DIRS.has(name)) continue;
+    if (name === ".git") continue; // vscode 语义：仅内置隐藏 .git
     let st: FsStat;
     try {
       st = await fs.stat(join(abs, name));

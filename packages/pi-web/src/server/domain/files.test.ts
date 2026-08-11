@@ -137,45 +137,32 @@ describe("listDir", () => {
   });
 
   it("返回单目录条目（不递归），目录在前、名字排序", async () => {
-    const entries = await listDir("/repo", "", {}, fs);
-    expect(entries?.map((e) => `${e.type}:${e.name}`)).toEqual(["dir:src", "file:README.md"]);
+    const entries = await listDir("/repo", "", fs);
+    expect(entries?.map((e) => `${e.type}:${e.name}`)).toEqual(["dir:dist", "dir:node_modules", "dir:src", "file:.env", "file:README.md"]);
   });
 
-  it("默认排除 node_modules/.git/dist 与隐藏文件", async () => {
-    const entries = await listDir("/repo", "", {}, fs);
-    expect(entries?.some((e) => ["node_modules", ".git", "dist", ".env"].includes(e.name))).toBe(false);
-  });
-
-  it("showExcluded 显示排除目录，showHidden 显示隐藏文件", async () => {
-    const entries = await listDir("/repo", "", { showExcluded: true, showHidden: true }, fs);
-    expect(entries?.map((e) => e.name).sort()).toEqual([".env", ".git", "README.md", "dist", "node_modules", "src"]);
-  });
-
-  it("只显示排除目录不显示隐藏文件（反之亦然）", async () => {
-    const ex = await listDir("/repo", "", { showExcluded: true }, fs);
-    expect(ex?.some((e) => e.name === ".env")).toBe(false);
-    expect(ex?.some((e) => e.name === "dist")).toBe(true);
-    const hid = await listDir("/repo", "", { showHidden: true }, fs);
-    expect(hid?.some((e) => e.name === ".env")).toBe(true);
-    expect(hid?.some((e) => e.name === "dist")).toBe(false);
+  it("固定只跳过 .git：node_modules/dist/.env 全部显示", async () => {
+    const entries = await listDir("/repo", "", fs);
+    expect(entries?.map((e) => e.name).sort()).toEqual([".env", "README.md", "dist", "node_modules", "src"]);
+    expect(entries?.some((e) => e.name === ".git")).toBe(false);
   });
 
   it("子目录展开返回相对条目", async () => {
-    const entries = await listDir("/repo", "src", {}, fs);
+    const entries = await listDir("/repo", "src", fs);
     expect(entries?.map((e) => `${e.type}:${e.name}`)).toEqual(["dir:deep", "file:main.ts", "file:util.ts"]);
   });
 
   it("越权路径返回 null（不抛错）", async () => {
-    expect(await listDir("/repo", "../etc", {}, fs)).toBeNull();
+    expect(await listDir("/repo", "../etc", fs)).toBeNull();
   });
 
   it("不存在目录返回 null", async () => {
-    expect(await listDir("/repo", "nope", {}, fs)).toBeNull();
+    expect(await listDir("/repo", "nope", fs)).toBeNull();
   });
 
   it("symlink 条目不列出（防逃逸）", async () => {
     const sym = memFs({ "/repo/link.ts": "l", "/repo/real.ts": "r" }, ["/repo/link.ts"]);
-    const entries = await listDir("/repo", "", {}, sym);
+    const entries = await listDir("/repo", "", sym);
     expect(entries?.map((e) => e.name)).toEqual(["real.ts"]);
   });
 });
