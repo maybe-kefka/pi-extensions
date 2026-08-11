@@ -14,7 +14,7 @@ import { Button } from "@/shared/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/shared/ui/dialog";
 import {
   activateTab,
-  chatProcessOf,
+  chatSessionOf,
   chatTabId,
   closeChatTab,
   closeTab,
@@ -58,24 +58,19 @@ function isPrivilegedError(e: Error): boolean {
   return e.message.includes("会话控制能力");
 }
 
+/** session 文件路径 → 显示名（未命名会话用创建时间） */
+function sessionLabelFromFile(sf: string): string {
+  const base = sf.split("/").pop() ?? "";
+  // 2026-08-11T05-12-34-567Z_hash.jsonl → 08-11 05:12
+  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2})-(\d{2})/.exec(base);
+  return m ? `${m[2]}-${m[3]} ${m[4]}:${m[5]}` : base;
+}
+
 export default function App() {
   const [hostState, setHostState] = useState(initialState);
   const [conn, setConn] = useState(initialState.conn);
-  /** agent_list：新注册进程 → 打开 chat tab */
-  const setWorkspaceAgents = useCallback((agents: Array<{ processId: string; sessionName: string | null }>) => {
-    dispatchWs({ kind: "agent-list", agents });
-  }, []);
-
-  /** agent_closed：进程注销 → 关闭对应 chat tab */
-  const setWorkspaceAgentsClosed = useCallback((processId: string) => {
-    dispatchWs({ kind: "agent-closed", processId });
-  }, []);
-
-  // host 会话名变化 → chat tab 标题同步
-  useEffect(() => {
-    if (hostState.sessionName) dispatchWs({ kind: "rename-chat", processId: "host", name: hostState.sessionName });
-  }, [hostState.sessionName]);
-
+  /** 新建会话待开 tab 标记（session_switch_ready 时消费） */
+  const pendingNewRef = useRef(false);
   /** host tab 状态上报（会话元数据：sessionName/sessionFile/context/streaming——低频使用） */
   const handleTabStateChange = useCallback((processId: string, st: typeof initialState) => {
     if (processId === "host") setHostState(st);
@@ -147,9 +142,8 @@ export default function App() {
         | { kind: "close"; id: string }
         | { kind: "dirty"; path: string; dirty: boolean }
         | { kind: "promote"; path: string }
-        | { kind: "agent-list"; agents: Array<{ processId: string; sessionName: string | null }> }
-        | { kind: "agent-closed"; processId: string }
-        | { kind: "rename-chat"; processId: string; name: string },
+        | { kind: "rename-chat"; sessionId: string; name: string }
+        | { kind: "open-chat"; sessionId: string; name: string },
     ): WorkspaceState => {
       switch (a.kind) {
         case "open":
@@ -164,24 +158,34 @@ export default function App() {
           return setDirty(s, a.path, a.dirty);
         case "promote":
           return promotePreview(s, a.path);
-        case "agent-list": {
-          let next = s;
-          for (const agent of a.agents) {
-            if (!next.tabs.some((t) => t.kind === "chat" && t.processId === agent.processId)) {
-              next = openChatTab(next, agent.processId, agent.sessionName ?? "聊天");
-            }
-          }
-          return next;
-        }
-        case "agent-closed":
-          return closeChatTab(s, a.processId);
         case "rename-chat":
-          return renameChatTab(s, a.processId, a.name);
+          return renameChatTab(s, a.sessionId, a.name);
+        case "open-chat":
+          return openChatTab(s, a.sessionId, a.name);
       }
     },
     undefined,
     initialWorkspace,
   );
+  // workspace 最新引用（事件回调闭包读取）
+  const workspaceRef = useRef(workspace);
+  workspaceRef.current = workspace;
+
+  // host 会话名变化 → 激活 chat tab 标题同步（若有）
+  useEffect(() => {
+    const sid = chatSessionOf(workspace.active);
+    if (hostState.sessionName && sid) dispatchWs({ kind: "rename-chat", sessionId: sid, name: hostState.sessionName });
+  }, [hostState.sessionName, workspace.active]);
+
+  // 激活 chat tab ≠ 进程当前会话 → 切换会话（tab 打开/切换时）
+  useEffect(() => {
+    const sid = chatSessionOf(workspace.active);
+    if (!sid) return;
+    if (hostState.sessionFile && hostState.sessionFile !== sid) {
+      rpcRef.current?.request("pi:switchSession", { path: sid }).catch(() => undefined);
+    }
+  }, [workspace.active, hostState.sessionFile]);
+
   // R26：主题偏好（localStorage 持久化）+ 系统深浅（toast 联动）
   const [themePref, setThemePref] = useState<ThemePreference>(() => loadPreference(window.localStorage));
   const [systemScheme, setSystemScheme] = useState<Scheme>(() =>
@@ -240,16 +244,6 @@ export default function App() {
           }
           return;
         }
-        if (evt.type === "agent_list") {
-          const agents = (evt as { agents?: Array<{ processId: string; sessionName: string | null }> }).agents ?? [];
-          setWorkspaceAgents(agents);
-          return;
-        }
-        if (evt.type === "agent_closed") {
-          const pid = typeof evt.processId === "string" ? evt.processId : "";
-          if (pid) setWorkspaceAgentsClosed(pid);
-          return;
-        }
         const action = toAction(evt as PiEvent);
         if (!action) return;
         // R23 F5：高频流式事件（text_delta/thinking_delta/tool_update）包 transition，
@@ -259,14 +253,32 @@ export default function App() {
         } else {
           dispatchToProcess("host", action);
         }
-        // R26 session-follow（T7 修订）：会话切换完成 → 会话列表刷新 + 宿主 tab 历史跟随
-        // （不切换激活 tab、不开新 tab——宿主 tab 内容随进程 session 更新）
+        // 会话切换完成：会话列表刷新 + 历史跟随（切换由激活 tab / 新建触发）
         if (evt.type === "session_switch_ready") {
           refreshSessions();
-          rpcRef.current
-            ?.request<{ messages: HistoryMessage[] }>("pi:chatHistory", { processId: "host" })
-            .then((r) => dispatchToProcess("host", { type: "history", messages: r.messages ?? [] }))
-            .catch(() => undefined);
+          if (pendingNewRef.current) {
+            // 新建会话：打开新会话的 chat tab 并拉历史
+            pendingNewRef.current = false;
+            rpcRef.current?.request<WebState>("pi:getState").then((st) => {
+              const sf = (st as unknown as { sessionFile?: string | null }).sessionFile;
+              const raw = (st as unknown as { sessionName?: string | null }).sessionName;
+              const name = raw || (sf ? sessionLabelFromFile(sf) : "聊天");
+              if (!sf) return;
+              dispatchWs({ kind: "open-chat", sessionId: sf, name });
+              rpcRef.current
+                ?.request<{ messages: HistoryMessage[] }>("pi:getMessages")
+                .then((r) => dispatchToProcess(sf, { type: "history", messages: r.messages ?? [] }))
+                .catch(() => undefined);
+            }).catch(() => undefined);
+            return;
+          }
+          const sid = chatSessionOf(workspaceRef.current.active);
+          if (sid) {
+            rpcRef.current
+              ?.request<{ messages: HistoryMessage[] }>("pi:getMessages")
+              .then((r) => dispatchToProcess(sid, { type: "history", messages: r.messages ?? [] }))
+              .catch(() => undefined);
+          }
         }
         // R26 session-follow：特权状态广播（TUI 切换 → 立即降级提示；重跑 /web → 自动恢复）
         if (action.type === "privilege_status") {
@@ -306,16 +318,18 @@ export default function App() {
     if (conn !== "open" || !rpcRef.current) return;
     const c = rpcRef.current;
     c.request<WebState>("pi:getState")
-      .then((st) => dispatchToProcess("host", { type: "state", state: st as unknown as Record<string, unknown> }))
+      .then((st) => {
+        dispatchToProcess("host", { type: "state", state: st as unknown as Record<string, unknown> });
+        // 默认打开当前会话的 chat tab（chat 与 file 同级——可开可关）
+        const sf = (st as unknown as { sessionFile?: string | null }).sessionFile;
+        const name = (st as unknown as { sessionName?: string | null }).sessionName ?? "聊天";
+        if (sf) dispatchWs({ kind: "open-chat", sessionId: sf, name });
+      })
       .catch((e) => toast.error(`getState: ${e.message}`));
     loadHistory(false);
     refreshSessions();
     c.request<ModelInfo[]>("pi:listModels").then(setModels).catch(() => undefined);
-    // multi-instance：连接后拉取已注册进程（chat tab 列表）
-    c.request<{ agents: Array<{ processId: string; sessionName: string | null }> }>("pi:agentList")
-      .then((r) => setWorkspaceAgents(r.agents ?? []))
-      .catch(() => undefined);
-  }, [conn, refreshSessions, setWorkspaceAgents]);
+  }, [conn, refreshSessions]);
 
   // 上拉框数据（懒加载：面板首次触发时刷新）
   const refreshPicker = useCallback(() => {
@@ -372,24 +386,19 @@ export default function App() {
     }
   }, []);
 
-  const switchSession = useCallback((path: string) => {
-    const c = rpcRef.current;
-    if (!c) return;
-    c.request<{ cancelled: boolean }>("pi:switchSession", { path })
-      .then((r) => {
-        if (r.cancelled) toast.info("切换已取消");
-        else toast.success("会话已切换");
-      })
-      .catch((e) => privilegedError(e, "切换会话"));
-  }, [privilegedError]);
+  /** 打开会话 tab（会话管理点击）——激活时自动切换进程会话 */
+  const openChat = useCallback((path: string, name: string) => {
+    dispatchWs({ kind: "open-chat", sessionId: path, name: name || path.split("/").pop() || "聊天" });
+  }, []);
 
-  const newSession = useCallback(() => {
+  /** 新建会话：服务端 newSession → 会话切换完成后自动打开对应 tab */
+  const newChatSession = useCallback(() => {
     const c = rpcRef.current;
     if (!c) return;
     c.request<{ cancelled: boolean }>("pi:newSession")
       .then((r) => {
         if (r.cancelled) toast.info("新建已取消");
-        else toast.success("已新建会话");
+        else pendingNewRef.current = true;
       })
       .catch((e) => privilegedError(e, "新建会话"));
   }, [privilegedError]);
@@ -468,15 +477,15 @@ export default function App() {
 
   const sessionActions = useMemo(
     () => ({
-      onSelect: switchSession,
-      onNew: newSession,
+      onSelect: openChat,
+      onNew: newChatSession,
       onDelete: deleteSession,
       onRename: renameSession,
       onClone: clone,
       onShowTree: openTree,
       onRefresh: refreshSessions,
     }),
-    [switchSession, newSession, deleteSession, renameSession, clone, openTree, refreshSessions],
+    [openChat, newChatSession, deleteSession, renameSession, clone, openTree, refreshSessions],
   );
 
   const sessionPanelProps = useMemo(
@@ -527,7 +536,7 @@ export default function App() {
               <FilesTree
                 request={getRequest()}
                 onOpenFile={(path, name, preview) => dispatchWs({ kind: "open", path, name, preview })}
-                activePath={chatProcessOf(workspace.active) !== null ? null : workspace.active}
+                activePath={chatSessionOf(workspace.active) !== null ? null : workspace.active}
                 gitRefreshKey={gitRefreshKey}
                 onOpenDiff={(path) => dispatchWs({ kind: "open-diff", path, name: path.split("/").pop() ?? path })}
               />
@@ -544,10 +553,8 @@ export default function App() {
             sessionName={hostState.sessionName ?? "聊天"}
             onActivate={(id) => dispatchWs({ kind: "activate", id })}
             onClose={(id) => {
-              const pid = chatProcessOf(id);
-              if (pid !== null) {
-                // multi-instance：关闭 chat tab = 通知宿主（spawned 终止 / external 注销）
-                rpcRef.current?.request("pi:chatClose", { processId: pid }).catch(() => undefined);
+              if (chatSessionOf(id) !== null) {
+                // chat 与 file 同级：直接关闭（不切会话——进程保持当前）
                 dispatchWs({ kind: "close", id });
                 return;
               }
@@ -559,23 +566,21 @@ export default function App() {
             }}
             onSave={() => {
               const active = workspace.active;
-              if (chatProcessOf(active) === null) void editorRefs.current[active]?.save();
-            }}
-            onNewChat={() => {
-              rpcRef.current?.request("pi:newChat").catch((e: Error) => toast.error(`新建会话失败: ${e.message}`));
+              if (chatSessionOf(active) === null) void editorRefs.current[active]?.save();
             }}
           />
-      {chatProcessOf(workspace.active) !== null ? (
+      {chatSessionOf(workspace.active) !== null ? (
         <div className="min-h-0 flex-1">
           <DisconnectBannerMemo conn={conn} />
           {/* 连接建立后才挂载 ChatTab（渲染期 getRequest 需要 rpc 就绪）——连接中主区空 */}
           {conn === "open" && workspace.tabs
             .filter((t) => t.kind === "chat")
             .map((t) => (
-              <div key={t.processId} className={chatTabId(t.processId) === workspace.active ? "h-full" : "hidden"}>
+              <div key={t.sessionId} className={chatTabId(t.sessionId) === workspace.active ? "h-full" : "hidden"}>
                 <ChatTab
-                  processId={t.processId}
+                  sessionId={t.sessionId}
                   name={t.name}
+                  active={chatTabId(t.sessionId) === workspace.active}
                   request={getRequest()}
                   conn={conn}
                   skills={skills}
@@ -583,7 +588,6 @@ export default function App() {
                   files={files}
                   pickerLoading={pickerLoading}
                   onPickerOpen={refreshPicker}
-                  onAnswerAsk={answerAsk}
                   onFork={fork}
                   onRegisterDispatch={registerDispatch}
                   onUnregisterDispatch={unregisterDispatch}
@@ -594,6 +598,11 @@ export default function App() {
         </div>
       ) : (
         <div className="min-h-0 flex-1">
+          {workspace.active === "" && (
+            <div className="text-muted-foreground flex h-full items-center justify-center text-sm">
+              从侧边栏打开会话或文件
+            </div>
+          )}
           {workspace.tabs
             .filter((t) => t.kind === "file")
             .map((t) => (

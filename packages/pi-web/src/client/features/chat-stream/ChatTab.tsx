@@ -12,9 +12,12 @@ import { InputBar } from "@/features/input-bar/InputBar";
 import type { CommandInfo, SkillInfo, FileGroup, HistoryMessage } from "@/entities/chat/types";
 
 export interface ChatTabProps {
-  processId: string;
+  /** 会话 id（session 文件路径）——tab 键与事件分发 key */
+  sessionId: string;
   /** 初始会话名（tab 标题） */
   name: string;
+  /** 是否激活（激活才注册事件分发——进程当前会话 = 激活 tab 的会话） */
+  active: boolean;
   request: RpcClient["request"];
   conn: ConnState;
   skills: SkillInfo[];
@@ -22,18 +25,18 @@ export interface ChatTabProps {
   files: FileGroup[];
   pickerLoading: boolean;
   onPickerOpen: () => void;
-  onAnswerAsk: (toolCallId: string, answer: unknown) => void;
   onFork: (userIndex: number) => void;
-  /** 挂载/卸载时注册/注销 dispatch（App 事件分发用） */
-  onRegisterDispatch: (processId: string, dispatch: (a: StreamAction) => void) => void;
-  onUnregisterDispatch: (processId: string) => void;
-  /** 状态上报（App 只镜像 host——会话元数据用） */
-  onStateChange: (processId: string, state: StreamState) => void;
+  /** 挂载/卸载时注册/注销 dispatch（App 事件分发用；key = sessionId） */
+  onRegisterDispatch: (sessionId: string, dispatch: (a: StreamAction) => void) => void;
+  onUnregisterDispatch: (sessionId: string) => void;
+  /** 状态上报（App 只镜像激活 tab——会话元数据用） */
+  onStateChange: (sessionId: string, state: StreamState) => void;
 }
 
 export const ChatTab = memo(function ChatTab({
-  processId,
+  sessionId,
   name: _name,
+  active,
   request,
   conn,
   skills,
@@ -41,7 +44,6 @@ export const ChatTab = memo(function ChatTab({
   files,
   pickerLoading,
   onPickerOpen,
-  onAnswerAsk,
   onFork,
   onRegisterDispatch,
   onUnregisterDispatch,
@@ -49,51 +51,41 @@ export const ChatTab = memo(function ChatTab({
 }: ChatTabProps) {
   const [state, dispatch] = useReducer(streamReducer, initialState);
 
-  // 注册分发器（事件路由）——每次 dispatch 引用变化都同步（reducer 返回的 dispatch 稳定）
+  // 全局连接状态同步（conn 事件只分发激活 tab——非激活 tab 的 reducer 需同步，避免误显"等待连接"）
   useEffect(() => {
-    onRegisterDispatch(processId, dispatch);
-    return () => onUnregisterDispatch(processId);
-  }, [processId, onRegisterDispatch, onUnregisterDispatch]);
+    dispatch({ type: "conn", state: conn });
+  }, [conn]);
 
-  // 状态上报（host 镜像——低频字段；流式高频由 reducer 内部消化）
+  // 激活时注册分发器（进程当前会话 = 激活 tab——事件/历史按 sessionId 路由）
   useEffect(() => {
-    onStateChange(processId, state);
-  }, [processId, state, onStateChange]);
+    if (active) {
+      onRegisterDispatch(sessionId, dispatch);
+      return () => onUnregisterDispatch(sessionId);
+    }
+  }, [active, sessionId, onRegisterDispatch, onUnregisterDispatch]);
 
-  // 拉取该进程会话历史（一次）
+  // 状态上报（App 镜像激活 tab——会话元数据用）
   useEffect(() => {
-    let cancelled = false;
-    request<{ messages: HistoryMessage[] }>("pi:chatHistory", { processId })
-      .then((r) => {
-        if (!cancelled) dispatch({ type: "history", messages: r.messages ?? [] });
-      })
-      .catch(() => {
-        /* 无历史（新会话）静默 */
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [processId, request]);
+    if (active) onStateChange(sessionId, state);
+  }, [active, sessionId, state, onStateChange]);
 
   const send = useCallback(
     (text: string) => {
-      request("pi:chatSend", { processId, text, deliverAs: "steer" }).catch((e: Error) => {
-        /* 错误由 toast 层提示——InputBar 侧 */
-      });
+      request("pi:chatSend", { processId: "host", text, deliverAs: "steer" }).catch(() => undefined);
     },
-    [processId, request],
+    [request],
   );
 
   const abort = useCallback(() => {
-    request("pi:chatAbort", { processId }).catch(() => undefined);
-  }, [processId, request]);
+    request("pi:chatAbort", { processId: "host" }).catch(() => undefined);
+  }, [request]);
 
-  // web 提问回答：路由到本进程（host 本地 registry / spawned 经 WS 下行）
+  // web 提问回答：本进程（单进程多会话——回答走宿主 registry）
   const answerAsk = useCallback(
     (toolCallId: string, answer: unknown) => {
-      request("web-ask:answer", { toolCallId, answer, processId }).catch(() => undefined);
+      request("web-ask:answer", { toolCallId, answer, processId: "host" }).catch(() => undefined);
     },
-    [processId, request],
+    [request],
   );
 
   return (

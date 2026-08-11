@@ -10,16 +10,14 @@ export interface TabsBarProps {
   onClose: (id: string) => void;
   /** 保存当前文件（激活文件 tab dirty 时显示） */
   onSave: () => void;
-  /** 新建会话（spawn 对等实例） */
-  onNewChat: () => void;
 }
 
-export function TabsBar({ tabs, active, sessionName, onActivate, onClose, onSave, onNewChat }: TabsBarProps) {
+export function TabsBar({ tabs, active, sessionName, onActivate, onClose, onSave }: TabsBarProps) {
   const activeFileDirty = tabs.some((t) => t.kind === "file" && t.path === active && t.dirty);
   return (
     <div className="scrollbar-none flex h-9 shrink-0 items-stretch overflow-x-auto border-b">
       {tabs.map((tab) => {
-        const id = tab.kind === "chat" ? chatTabId(tab.processId) : tab.kind === "diff" ? `diff:${tab.path}` : tab.path;
+        const id = tab.kind === "chat" ? chatTabId(tab.sessionId) : tab.kind === "diff" ? `diff:${tab.path}` : tab.path;
         const isActive = active === id;
         const label = tab.kind === "chat" ? tab.name : tab.name;
         return (
@@ -34,11 +32,10 @@ export function TabsBar({ tabs, active, sessionName, onActivate, onClose, onSave
             title={tab.kind === "chat" ? "聊天" : id}
           >
             {tab.kind === "chat" && <MessageSquareText className="size-3.5 shrink-0" />}
-            {tab.kind === "chat" && tab.processId === "host" && <span className="text-muted-foreground text-[9px]" title="本进程（宿主）">●</span>}
             {tab.kind === "diff" && <FileDiff className="text-muted-foreground size-3.5 shrink-0" />}
             {tab.kind === "file" && tab.dirty && <span className="bg-primary size-1.5 shrink-0 rounded-full" title="未保存" />}
             <span className={`truncate ${tab.kind === "file" && tab.preview ? "italic" : ""}`}>{label}</span>
-            {(tab.kind !== "chat" || (tab.kind === "chat" && tab.processId !== "host")) && (
+            {(tab.kind !== "chat" || tab.kind === "chat") && (
               <button
                 className="hover:bg-muted text-muted-foreground hover:text-foreground ml-0.5 flex size-4 shrink-0 items-center justify-center rounded"
                 title="关闭 tab"
@@ -63,14 +60,6 @@ export function TabsBar({ tabs, active, sessionName, onActivate, onClose, onSave
           保存
         </button>
       )}
-      <button
-        className="text-muted-foreground hover:text-foreground hover:bg-muted/60 flex shrink-0 cursor-pointer items-center gap-1 self-center px-3 text-xs"
-        title="新建会话（启动新 pi 实例）"
-        onClick={onNewChat}
-      >
-        <Plus className="size-3.5" />
-        新建会话
-      </button>
     </div>
   );
 }

@@ -7,7 +7,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 import type { SessionInfo } from "@/entities/chat/types";
 
 export interface SessionActions {
-  onSelect: (path: string) => void;
+  onSelect: (path: string, name: string) => void;
   onNew: () => void;
   onDelete: (path: string) => void;
   onRename: (path: string, name: string) => void;
@@ -65,7 +65,7 @@ export function SessionList({
                 className={`group flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1.5 text-xs transition-colors ${
                   active ? "bg-accent" : "hover:bg-muted/60"
                 }`}
-                onClick={() => actions.onSelect(s.path)}
+                onClick={() => actions.onSelect(s.path, label)}
               >
                 <span className={`min-w-0 flex-1 truncate ${active ? "text-foreground font-medium" : "text-muted-foreground"}`}>
                   {label}

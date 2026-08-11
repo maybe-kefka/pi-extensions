@@ -6,7 +6,7 @@
 export type WorkspaceTab =
   | { kind: "file"; path: string; name: string; dirty: boolean; preview: boolean }
   | { kind: "diff"; path: string; name: string; repoRoot?: string }
-  | { kind: "chat"; processId: string; name: string };
+  | { kind: "chat"; sessionId: string; name: string };
 
 export interface WorkspaceState {
   tabs: WorkspaceTab[];
@@ -14,30 +14,28 @@ export interface WorkspaceState {
   active: string;
 }
 
-/** 宿主进程 processId（默认 tab） */
-export const HOST_PROCESS_ID = "host";
-
-/** chat tab 激活标识（processId 维度：chat:<processId>） */
-export function chatTabId(processId: string): string {
-  return `chat:${processId}`;
+/** chat tab 激活标识（会话维度：chat:<sessionId>；sessionId = 会话文件路径） */
+export function chatTabId(sessionId: string): string {
+  return `chat:${sessionId}`;
 }
 
-/** 从激活 id 解析 chat 的 processId；非 chat 返回 null */
-export function chatProcessOf(active: string): string | null {
+/** 从激活 id 解析 chat 的 sessionId；非 chat 返回 null */
+export function chatSessionOf(active: string): string | null {
   return active.startsWith("chat:") ? active.slice("chat:".length) : null;
 }
 
-export function initialState(processId = HOST_PROCESS_ID, name = "聊天"): WorkspaceState {
-  return { tabs: [{ kind: "chat", processId, name }], active: chatTabId(processId) };
+/** 初始：无 tab（主区空态——由会话/文件面板打开） */
+export function initialState(): WorkspaceState {
+  return { tabs: [], active: "" };
 }
 
-/** 打开/激活 chat tab（多实例：每进程一 tab） */
-export function openChatTab(state: WorkspaceState, processId: string, name: string): WorkspaceState {
-  const id = chatTabId(processId);
-  if (state.tabs.some((t) => t.kind === "chat" && t.processId === processId)) {
+/** 打开/激活会话 chat tab（打开即激活；同会话去重） */
+export function openChatTab(state: WorkspaceState, sessionId: string, name: string): WorkspaceState {
+  const id = chatTabId(sessionId);
+  if (state.tabs.some((t) => t.kind === "chat" && t.sessionId === sessionId)) {
     return { ...state, active: id };
   }
-  return { tabs: [...state.tabs, { kind: "chat", processId, name }], active: id };
+  return { tabs: [...state.tabs, { kind: "chat", sessionId, name }], active: id };
 }
 
 export interface OpenFileOptions {
@@ -77,22 +75,21 @@ export function promotePreview(state: WorkspaceState, path: string): WorkspaceSt
 /** 激活任意 tab（chat:<processId> / 文件路径 / diff:<path> / 文件浏览态） */
 export function activateTab(state: WorkspaceState, id: string): WorkspaceState {
   const exists = state.tabs.some((t) =>
-    t.kind === "file" ? t.path === id : t.kind === "diff" ? diffTabId(t.path) === id : t.kind === "chat" ? chatTabId(t.processId) === id : false,
+    t.kind === "file" ? t.path === id : t.kind === "diff" ? diffTabId(t.path) === id : t.kind === "chat" ? chatTabId(t.sessionId) === id : false,
   );
   if (!exists) return state;
   return { ...state, active: id };
 }
 
-/** 关闭 tab（文件/diff/chat）：激活右邻（无则左邻）；宿主 chat tab 不可关；不存在则状态不变 */
+/** 关闭 tab（文件/diff/chat）：激活右邻（无则左邻）；chat 与 file 同级均可关；不存在则状态不变 */
 export function closeTab(state: WorkspaceState, id: string): WorkspaceState {
-  if (id === chatTabId(HOST_PROCESS_ID)) return state;
   const isDiff = id.startsWith("diff:");
   const isChat = id.startsWith("chat:");
   const match = (t: WorkspaceTab): boolean =>
     isDiff
       ? t.kind === "diff" && diffTabId(t.path) === id
       : isChat
-        ? t.kind === "chat" && chatTabId(t.processId) === id
+        ? t.kind === "chat" && chatTabId(t.sessionId) === id
         : t.kind === "file" && t.path === id;
   const idx = state.tabs.findIndex(match);
   if (idx === -1) return state;
@@ -100,22 +97,22 @@ export function closeTab(state: WorkspaceState, id: string): WorkspaceState {
   let active = state.active;
   if (active === id) {
     const next = tabs[Math.min(idx, tabs.length - 1)];
-    active = next ? (next.kind === "file" ? next.path : next.kind === "diff" ? diffTabId(next.path) : chatTabId(next.processId)) : chatTabId(HOST_PROCESS_ID);
+    active = next ? (next.kind === "file" ? next.path : next.kind === "diff" ? diffTabId(next.path) : chatTabId(next.sessionId)) : "";
   }
   return { tabs, active };
 }
 
-/** 关闭 chat tab（host 不可关）；不存在忽略 */
-export function closeChatTab(state: WorkspaceState, processId: string): WorkspaceState {
-  return closeTab(state, chatTabId(processId));
+/** 关闭 chat tab；不存在忽略 */
+export function closeChatTab(state: WorkspaceState, sessionId: string): WorkspaceState {
+  return closeTab(state, chatTabId(sessionId));
 }
 
 /** 更新 chat tab 显示名（session 名变化同步）；不存在忽略 */
-export function renameChatTab(state: WorkspaceState, processId: string, name: string): WorkspaceState {
-  if (!state.tabs.some((t) => t.kind === "chat" && t.processId === processId)) return state;
+export function renameChatTab(state: WorkspaceState, sessionId: string, name: string): WorkspaceState {
+  if (!state.tabs.some((t) => t.kind === "chat" && t.sessionId === sessionId)) return state;
   return {
     ...state,
-    tabs: state.tabs.map((t) => (t.kind === "chat" && t.processId === processId ? { ...t, name } : t)),
+    tabs: state.tabs.map((t) => (t.kind === "chat" && t.sessionId === sessionId ? { ...t, name } : t)),
   };
 }
 
