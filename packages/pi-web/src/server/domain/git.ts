@@ -233,7 +233,7 @@ export function assertGitOp(args: string[]): GitOpAllow {
   for (const arg of rest) {
     if (arg.startsWith("-")) {
       if (cmd === "branch" && (arg === "-d" || arg === "-c" || arg === "-a" || arg === "-r" || arg === "-v" || arg === "--show-current" || arg === "--no-color")) continue;
-      if (cmd === "switch" && arg === "-c") continue;
+      if (cmd === "switch" && (arg === "-c" || arg === "--track")) continue;
       if (cmd === "restore" && arg === "--staged") continue;
       if (cmd === "push" && (arg === "-u" || arg === "--set-upstream")) continue;
       if (cmd === "stash" && (arg === "push" || arg === "pop" || arg === "apply" || arg === "drop" || arg === "list" || arg === "show")) continue;
@@ -258,18 +258,42 @@ async function runOp(args: string[], cwd: string, git: GitRunner, confirm?: GitC
 }
 
 /** 分支列表（当前分支 + 名称列表） */
-export async function listBranches(cwd: string, git: GitRunner): Promise<{ current: string | null; branches: string[] }> {
-  const r = await git(["branch", "--no-color"]);
+export async function listBranches(
+  cwd: string,
+  git: GitRunner,
+): Promise<{ current: string | null; branches: string[]; remotes: string[] }> {
+  const r = await git(["branch", "-a", "--no-color"]);
   const branches: string[] = [];
+  const remotes: string[] = [];
   let current: string | null = null;
   for (const line of r.stdout.split("\n")) {
     const trimmed = line.trim();
     if (trimmed === "") continue;
+    if (trimmed.includes("->")) continue; // remotes/origin/HEAD -> origin/main
     const name = trimmed.replace(/^\*/, "").trim();
     if (line.startsWith("*")) current = name;
-    branches.push(name);
+    if (name.startsWith("remotes/")) remotes.push(name.slice("remotes/".length));
+    else branches.push(name);
   }
-  return { current, branches };
+  return { current, branches, remotes };
+}
+
+/** 远程分支短名：origin/foo/bar → foo/bar */
+export function remoteShortName(remote: string): string {
+  return remote.split("/").slice(1).join("/");
+}
+
+/** 点远程分支：本地已有短名 → 直接切；否则创建跟踪分支并切换 */
+export async function switchOrTrack(cwd: string, remote: string, git: GitRunner): Promise<GitOpResult> {
+  const short = remoteShortName(remote);
+  const { branches } = await listBranches(cwd, git);
+  if (branches.includes(short)) return runOp(["switch", short], cwd, git);
+  return runOp(["switch", "-c", short, "--track", remote], cwd, git);
+}
+
+/** 从 base（本地或远程分支）创建新分支并立即切换（弹窗流程） */
+export async function createBranchFrom(cwd: string, name: string, base: string, git: GitRunner): Promise<GitOpResult> {
+  return runOp(["switch", "-c", name, base], cwd, git);
 }
 
 export async function switchBranch(cwd: string, branch: string, git: GitRunner): Promise<GitOpResult> {

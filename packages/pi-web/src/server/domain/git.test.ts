@@ -8,6 +8,7 @@ import {
   discoverRepos,
   deleteBranch,
   fileDiff,
+  createBranchFrom,
   listBranches,
   mergeBranch,
   commitChanges,
@@ -21,6 +22,7 @@ import {
   stageFiles,
   stashOp,
   switchBranch,
+  switchOrTrack,
   unstageFiles,
   type GitRunner,
 } from "./git.js";
@@ -291,6 +293,11 @@ describe("aggregateStatus", () => {
 });
 
 describe("assertGitOp（写操作白名单）", () => {
+  it("switch 放行 -c + --track（远程跟踪创建）", () => {
+    expect(assertGitOp(["switch", "-c", "foo", "--track", "origin/foo"])).toEqual({ ok: true });
+    expect(assertGitOp(["switch", "--force"])).toEqual({ ok: false, error: expect.stringContaining("不在白名单") });
+  });
+
   it("分支操作放行（merge/rebase/delete 带 confirm 标记）", () => {
     expect(assertGitOp(["switch", "main"])).toEqual({ ok: true });
     expect(assertGitOp(["switch", "-c", "feat"])).toEqual({ ok: true });
@@ -319,16 +326,53 @@ describe("分支操作编排", () => {
     }) as GitRunner;
   };
 
-  it("listBranches 解析当前分支与列表", async () => {
+  it("listBranches 解析本地/远程分组（branch -a 输出）", async () => {
     const git = runner({
-      "branch --no-color": { code: 0, stdout: "* main\n  feat\n  fix/1\n" },
+      "branch -a --no-color": {
+        code: 0,
+        stdout: "* main\n  feat\n  fix/1\n  remotes/origin/HEAD -> origin/main\n  remotes/origin/main\n  remotes/origin/feat\n",
+      },
     });
-    expect(await listBranches("/repo", git)).toEqual({ current: "main", branches: ["main", "feat", "fix/1"] });
+    expect(await listBranches("/repo", git)).toEqual({
+      current: "main",
+      branches: ["main", "feat", "fix/1"],
+      remotes: ["origin/main", "origin/feat"],
+    });
   });
 
   it("detached HEAD：branch 输出无 * 行", async () => {
-    const git = runner({ "branch --no-color": { code: 0, stdout: "  main\n  feat\n" } });
-    expect(await listBranches("/repo", git)).toEqual({ current: null, branches: ["main", "feat"] });
+    const git = runner({ "branch -a --no-color": { code: 0, stdout: "  main\n  remotes/origin/main\n" } });
+    expect(await listBranches("/repo", git)).toEqual({ current: null, branches: ["main"], remotes: ["origin/main"] });
+  });
+
+  it("switchOrTrack：本地短名存在 → 直接 switch", async () => {
+    const calls: string[][] = [];
+    const git = (async (args: string[]) => {
+      calls.push(args);
+      return { code: 0, stdout: "  foo\n", stderr: "" };
+    }) as GitRunner;
+    expect(await switchOrTrack("/repo", "origin/foo", git)).toEqual({ ok: true });
+    expect(calls).toEqual([["branch", "-a", "--no-color"], ["switch", "foo"]]);
+  });
+
+  it("switchOrTrack：本地无短名 → switch -c short --track remote", async () => {
+    const calls: string[][] = [];
+    const git = (async (args: string[]) => {
+      calls.push(args);
+      return { code: 0, stdout: "  main\n", stderr: "" };
+    }) as GitRunner;
+    expect(await switchOrTrack("/repo", "origin/foo", git)).toEqual({ ok: true });
+    expect(calls).toEqual([["branch", "-a", "--no-color"], ["switch", "-c", "foo", "--track", "origin/foo"]]);
+  });
+
+  it("createBranchFrom：switch -c name base（base 本地或远程）", async () => {
+    const calls: string[][] = [];
+    const git = (async (args: string[]) => {
+      calls.push(args);
+      return { code: 0, stdout: "", stderr: "" };
+    }) as GitRunner;
+    expect(await createBranchFrom("/repo", "new", "origin/main", git)).toEqual({ ok: true });
+    expect(calls).toEqual([["switch", "-c", "new", "origin/main"]]);
   });
 
   it("switchBranch 成功/失败（stderr 透传）", async () => {

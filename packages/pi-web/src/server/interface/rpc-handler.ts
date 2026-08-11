@@ -23,7 +23,7 @@ import { deleteSessionFile } from "../infrastructure/session-files.js";
 import { realFs } from "../infrastructure/real-fs.js";
 import { createGitRunner } from "../infrastructure/git-runner.js";
 import { countPath, deletePath, listDir, mkdirPath, readFileText, renamePath, touchPath, writeFileText } from "../domain/files.js";
-import { createBranch as createBranchOp } from "../domain/git.js";
+import { createBranch as createBranchOp, createBranchFrom, switchOrTrack } from "../domain/git.js";
 import {
   aggregateStatus,
   assertRepoRoot,
@@ -435,7 +435,7 @@ async function handleRequest(
         const probe = await git(["rev-parse", "--is-inside-work-tree"]);
         if (probe.code !== 0) return { isRepo: false };
       }
-      return { isRepo: true, current: r.current, branches: r.branches };
+      return { isRepo: true, current: r.current, branches: r.branches, remotes: r.remotes };
     }
 
     case "pi:gitSwitch": {
@@ -452,6 +452,18 @@ async function handleRequest(
       const name = typeof params.name === "string" ? params.name : "";
       if (name === "") throw new WebServerError(-32602, "name 必填");
       const r = await createBranchOp(ctx.cwd, name, await gitRunnerFor(ctx, params));
+      if (!r.ok) throw new WebServerError(-32603, r.error);
+      return { ok: true };
+    }
+
+    case "pi:gitCreateBranch": {
+      // git-panel-polish：从 base 创建并立即切换（分支选择弹窗）
+      const ctx = requireCtxOf();
+      const name = typeof params.name === "string" ? params.name : "";
+      const base = typeof params.base === "string" ? params.base : "";
+      if (name === "" || base === "") throw new WebServerError(-32602, "name/base 必填");
+      if (name.startsWith("-") || base.startsWith("-")) throw new WebServerError(-32602, "非法名称");
+      const r = await createBranchFrom(ctx.cwd, name, base, await gitRunnerFor(ctx, params));
       if (!r.ok) throw new WebServerError(-32603, r.error);
       return { ok: true };
     }
