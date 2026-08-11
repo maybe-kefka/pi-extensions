@@ -84,9 +84,20 @@ async function handleRequest(
   switch (method) {
     case "web-ask:answer": {
       // R25：web 提问工具回答通道——resolve 阻塞中的 execute（未找到/已终结 → 报错）
+      // multi-instance：回答按 processId 路由（host 本地 registry；spawned/external 经 WS 下行）
       const toolCallId = params.toolCallId;
       if (typeof toolCallId !== "string" || toolCallId === "") {
         throw new WebServerError(-32602, "toolCallId 必须是非空字符串");
+      }
+      const processId = typeof params.processId === "string" ? params.processId : "host";
+      if (processId !== "host") {
+        try {
+          console.sendToProcess(processId, "ask-answer", { toolCallId, answer: params.answer });
+          return { ok: true };
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          throw new WebServerError(1, message);
+        }
       }
       if (!askRegistry.answer(toolCallId, params.answer)) {
         throw new WebServerError(-32602, `未找到对应的提问（toolCallId=${toolCallId}，可能已超时/取消/已回答）`);

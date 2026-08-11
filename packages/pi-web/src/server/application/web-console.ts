@@ -31,6 +31,7 @@ import {
   type AgentEntry,
 } from "../domain/registry.js";
 import { expandSkillChips, type SkillLookupEntry } from "../domain/skill-expand.js";
+import { askRegistry } from "../domain/web-ask.js";
 import { mapEvent } from "../interface/events.js";
 import { isStaleError } from "../domain/fork-util.js";
 
@@ -425,13 +426,23 @@ export class WebConsole {
   }
 
   /** agent 模式下的宿主命令执行 */
-  private async handleAgentCommand(command: string, msg: { text?: string; deliverAs?: string }): Promise<void> {
+  private async handleAgentCommand(
+    command: string,
+    msg: { text?: string; deliverAs?: string; toolCallId?: string; answer?: unknown },
+  ): Promise<void> {
     try {
       if (command === "send") {
         if (typeof msg.text !== "string" || msg.text.trim() === "") throw new WebServerError(-32602, "text 必须是非空字符串");
         await this.sendLocalMessage(msg.text.trim(), msg.deliverAs);
       } else if (command === "abort") {
         this.requireCtx().abort();
+      } else if (command === "ask-answer") {
+        // multi-instance：web 提问回答路由（本进程 registry）
+        const toolCallId = typeof msg.toolCallId === "string" ? msg.toolCallId : "";
+        if (toolCallId !== "" && askRegistry.answer(toolCallId, msg.answer)) {
+          return;
+        }
+        throw new WebServerError(-32602, `未找到对应的提问（toolCallId=${toolCallId}）`);
       } else if (command === "deregister") {
         // 宿主注销本进程：断开连接（进程继续运行）
         this.state.agent?.ws.close();
@@ -462,7 +473,7 @@ export class WebConsole {
     }
     const entry = this.state.registry.get(processId);
     if (!entry) throw new WebServerError(1, `进程未注册：${processId}`);
-    if (entry.kind === "external") {
+    if (entry.kind === "external" || entry.kind === "spawned") {
       this.state.server?.sendAgentCommand(processId, { command, ...payload });
       return;
     }

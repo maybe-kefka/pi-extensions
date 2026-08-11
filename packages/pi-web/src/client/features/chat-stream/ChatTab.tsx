@@ -88,9 +88,17 @@ export const ChatTab = memo(function ChatTab({
     request("pi:chatAbort", { processId }).catch(() => undefined);
   }, [processId, request]);
 
+  // web 提问回答：路由到本进程（host 本地 registry / spawned 经 WS 下行）
+  const answerAsk = useCallback(
+    (toolCallId: string, answer: unknown) => {
+      request("web-ask:answer", { toolCallId, answer, processId }).catch(() => undefined);
+    },
+    [processId, request],
+  );
+
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <Chat state={state} dispatch={dispatch} onFork={onFork} onAnswerAsk={onAnswerAsk} />
+      <Chat state={state} dispatch={dispatch} onFork={onFork} onAnswerAsk={answerAsk} />
       <InputBar
         busy={state.streaming}
         queue={state.queue}
