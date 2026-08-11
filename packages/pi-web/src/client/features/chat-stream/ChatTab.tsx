@@ -141,11 +141,11 @@ export const ChatTab = memo(function ChatTab({
         </div>
       )}
       <Chat state={state} dispatch={dispatch} onFork={onFork} onAnswerAsk={answerAsk} />
-      <div className="flex items-center gap-2 px-3 pb-2">
+      <div className="flex items-start gap-2 px-3">
         {/* 水杯进度条：per-tab 实例 context 占用；点击查看详情 */}
         <Popover>
           <PopoverTrigger asChild>
-            <button className="cursor-pointer pb-1" title="上下文占用（点击查看详情）">
+            <button className="mt-3 cursor-pointer" title="上下文占用（点击查看详情）">
               <WaterCup percent={usage?.percent ?? null} />
             </button>
           </PopoverTrigger>
