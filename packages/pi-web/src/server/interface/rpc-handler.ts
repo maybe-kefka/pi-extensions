@@ -12,6 +12,7 @@ import {
   parseSystemPromptSections,
   type ContextCategory,
   type ConversationTokens,
+  type SessionEntryLike as BreakdownEntryLike,
 } from "../domain/context-breakdown.js";
 import { expandSkillChips, skillLookupFrom } from "../domain/skill-expand.js";
 import { resolveCloseAgent } from "../domain/orchestrate.js";
@@ -46,7 +47,7 @@ import {
   repoInfo,
   switchBranch,
 } from "../domain/git.js";
-import { readSessionHistory, parseSessionEntries, type SessionEntryLike } from "../domain/session-history.js";
+import { parseSessionJsonl, readSessionHistory, parseSessionEntries, type SessionEntryLike } from "../domain/session-history.js";
 import { THINKING_LEVELS, SessionManager, type BuildSystemPromptOptions, type WebConsole } from "../application/web-console.js";
 
 /**
@@ -332,8 +333,28 @@ async function handleRequest(
       // 根因（源码核实）：事件 ctx（createContext()）无 getSystemPromptOptions——
       // 仅特权命令 ctx（createCommandContext()）有——旧实现 ?.() 静默 undefined → 系统侧恒 0。
       const ctx = requireCtxOf();
-      const messages = contextMessagesFromEntries(ctx.sessionManager.buildContextEntries());
-      const conversation = computeConversationTokens(messages);
+      // 实例对话：processId 非空 → 读该实例的 session jsonl（chat tab 弹窗显示当前 tab 的对话统计）
+      let conversation: ConversationTokens;
+      const processId = typeof params.processId === "string" ? params.processId : "";
+      if (processId !== "") {
+        const entry = console.agentList().find((ag) => ag.processId === processId);
+        const sessionFile = entry?.sessionFile ?? null;
+        if (sessionFile) {
+          try {
+            // 实例 jsonl 可能尚未创建（无消息）——优雅降级为对话 0；
+            // 原始 entries（type/message 结构）直接喂 contextMessagesFromEntries（勿经 parseSessionEntries——结构不符）
+            const raw = parseSessionJsonl(readFileSync(sessionFile, "utf8"));
+            conversation = computeConversationTokens(contextMessagesFromEntries(raw as unknown as BreakdownEntryLike[]));
+          } catch {
+            conversation = computeConversationTokens([]);
+          }
+        } else {
+          conversation = computeConversationTokens([]);
+        }
+      } else {
+        const messages = contextMessagesFromEntries(ctx.sessionManager.buildContextEntries());
+        conversation = computeConversationTokens(messages);
+      }
       try {
         const breakdown = await console.privilegedCall(async (priv) => {
           const systemText = priv.getSystemPrompt();
@@ -727,7 +748,8 @@ function buildBreakdownResult(
     { key: "tools", label: "工具定义", tokens: parts.tools },
     { key: "conversation", label: "对话消息", tokens: parts.conversation.total },
   ];
-  const total = parts.system + parts.conversation.total;
+  // total = 全部分类之和（contextFiles/skills/tools 也计入——否则系统提示词占比虚高为 100%）
+  const total = parts.system + parts.contextFiles + parts.skills + parts.tools + parts.conversation.total;
   const usage = ctx.getContextUsage();
   return {
     categories,

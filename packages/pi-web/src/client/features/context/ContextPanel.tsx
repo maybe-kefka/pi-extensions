@@ -28,9 +28,12 @@ const CONV_ROWS: { key: keyof ContextBreakdownData["conversation"]; label: strin
 export function ContextPanel({
   getRequest,
   onCompact,
+  processId,
 }: {
   getRequest: () => RpcClient["request"];
   onCompact: () => void;
+  /** 实例 processId（chat tab 弹窗——对话统计读该实例的会话） */
+  processId?: string;
 }) {
   const [data, setData] = useState<ContextBreakdownData | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -41,7 +44,7 @@ export function ContextPanel({
     let cancelled = false;
     setLoading(true);
     setError(null);
-    getRequest()("pi:getContextBreakdown")
+    getRequest()("pi:getContextBreakdown", processId ? { processId } : {})
       .then((d) => {
         if (cancelled) return;
         setData(d as ContextBreakdownData);

@@ -156,7 +156,7 @@ export const ChatTab = memo(function ChatTab({
             </button>
           </PopoverTrigger>
           <PopoverContent align="start" side="top" className="mb-2">
-            <ContextPanel getRequest={() => request} onCompact={compact} />
+            <ContextPanel getRequest={() => request} onCompact={compact} processId={processId} />
           </PopoverContent>
         </Popover>
         <div className="min-w-0 flex-1">
