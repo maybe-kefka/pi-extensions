@@ -198,6 +198,14 @@ async function handleRequest(
       return { cancelled: result.cancelled };
     }
 
+    case "pi:openSession": {
+      // 会话实例化：打开历史会话 → spawn 独立实例（幂等——已有实例直接返回）
+      const path = params.path;
+      if (typeof path !== "string" || path === "") throw new WebServerError(-32602, "path 必填");
+      const processId = await console.spawnSessionInstance(path, console.agentHostUrl() ?? console.url ?? "");
+      return { processId };
+    }
+
     case "pi:newSession": {
       const result = await privilegedCall((priv) => priv.newSession(withPrivilegedRefresh({})));
       return { cancelled: result.cancelled };

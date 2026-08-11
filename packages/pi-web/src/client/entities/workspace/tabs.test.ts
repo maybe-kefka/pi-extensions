@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   activateTab,
+  chatOpenAction,
   diffAgentTabs,
   type WorkspaceTab,
   chatTabId,
@@ -242,5 +243,21 @@ describe("diffAgentTabs（注册者列表 → tab 增删）", () => {
     ]);
     expect(d.leave).toEqual(["/s/1.jsonl"]);
     expect(d.join).toEqual([{ sessionFile: "/s/2.jsonl", sessionName: "会话B" }]);
+  });
+});
+
+describe("chatOpenAction（会话管理点击决策）", () => {
+  const agents = [{ sessionFile: "/s/1.jsonl" }];
+  it("已有 tab → activate（不重复开）", () => {
+    const s: WorkspaceState = { tabs: [{ kind: "chat", sessionId: "/s/1.jsonl", name: "A" }], active: "" };
+    expect(chatOpenAction(s, agents, "/s/1.jsonl")).toEqual({ kind: "activate" });
+  });
+  it("有实例无 tab → open", () => {
+    const s: WorkspaceState = { tabs: [], active: "" };
+    expect(chatOpenAction(s, agents, "/s/1.jsonl")).toEqual({ kind: "open", name: "1.jsonl" });
+  });
+  it("无实例 → spawn", () => {
+    const s: WorkspaceState = { tabs: [], active: "" };
+    expect(chatOpenAction(s, agents, "/s/2.jsonl")).toEqual({ kind: "spawn" });
   });
 });

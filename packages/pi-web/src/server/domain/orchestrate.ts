@@ -12,3 +12,13 @@ export function resolveConnectAction(stateFile: WebStateFile | null, portAlive: 
   if (!stateFile) return "spawn";
   return portAlive ? "connect" : "cleanup-spawn";
 }
+
+/** 会话实例幂等决策：注册表已有该会话 → 复用；否则 spawn 新实例 */
+export interface SessionAgentLike {
+  processId: string;
+  sessionFile: string | null;
+}
+
+export function resolveSessionInstance(agents: SessionAgentLike[], sessionFile: string): "existing" | "spawn" {
+  return agents.some((a) => a.sessionFile === sessionFile) ? "existing" : "spawn";
+}

@@ -10,6 +10,7 @@ import type { StreamState } from "@/entities/chat/stream";
 export interface SessionPanelProps {
   sessions: SessionInfo[];
   currentSessionFile: string | null;
+  openSessionFiles: Set<string>;
   bridge: StreamState["bridge"];
   sessionDegraded: boolean;
   sessionActions: SessionActions;
@@ -17,7 +18,7 @@ export interface SessionPanelProps {
 
 /** 会话管理面板（activity bar）：会话列表/操作 + 状态桥接 */
 export function SessionPanel(props: SessionPanelProps) {
-  const { sessions, currentSessionFile, bridge, sessionDegraded, sessionActions } = props;
+  const { sessions, currentSessionFile, openSessionFiles, bridge, sessionDegraded, sessionActions } = props;
   const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
@@ -43,6 +44,7 @@ export function SessionPanel(props: SessionPanelProps) {
           <SessionList
             sessions={sessions}
             currentSessionFile={currentSessionFile}
+            openSessionFiles={openSessionFiles}
             degraded={sessionDegraded}
             actions={sessionActions}
           />

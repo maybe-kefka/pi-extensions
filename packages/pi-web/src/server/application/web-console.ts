@@ -23,7 +23,7 @@ import { probePrivileged } from "../domain/privilege-probe.js";
 import { portAlive } from "../infrastructure/net-probe.js";
 import { resolveConnectAction } from "../domain/orchestrate.js";
 import type { WebStateFile } from "../domain/registry.js";
-import { webServiceSpawnSpec } from "../domain/spawn-spec.js";
+import { sessionInstanceSpawnSpec, webServiceSpawnSpec } from "../domain/spawn-spec.js";
 import { startWebServer, WebServerError, type WebServerHandle } from "../infrastructure/server.js";
 import { makeEvent, serialize } from "../domain/protocol.js";
 import { buildState } from "../domain/state.js";
@@ -297,6 +297,35 @@ export class WebConsole {
       if (sf && (await portAlive(sf.port, netConnect))) return;
     }
     throw new WebServerError(1, "web 服务进程启动超时（20s）");
+  }
+
+  /** 会话实例幂等：注册表已有该会话 → 返回 processId；否则 spawn 新实例并等注册 */
+  async spawnSessionInstance(sessionFile: string, hostUrl: string): Promise<string> {
+    const existing = this.state.registry.list().find((a) => a.sessionFile === sessionFile);
+    if (existing) return existing.processId;
+    if (!this.extensionPath) throw new WebServerError(1, "扩展路径未知，无法 spawn 会话实例");
+    const spec = sessionInstanceSpawnSpec({
+      execPath: process.execPath,
+      piEntry: process.argv[1] ?? "",
+      extensionPath: this.extensionPath,
+      sessionFile,
+      hostUrl,
+    });
+    const cwd = this.state.cwd ?? process.cwd();
+    const child = spawn(spec.execPath, spec.argv, {
+      cwd,
+      env: { ...process.env, ...spec.env },
+      detached: true,
+      stdio: ["pipe", "ignore", "ignore"],
+    });
+    child.unref();
+    const deadline = Date.now() + 20_000;
+    while (Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 300));
+      const entry = this.state.registry.list().find((a) => a.sessionFile === sessionFile);
+      if (entry) return entry.processId;
+    }
+    throw new WebServerError(1, "会话实例启动超时（20s）");
   }
 
   /**

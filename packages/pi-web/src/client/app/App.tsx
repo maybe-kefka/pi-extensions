@@ -23,6 +23,7 @@ import {
   diffPathOf,
   initialState as initialWorkspace,
   openChatTab,
+  chatOpenAction,
   diffAgentTabs,
   openDiffTab,
   openFile,
@@ -312,6 +313,7 @@ export default function App() {
     const diff = diffAgentTabs(workspaceRef.current, list);
     for (const j of diff.join) {
       dispatchWs({ kind: "open-chat", sessionId: j.sessionFile, name: j.sessionName ?? sessionLabelFromFile(j.sessionFile) });
+      dispatchWs({ kind: "activate", id: chatTabId(j.sessionFile) });
     }
     for (const sid of diff.leave) dispatchWs({ kind: "close-chat", sessionId: sid });
   }, []);
@@ -397,7 +399,22 @@ export default function App() {
 
   /** 打开会话 tab（会话管理点击）——激活时自动切换进程会话 */
   const openChat = useCallback((path: string, name: string) => {
-    dispatchWs({ kind: "open-chat", sessionId: path, name: name || path.split("/").pop() || "聊天" });
+    const decision = chatOpenAction(workspaceRef.current, agentsRef.current, path);
+    if (decision.kind === "activate") {
+      dispatchWs({ kind: "activate", id: chatTabId(path) });
+      return;
+    }
+    if (decision.kind === "open") {
+      dispatchWs({ kind: "open-chat", sessionId: path, name: name || decision.name });
+      dispatchWs({ kind: "activate", id: chatTabId(path) });
+      return;
+    }
+    // 无实例：服务进程 spawn 独立实例 → agent_list 事件自动开 tab
+    const c = rpcRef.current;
+    if (!c) return;
+    c.request<{ processId: string }>("pi:openSession", { path })
+      .then(() => undefined)
+      .catch((e) => toast.error(`会话实例化失败：${e.message}`));
   }, []);
 
   /** 新建会话：服务端 newSession → 会话切换完成后自动打开对应 tab */
@@ -501,11 +518,12 @@ export default function App() {
     () => ({
       sessions,
       currentSessionFile: hostState.sessionFile,
+      openSessionFiles: new Set(agents.filter((ag) => ag.sessionFile).map((ag) => ag.sessionFile as string)),
       bridge: hostState.bridge,
       sessionDegraded: degraded,
       sessionActions,
     }),
-    [sessions, hostState.sessionFile, hostState.bridge, degraded, sessionActions],
+    [sessions, hostState.sessionFile, agents, hostState.bridge, degraded, sessionActions],
   );
 
   const settingsPanelProps = useMemo(

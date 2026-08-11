@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { webServiceSpawnSpec } from "./spawn-spec.js";
+import { sessionInstanceSpawnSpec, webServiceSpawnSpec } from "./spawn-spec.js";
 
 describe("webServiceSpawnSpec（服务进程 spawn 参数——argv 顺序/env 教训）", () => {
   it("argv：pi 入口 + --mode rpc + --extension <扩展入口>", () => {
@@ -31,5 +31,27 @@ describe("webServiceSpawnSpec（服务进程 spawn 参数——argv 顺序/env �
     });
     expect(spec.argv[0]).toBe("/path with space/pi/cli.js");
     expect(spec.argv.at(-1)).toBe("/repo with space/pi-web/src/index.ts");
+  });
+});
+
+describe("sessionInstanceSpawnSpec（会话实例——--session 直接加载）", () => {
+  it("argv：pi 入口 + --mode rpc + --extension + --session <file>", () => {
+    const spec = sessionInstanceSpawnSpec({
+      execPath: "node",
+      piEntry: "/opt/pi/cli.js",
+      extensionPath: "/repo/pi-web/src/index.ts",
+      sessionFile: "/s/abc.jsonl",
+      hostUrl: "ws://127.0.0.1:3939/agent?token=t",
+    });
+    expect(spec.argv).toEqual([
+      "/opt/pi/cli.js",
+      "--mode",
+      "rpc",
+      "--extension",
+      "/repo/pi-web/src/index.ts",
+      "--session",
+      "/s/abc.jsonl",
+    ]);
+    expect(spec.env).toEqual({ PI_WEB_HOST_URL: "ws://127.0.0.1:3939/agent?token=t", PI_WEB_HOST_KIND: "spawned" });
   });
 });

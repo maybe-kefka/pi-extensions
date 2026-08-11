@@ -181,3 +181,14 @@ export function diffAgentTabs(
   const leave = [...openSessions].filter((sid) => !seen.has(sid));
   return { join, leave };
 }
+
+/** 打开会话的决策（会话管理点击）：已有 tab → activate；有实例无 tab → open；否则 spawn */
+export function chatOpenAction(
+  state: WorkspaceState,
+  agents: { sessionFile: string | null }[],
+  sessionId: string,
+): { kind: "activate" } | { kind: "open"; name: string } | { kind: "spawn" } {
+  if (state.tabs.some((t) => t.kind === "chat" && t.sessionId === sessionId)) return { kind: "activate" };
+  if (agents.some((a) => a.sessionFile === sessionId)) return { kind: "open", name: sessionId.split("/").pop() ?? "聊天" };
+  return { kind: "spawn" };
+}

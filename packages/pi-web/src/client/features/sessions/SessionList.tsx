@@ -20,11 +20,14 @@ export interface SessionActions {
 export function SessionList({
   sessions,
   currentSessionFile,
+  openSessionFiles,
   degraded,
   actions,
 }: {
   sessions: SessionInfo[];
   currentSessionFile: string | null;
+  /** 已实例化的会话（有注册进程）——标记 ●；点击激活/重开而非重复实例化 */
+  openSessionFiles: Set<string>;
   degraded: boolean;
   actions: SessionActions;
 }) {
@@ -58,6 +61,7 @@ export function SessionList({
         <ul className="flex flex-col gap-1">
           {sessions.map((s) => {
             const active = currentSessionFile === s.path;
+            const opened = openSessionFiles.has(s.path);
             const label = s.name || s.firstMessage || s.path.split("/").pop() || s.path;
             return (
               <li
@@ -68,6 +72,7 @@ export function SessionList({
                 onClick={() => actions.onSelect(s.path, label)}
               >
                 <span className={`min-w-0 flex-1 truncate ${active ? "text-foreground font-medium" : "text-muted-foreground"}`}>
+                  {opened ? "● " : ""}
                   {label}
                 </span>
                 <span className="text-muted-foreground shrink-0 tabular-nums">{s.messageCount}条</span>

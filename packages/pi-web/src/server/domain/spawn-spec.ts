@@ -25,3 +25,18 @@ export function webServiceSpawnSpec(opts: {
     env: { PI_WEB_SERVICE: "1" },
   };
 }
+
+/** 会话实例规格：pi --mode rpc --extension <入口> --session <file> + 自动注册 env（kind=spawned） */
+export function sessionInstanceSpawnSpec(opts: {
+  execPath: string;
+  piEntry: string;
+  extensionPath: string;
+  sessionFile: string;
+  hostUrl: string;
+}): SpawnSpec {
+  return {
+    execPath: opts.execPath,
+    argv: [opts.piEntry, "--mode", "rpc", "--extension", opts.extensionPath, "--session", opts.sessionFile],
+    env: { PI_WEB_HOST_URL: opts.hostUrl, PI_WEB_HOST_KIND: "spawned" },
+  };
+}
