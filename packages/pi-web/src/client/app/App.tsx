@@ -104,6 +104,8 @@ export default function App() {
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
   /** 注册进程表（agent_list 驱动 chat tab 生命周期） */
   const [agents, setAgents] = useState<AgentInfo[]>([]);
+  /** 各会话实例的 context usage（usage_update 上行——水杯数据） */
+  const [usageBySession, setUsageBySession] = useState<Record<string, { percent: number | null }>>({});
   /** agents 最新引用（事件回调闭包读取——避免 stale） */
   const agentsRef = useRef<AgentInfo[]>([]);
   const [models, setModels] = useState<ModelInfo[]>([]);
@@ -259,7 +261,17 @@ export default function App() {
         if (evt.type === "agent-event") {
           const pid = typeof evt.processId === "string" ? evt.processId : "";
           if (!pid) return;
-          const action = toAction(evt.event as PiEvent);
+          // usage 上报：按进程 → 会话 → 水杯数据（非流式 action——单独处理）
+          const inner = evt.event as PiEvent;
+          if (inner.type === "usage_update") {
+            const entry = agentsRef.current.find((ag) => ag.processId === pid);
+            if (entry?.sessionFile) {
+              const percent = typeof inner.percent === "number" ? inner.percent : null;
+              setUsageBySession((prev) => ({ ...prev, [entry.sessionFile as string]: { percent } }));
+            }
+            return;
+          }
+          const action = toAction(inner);
           if (!action) return;
           if (isTransitionalAction(action)) {
             startTransition(() => dispatchToProcess(pid, action));
@@ -639,6 +651,7 @@ export default function App() {
                   name={t.name}
                   processId={agents.find((ag) => ag.sessionFile === t.sessionId)?.processId ?? ""}
                   dead={t.kind === "chat" && t.dead === true}
+                  usage={usageBySession[t.sessionId]?.percent ?? null}
                   onRevive={(sid) => openChat(sid, t.kind === "chat" ? t.name : "聊天")}
                   active={chatTabId(t.sessionId) === workspace.active}
                   request={getRequest()}

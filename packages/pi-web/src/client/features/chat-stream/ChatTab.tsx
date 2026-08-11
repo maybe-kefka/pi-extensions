@@ -9,6 +9,9 @@ import { initialState, streamReducer, type StreamAction, type StreamState } from
 import type { ConnState, RpcClient } from "@/shared/api/rpc";
 import { Chat } from "./Chat";
 import { Button } from "@/shared/ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "@/shared/ui/popover";
+import { ContextPanel } from "@/features/context/ContextPanel";
+import { WaterCup } from "./WaterCup";
 import { InputBar } from "@/features/input-bar/InputBar";
 import type { CommandInfo, SkillInfo, FileGroup, HistoryMessage } from "@/entities/chat/types";
 
@@ -21,6 +24,8 @@ export interface ChatTabProps {
   processId: string;
   /** 断线（实例已退出）——显示提示 + 重新拉起 */
   dead: boolean;
+  /** 该会话实例的 context usage（0-1；水杯水位） */
+  usage: number | null;
   /** 重新拉起（respawn 同会话实例） */
   onRevive: (sessionId: string) => void;
   /** 是否激活（激活才注册事件分发——进程当前会话 = 激活 tab 的会话） */
@@ -45,6 +50,7 @@ export const ChatTab = memo(function ChatTab({
   name: _name,
   processId,
   dead,
+  usage,
   onRevive,
   active,
   request,
@@ -138,18 +144,33 @@ export const ChatTab = memo(function ChatTab({
         </div>
       )}
       <Chat state={state} dispatch={dispatch} onFork={onFork} onAnswerAsk={answerAsk} />
-      <InputBar
-        busy={state.streaming}
-        queue={state.queue}
-        conn={conn}
-        skills={skills}
-        commands={commands}
-        files={files}
-        pickerLoading={pickerLoading}
-        onSend={send}
-        onAbort={abort}
-        onPickerOpen={onPickerOpen}
-      />
+      <div className="flex items-end gap-2 px-3 pb-2">
+        {/* 水杯进度条：per-tab 实例 context 占用；点击查看详情 */}
+        <Popover>
+          <PopoverTrigger asChild>
+            <button className="cursor-pointer pb-1" title="上下文占用（点击查看详情）">
+              <WaterCup percent={usage} />
+            </button>
+          </PopoverTrigger>
+          <PopoverContent align="start" side="top" className="mb-2">
+            <ContextPanel getRequest={() => request} onCompact={() => undefined} />
+          </PopoverContent>
+        </Popover>
+        <div className="min-w-0 flex-1">
+          <InputBar
+            busy={state.streaming}
+            queue={state.queue}
+            conn={conn}
+            skills={skills}
+            commands={commands}
+            files={files}
+            pickerLoading={pickerLoading}
+            onSend={send}
+            onAbort={abort}
+            onPickerOpen={onPickerOpen}
+          />
+        </div>
+      </div>
     </div>
   );
 });

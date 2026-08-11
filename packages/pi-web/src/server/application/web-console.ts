@@ -76,6 +76,8 @@ export interface WebConsoleState {
   registry: RegistryStore;
   /** 本进程为注册者（agent 模式）时：宿主连接与分配的 processId */
   agent: { ws: WebSocket; processId: string; hostUrl: string } | null;
+  /** agent 模式 usage 周期上报定时器 */
+  usageTimer: ReturnType<typeof setInterval> | null;
   /** 本进程 cwd（注册/状态文件用） */
   cwd: string | null;
 }
@@ -94,6 +96,7 @@ export function createWebConsole(): WebConsole {
     flushTimer: null,
     registry: new RegistryStore(),
     agent: null,
+    usageTimer: null,
     cwd: null,
   });
 }
@@ -418,6 +421,19 @@ export class WebConsole {
     return this.state.agent !== null;
   }
 
+  /** agent 模式：上报 context usage（水杯进度条数据——事件上行） */
+  reportUsage(): void {
+    if (!this.state.agent) return;
+    const ctx = this.state.ctx;
+    const usage = ctx?.getContextUsage?.();
+    if (!usage) return;
+    this.broadcast("usage_update", {
+      percent: usage.percent,
+      tokens: usage.tokens ?? null,
+      contextWindow: usage.contextWindow ?? null,
+    });
+  }
+
   /** agent 模式：重发 hello（session_start 后会话信息更新） */
   refreshAgentHello(): void {
     const agent = this.state.agent;
@@ -469,6 +485,9 @@ export class WebConsole {
           kind: process.env.PI_WEB_HOST_KIND ?? "external",
         }),
       );
+      // 周期上报 usage（水杯水位）——注册者视角
+      this.state.usageTimer = setInterval(() => this.reportUsage(), 5000);
+      this.reportUsage();
     };
     const onMessage = (data: Buffer) => {
       let msg: { type?: string; processId?: string; command?: string; text?: string; deliverAs?: string };
@@ -487,6 +506,10 @@ export class WebConsole {
     };
     const onClose = () => {
       this.state.agent = null;
+      if (this.state.usageTimer) {
+        clearInterval(this.state.usageTimer);
+        this.state.usageTimer = null;
+      }
     };
     ws.on("open", onOpen);
     ws.on("message", onMessage);
