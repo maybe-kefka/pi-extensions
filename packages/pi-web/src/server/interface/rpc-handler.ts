@@ -45,7 +45,7 @@ import {
   repoInfo,
   switchBranch,
 } from "../domain/git.js";
-import { messageTextOf, messageThinkingOf, messageToolCalls } from "../infrastructure/http-util.js";
+import { readSessionHistory, parseSessionEntries, type SessionEntryLike } from "../domain/session-history.js";
 import { THINKING_LEVELS, SessionManager, type BuildSystemPromptOptions, type WebConsole } from "../application/web-console.js";
 
 /**
@@ -638,45 +638,17 @@ async function handleRequest(
 
         case "pi:getMessages": {
       const ctx = requireCtxOf();
-      const entries = ctx.sessionManager.getEntries() as {
-        type?: string;
-        message?: { role?: string; content?: unknown; toolCallId?: unknown; isError?: unknown };
-      }[];
-      // 第一遍：toolResult 结果按 toolCallId 索引
-      const resultById = new Map<string, { result: string; isError: boolean }>();
-      for (const e of entries) {
-        const m = e?.message;
-        if (e?.type !== "message" || !m || m.role !== "toolResult" || m.toolCallId == null) continue;
-        resultById.set(String(m.toolCallId), { result: messageTextOf(m.content), isError: m.isError === true });
-      }
-      // 第二遍：组装消息（assistant 带 toolCalls；user 带 userIndex；空消息筛掉）
-      const messages: {
-        role: string;
-        text: string;
-        thinking: string;
-        toolCalls: { id: string; name: string; arguments: unknown; result: string; isError: boolean }[];
-        userIndex?: number;
-      }[] = [];
-      let userIndex = -1;
-      for (const e of entries) {
-        const m = e?.message;
-        if (e?.type !== "message" || !m) continue;
-        const role = m.role ?? "unknown";
-        if (role === "toolResult") continue;
-        if (role === "assistant") {
-          const toolCalls = messageToolCalls(m.content).map((tc) => {
-            const r = resultById.get(tc.id);
-            return { ...tc, result: r?.result ?? "", isError: r?.isError ?? false };
-          });
-          const text = messageTextOf(m.content);
-          const thinking = messageThinkingOf(m.content);
-          if (!text && !thinking && toolCalls.length === 0) continue; // 空消息直接筛掉
-          messages.push({ role, text, thinking, toolCalls });
-        } else {
-          userIndex += 1;
-          messages.push({ role, text: messageTextOf(m.content), thinking: "", toolCalls: [], userIndex });
-        }
-      }
+      return { messages: parseSessionEntries(ctx.sessionManager.getEntries() as SessionEntryLike[]) };
+    }
+
+    case "pi:chatHistory": {
+      // multi-instance：按进程注册的 sessionFile 读历史
+      const processId = typeof params.processId === "string" ? params.processId : "";
+      if (processId === "") throw new WebServerError(-32602, "processId 必填");
+      const entry = console.agentList().find((a) => a.processId === processId);
+      if (!entry || !entry.sessionFile) throw new WebServerError(1, `进程无会话文件：${processId}`);
+      const messages = readSessionHistory(entry.sessionFile, (p) => readFileSync(p, "utf8"));
+      if (messages === null) throw new WebServerError(1, `会话文件不可读：${entry.sessionFile}`);
       return { messages };
     }
 
