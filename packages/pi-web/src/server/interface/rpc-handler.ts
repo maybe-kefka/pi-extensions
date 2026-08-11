@@ -216,6 +216,12 @@ async function handleRequest(
       return { processId };
     }
 
+    case "pi:newChatSession": {
+      // 新建会话：spawn 独立实例（--session-id 创建）——与打开历史会话同路径
+      const processId = await console.spawnNewSession(console.agentHostUrl() ?? console.url ?? "");
+      return { processId };
+    }
+
     case "pi:newSession": {
       const result = await privilegedCall((priv) => priv.newSession(withPrivilegedRefresh({})));
       return { cancelled: result.cancelled };

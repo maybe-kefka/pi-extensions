@@ -75,8 +75,6 @@ function sessionLabelFromFile(sf: string): string {
 export default function App() {
   const [hostState, setHostState] = useState(initialState);
   const [conn, setConn] = useState(initialState.conn);
-  /** 新建会话待开 tab 标记（session_switch_ready 时消费） */
-  const pendingNewRef = useRef(false);
   /** 激活 chat tab 状态上报（会话元数据：sessionName/sessionFile/context——ChatTab 仅在激活时上报） */
   const handleTabStateChange = useCallback((sessionId: string, st: typeof initialState) => {
     if (sessionId === chatSessionOf(workspaceRef.current.active)) setHostState(st);
@@ -311,16 +309,6 @@ export default function App() {
         // 会话切换完成：会话列表刷新（历史由 ChatTab 自管——state 事件匹配后首次加载）
         if (evt.type === "session_switch_ready") {
           refreshSessions();
-          if (pendingNewRef.current) {
-            // 新建会话：打开新会话的 chat tab（历史由 ChatTab 首次激活加载）
-            pendingNewRef.current = false;
-            rpcRef.current?.request<WebState>("pi:getState").then((st) => {
-              const sf = (st as unknown as { sessionFile?: string | null }).sessionFile;
-              const raw = (st as unknown as { sessionName?: string | null }).sessionName;
-              const name = raw || (sf ? sessionLabelFromFile(sf) : "聊天");
-              if (sf) dispatchWs({ kind: "open-chat", sessionId: sf, name });
-            }).catch(() => undefined);
-          }
         }
         // R26 session-follow：特权状态广播（TUI 切换 → 立即降级提示；重跑 /web → 自动恢复）
         if (action.type === "privilege_status") {
@@ -455,17 +443,14 @@ export default function App() {
       .catch((e) => toast.error(`会话实例化失败：${e.message}`));
   }, []);
 
-  /** 新建会话：服务端 newSession → 会话切换完成后自动打开对应 tab */
+  /** 新建会话：spawn 独立实例（--session-id）→ agent_list join 自动开 tab */
   const newChatSession = useCallback(() => {
     const c = rpcRef.current;
     if (!c) return;
-    c.request<{ cancelled: boolean }>("pi:newSession")
-      .then((r) => {
-        if (r.cancelled) toast.info("新建已取消");
-        else pendingNewRef.current = true;
-      })
-      .catch((e) => privilegedError(e, "新建会话"));
-  }, [privilegedError]);
+    c.request<{ processId: string }>("pi:newChatSession")
+      .then(() => undefined)
+      .catch((e) => toast.error(`新建会话失败：${e.message}`));
+  }, []);
 
   const fork = useCallback((userIndex: number) => {
     const c = rpcRef.current;

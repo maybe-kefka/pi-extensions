@@ -23,7 +23,7 @@ import { probePrivileged } from "../domain/privilege-probe.js";
 import { portAlive } from "../infrastructure/net-probe.js";
 import { resolveConnectAction, resolveTuiSessionSwitch } from "../domain/orchestrate.js";
 import type { WebStateFile } from "../domain/registry.js";
-import { sessionInstanceSpawnSpec, webServiceSpawnSpec } from "../domain/spawn-spec.js";
+import { newSessionSpawnSpec, sessionInstanceSpawnSpec, webServiceSpawnSpec } from "../domain/spawn-spec.js";
 import { startWebServer, WebServerError, type WebServerHandle } from "../infrastructure/server.js";
 import { makeEvent, serialize } from "../domain/protocol.js";
 import { buildState } from "../domain/state.js";
@@ -282,6 +282,37 @@ export class WebConsole {
     } catch {
       /* 已退出 */
     }
+  }
+
+  /** 新建会话：spawn 新实例（--session-id 创建）并等注册（同打开历史会话的 spawn 路径） */
+  async spawnNewSession(hostUrl: string): Promise<string> {
+    if (!this.extensionPath) throw new WebServerError(1, "扩展路径未知，无法 spawn 会话实例");
+    const sessionId = `web-${Date.now().toString(36)}`;
+    const spec = newSessionSpawnSpec({
+      execPath: process.execPath,
+      piEntry: process.argv[1] ?? "",
+      extensionPath: this.extensionPath,
+      sessionId,
+      hostUrl,
+    });
+    const cwd = this.state.cwd ?? process.cwd();
+    const env = { ...process.env, ...spec.env };
+    delete env.PI_WEB_SERVICE;
+    const child = spawn(spec.execPath, spec.argv, {
+      cwd,
+      env,
+      detached: true,
+      stdio: ["pipe", "ignore", "ignore"],
+    });
+    child.unref();
+    const deadline = Date.now() + 20_000;
+    while (Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 300));
+      // 新实例 hello 带创建的 sessionFile（无 sessionFile 的注册者不算——等就绪）
+      const entry = this.state.registry.list().find((a) => a.pid === child.pid && a.sessionFile);
+      if (entry) return entry.processId;
+    }
+    throw new WebServerError(1, "新建会话实例启动超时（20s）");
   }
 
   /**

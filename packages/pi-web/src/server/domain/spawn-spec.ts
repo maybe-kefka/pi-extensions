@@ -40,3 +40,18 @@ export function sessionInstanceSpawnSpec(opts: {
     env: { PI_WEB_HOST_URL: opts.hostUrl, PI_WEB_HOST_KIND: "spawned" },
   };
 }
+
+/** 新建会话实例规格：pi --mode rpc --extension <入口> --session-id <新 id>（创建新会话） */
+export function newSessionSpawnSpec(opts: {
+  execPath: string;
+  piEntry: string;
+  extensionPath: string;
+  sessionId: string;
+  hostUrl: string;
+}): SpawnSpec {
+  return {
+    execPath: opts.execPath,
+    argv: [opts.piEntry, "--mode", "rpc", "--extension", opts.extensionPath, "--session-id", opts.sessionId],
+    env: { PI_WEB_HOST_URL: opts.hostUrl, PI_WEB_HOST_KIND: "spawned" },
+  };
+}
