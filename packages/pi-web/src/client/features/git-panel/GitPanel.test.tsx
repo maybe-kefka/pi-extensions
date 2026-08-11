@@ -376,3 +376,23 @@ describe("ticket06：分支选择弹窗", () => {
     expect(calls.some((c) => c.includes("pi:gitCreateBranch") && c.includes("hotfix") && c.includes("origin/main"))).toBe(true);
   });
 });
+
+describe("ticket07：popover 管理区只列本地分支", () => {
+  afterEach(cleanup);
+
+  it("popover 分支列表不渲染远程分支（remotes 不出现）", async () => {
+    const request = (async (method: string, params: Record<string, unknown> = {}) => {
+      if (method === "pi:gitRepos") return { repos: REPOS };
+      if (method === "pi:gitStatus") return { isRepo: true, entries: [], aggregated: {} };
+      if (method === "pi:gitBranches")
+        return { isRepo: true, current: "main", branches: ["main", "feat"], remotes: ["origin/main", "origin/dev"] };
+      throw new Error(`unexpected ${method}`);
+    }) as RpcClient["request"];
+    render(<GitPanel request={request} />);
+    await screen.findByText("pi-extensions");
+    fireEvent.click(screen.getAllByTitle("更多操作")[0]);
+    expect(await screen.findByText("feat")).toBeTruthy();
+    expect(screen.queryByText("origin/dev")).toBeNull();
+    expect(screen.queryByText("origin/main")).toBeNull();
+  });
+});
