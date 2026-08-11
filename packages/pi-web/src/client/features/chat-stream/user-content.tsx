@@ -73,7 +73,7 @@ export function UserContentChip({ text }: { text: string }) {
             <span
               key={i}
               data-slot="user-chip"
-              className={`${style.cls} mx-0.5 inline-flex cursor-default items-center gap-1 rounded-md px-1.5 py-0.5 align-middle text-xs font-medium whitespace-nowrap`}
+              className={`${style.cls} mx-0.5 inline cursor-default rounded-md px-1.5 align-middle text-xs font-medium whitespace-nowrap`}
             >
               {style.icon} {label}
             </span>
