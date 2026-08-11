@@ -140,3 +140,12 @@ describe("mapEvent — 轮次边界", () => {
     expect(mapEvent("turn_end", {}).refreshState).toBe(false);
   });
 });
+
+describe("注册进程表事件透传", () => {
+  it("agent_list / agent_closed 透传全量 payload（chat tab 生命周期依赖）", () => {
+    const list = mapEvent("agent_list", { agents: [{ processId: "p-1", sessionFile: "/s/1.jsonl" }] });
+    expect(list.fields?.agents).toHaveLength(1);
+    const closed = mapEvent("agent_closed", { processId: "p-1" });
+    expect(closed.fields?.processId).toBe("p-1");
+  });
+});

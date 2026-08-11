@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   activateTab,
+  diffAgentTabs,
+  type WorkspaceTab,
   chatTabId,
   chatSessionOf,
   openChatTab,
@@ -201,3 +203,44 @@ describe("diff tab", () => {
 });
 
 
+
+describe("diffAgentTabs（注册者列表 → tab 增删）", () => {
+  it("新 agent 会话 → join（开 tab）", () => {
+    const d = diffAgentTabs(
+      { tabs: [], active: "" },
+      [{ sessionFile: "/s/1.jsonl", sessionName: "会话A" }],
+    );
+    expect(d.join).toEqual([{ sessionFile: "/s/1.jsonl", sessionName: "会话A" }]);
+    expect(d.leave).toEqual([]);
+  });
+
+  it("已开的会话不重复 join；无 sessionFile 的 agent 忽略", () => {
+    const tabs: WorkspaceTab[] = [{ kind: "chat", sessionId: "/s/1.jsonl", name: "会话A" }];
+    const d = diffAgentTabs({ tabs, active: "" }, [
+      { sessionFile: "/s/1.jsonl", sessionName: "会话A" },
+      { sessionFile: null, sessionName: null },
+    ]);
+    expect(d.join).toEqual([]);
+  });
+
+  it("agent 消失（退出/换会话）→ leave（关对应 tab）；tab 被手动关的会话不在 leave", () => {
+    const tabs: WorkspaceTab[] = [
+      { kind: "chat", sessionId: "/s/1.jsonl", name: "会话A" },
+      { kind: "chat", sessionId: "/s/2.jsonl", name: "会话B" },
+      { kind: "file", path: "/r/a.ts", name: "a.ts", dirty: false, preview: false },
+    ];
+    const d = diffAgentTabs({ tabs, active: "" }, [
+      { sessionFile: "/s/1.jsonl", sessionName: "会话A" },
+    ]);
+    expect(d.leave).toEqual(["/s/2.jsonl"]);
+  });
+
+  it("agent 会话切换（sessionFile 变）→ 旧 leave + 新 join", () => {
+    const tabs: WorkspaceTab[] = [{ kind: "chat", sessionId: "/s/1.jsonl", name: "会话A" }];
+    const d = diffAgentTabs({ tabs, active: "" }, [
+      { sessionFile: "/s/2.jsonl", sessionName: "会话B" },
+    ]);
+    expect(d.leave).toEqual(["/s/1.jsonl"]);
+    expect(d.join).toEqual([{ sessionFile: "/s/2.jsonl", sessionName: "会话B" }]);
+  });
+});

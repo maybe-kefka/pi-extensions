@@ -127,6 +127,11 @@ export function mapEvent(type: string, payload: unknown): MappedEvent {
     case "privilege_status":
       return { fields: { ok: p.ok ?? false }, refreshState: false };
 
+    case "agent_list":
+    case "agent_closed":
+      // 注册进程表变化：透传全量（客户端按 agents 列表 diff chat tab 生命周期）
+      return { fields: p as Dict, refreshState: false };
+
     default:
       return { fields: null, refreshState: false };
   }

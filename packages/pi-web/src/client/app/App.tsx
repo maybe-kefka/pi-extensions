@@ -2,6 +2,7 @@ import { memo, startTransition, useCallback, useEffect, useMemo, useReducer, use
 import { toast } from "sonner";
 import { createRpcClient, type RpcClient } from "@/shared/api/rpc";
 import { initialState, type StreamAction, type StreamState } from "@/entities/chat/stream";
+import type { AgentInfo } from "@/entities/chat/types";
 import { isTransitionalAction, toAction } from "@/entities/chat/events";
 import type { CommandInfo, FileGroup, HistoryMessage, ModelInfo, PiEvent, SessionInfo, SkillInfo, TreeNode, WebState } from "@/entities/chat/types";
 import { Header } from "@/app/ui/Header";
@@ -22,6 +23,7 @@ import {
   diffPathOf,
   initialState as initialWorkspace,
   openChatTab,
+  diffAgentTabs,
   openDiffTab,
   openFile,
   renameChatTab,
@@ -86,7 +88,10 @@ export default function App() {
     delete dispatchersRef.current[processId];
   }, []);
   const dispatchToProcess = useCallback((processId: string, action: StreamAction) => {
-    dispatchersRef.current[processId]?.(action);
+    // 分发表 key = 会话（sessionFile）——processId → sessionFile 查表路由
+    const entry = agentsRef.current.find((ag) => ag.processId === processId);
+    const sid = entry?.sessionFile;
+    if (sid) dispatchersRef.current[sid]?.(action);
   }, []);
   /** 分发到激活 chat tab（进程当前会话 = 激活 tab——流式/conn 事件走这里） */
   const dispatchToActiveChat = useCallback((action: StreamAction) => {
@@ -94,6 +99,10 @@ export default function App() {
     if (sid) dispatchersRef.current[sid]?.(action);
   }, []);
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
+  /** 注册进程表（agent_list 驱动 chat tab 生命周期） */
+  const [agents, setAgents] = useState<AgentInfo[]>([]);
+  /** agents 最新引用（事件回调闭包读取——避免 stale） */
+  const agentsRef = useRef<AgentInfo[]>([]);
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [skills, setSkills] = useState<SkillInfo[]>([]);
   const [commands, setCommands] = useState<CommandInfo[]>([]);
@@ -149,7 +158,8 @@ export default function App() {
         | { kind: "dirty"; path: string; dirty: boolean }
         | { kind: "promote"; path: string }
         | { kind: "rename-chat"; sessionId: string; name: string }
-        | { kind: "open-chat"; sessionId: string; name: string },
+        | { kind: "open-chat"; sessionId: string; name: string }
+        | { kind: "close-chat"; sessionId: string },
     ): WorkspaceState => {
       switch (a.kind) {
         case "open":
@@ -168,6 +178,8 @@ export default function App() {
           return renameChatTab(s, a.sessionId, a.name);
         case "open-chat":
           return openChatTab(s, a.sessionId, a.name);
+        case "close-chat":
+          return closeChatTab(s, a.sessionId);
       }
     },
     undefined,
@@ -250,6 +262,13 @@ export default function App() {
           }
           return;
         }
+        // 注册进程列表 → chat tab 生命周期（join 开 tab + 激活；leave 关 tab）
+        // ——必须在 toAction 之前（agent_list 不是流式 action，toAction 返回 null 会提前 return）
+        if (evt.type === "agent_list") {
+          const list = (evt as { agents?: AgentInfo[] }).agents ?? [];
+          syncAgents(list);
+          return;
+        }
         const action = toAction(evt as PiEvent);
         if (!action) return;
         // R23 F5：高频流式事件（text_delta/thinking_delta/tool_update）包 transition，
@@ -286,6 +305,17 @@ export default function App() {
     return () => client.disconnect();
   }, []);
 
+  /** 注册进程列表 → chat tab 生命周期（join 开 tab+激活；leave 关 tab——diff 纯决策） */
+  const syncAgents = useCallback((list: AgentInfo[]) => {
+    setAgents(list);
+    agentsRef.current = list;
+    const diff = diffAgentTabs(workspaceRef.current, list);
+    for (const j of diff.join) {
+      dispatchWs({ kind: "open-chat", sessionId: j.sessionFile, name: j.sessionName ?? sessionLabelFromFile(j.sessionFile) });
+    }
+    for (const sid of diff.leave) dispatchWs({ kind: "close-chat", sessionId: sid });
+  }, []);
+
   const refreshSessions = useCallback((retry = true) => {
     // R26 session-follow：切换瞬间 ctx 可能未就绪（requireCtx 抛"切换中"）——失败延迟重试一次
     rpcRef.current
@@ -311,6 +341,9 @@ export default function App() {
       .catch((e) => toast.error(`getState: ${e.message}`));
     refreshSessions();
     c.request<ModelInfo[]>("pi:listModels").then(setModels).catch(() => undefined);
+    c.request<{ agents?: AgentInfo[] }>("pi:agentList")
+      .then((r) => syncAgents(r.agents ?? []))
+      .catch(() => undefined);
   }, [conn, refreshSessions]);
 
   // 上拉框数据（懒加载：面板首次触发时刷新）
@@ -555,6 +588,7 @@ export default function App() {
                 <ChatTab
                   sessionId={t.sessionId}
                   name={t.name}
+                  processId={agents.find((ag) => ag.sessionFile === t.sessionId)?.processId ?? ""}
                   active={chatTabId(t.sessionId) === workspace.active}
                   request={getRequest()}
                   conn={conn}

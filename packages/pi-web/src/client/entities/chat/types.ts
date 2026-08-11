@@ -108,3 +108,14 @@ export interface RpcNotification {
   method: "pi:event";
   params: PiEvent;
 }
+
+/** 注册进程条目（镜像服务端 AgentEntry——agent_list 载荷） */
+export interface AgentInfo {
+  processId: string;
+  pid: number;
+  kind: "host" | "spawned" | "external";
+  sessionFile: string | null;
+  sessionName: string | null;
+  cwd: string;
+  connectedAt: number;
+}

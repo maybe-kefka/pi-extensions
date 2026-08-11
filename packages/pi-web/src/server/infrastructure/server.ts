@@ -156,13 +156,14 @@ export async function startWebServer(options: WebServerOptions): Promise<WebServ
           options.agentEvents!.onAgentEvent(info.processId, (msg.event as Record<string, unknown>) ?? {});
         }
       });
-      ws.on("close", () => {
+      const handleAgentGone = () => {
+        console.log(`[pi-web] agent socket gone (close/error)`);
         const info = agentInfoByWs.get(ws);
         if (info) options.agentEvents!.onAgentClose(info.processId);
-      });
-      ws.on("error", () => {
-        /* close 处理 */
-      });
+      };
+      ws.on("close", handleAgentGone);
+      // kill -9（TCP RST）只触发 error 不触发 close——同样清理注册表
+      ws.on("error", handleAgentGone);
     });
   }
 

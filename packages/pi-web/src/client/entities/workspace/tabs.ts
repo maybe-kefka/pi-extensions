@@ -159,3 +159,25 @@ export function activateDiffTab(state: WorkspaceState, path: string): WorkspaceS
 export function diffPathOf(active: string): string | null {
   return active.startsWith("diff:") ? active.slice(5) : null;
 }
+
+/** 注册者列表与当前 chat tab 的差值（agent_list 变化 → 开/关 tab 的纯决策） */
+export interface AgentTabInfo {
+  sessionFile: string | null;
+  sessionName: string | null;
+}
+
+export function diffAgentTabs(
+  state: WorkspaceState,
+  agents: AgentTabInfo[],
+): { join: { sessionFile: string; sessionName: string | null }[]; leave: string[] } {
+  const openSessions = new Set(state.tabs.filter((t) => t.kind === "chat").map((t) => t.sessionId));
+  const join: { sessionFile: string; sessionName: string | null }[] = [];
+  const seen = new Set<string>();
+  for (const a of agents) {
+    if (!a.sessionFile || seen.has(a.sessionFile)) continue;
+    seen.add(a.sessionFile);
+    if (!openSessions.has(a.sessionFile)) join.push({ sessionFile: a.sessionFile, sessionName: a.sessionName });
+  }
+  const leave = [...openSessions].filter((sid) => !seen.has(sid));
+  return { join, leave };
+}

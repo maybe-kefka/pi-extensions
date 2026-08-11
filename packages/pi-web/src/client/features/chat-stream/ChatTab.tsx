@@ -2,7 +2,7 @@
  * 多实例 chat tab（T5）：每进程一个 tab 实例。
  * - 内部 useReducer(streamReducer)——per-tab 状态隔离（input/滚动/流式互不干扰）
  * - 挂载时注册 dispatch 到 App 的进程分发表（事件按 processId 路由）
- * - 挂载时拉取该进程会话历史（pi:getMessages——进程当前会话）
+ * - 挂载时拉取该进程会话历史（pi:chatHistory——按 processId 读注册者会话文件）
  */
 import { memo, useCallback, useEffect, useReducer, useRef } from "react";
 import { initialState, streamReducer, type StreamAction, type StreamState } from "@/entities/chat/stream";
@@ -16,6 +16,8 @@ export interface ChatTabProps {
   sessionId: string;
   /** 初始会话名（tab 标题） */
   name: string;
+  /** 服务该会话的注册进程（TUI 注册者 / spawn 实例）；空 = 无进程（禁用发送） */
+  processId: string;
   /** 是否激活（激活才注册事件分发——进程当前会话 = 激活 tab 的会话） */
   active: boolean;
   request: RpcClient["request"];
@@ -36,6 +38,7 @@ export interface ChatTabProps {
 export const ChatTab = memo(function ChatTab({
   sessionId,
   name: _name,
+  processId,
   active,
   request,
   conn,
@@ -58,36 +61,21 @@ export const ChatTab = memo(function ChatTab({
     dispatch({ type: "conn", state: conn });
   }, [conn]);
 
-  // 激活时拉取进程状态（sessionFile 用于判定进程当前会话——切回 tab 也刷新元数据，不重拉历史）
-  useEffect(() => {
-    if (!active) return;
-    let cancelled = false;
-    request<Record<string, unknown>>("pi:getState")
-      .then((st) => {
-        if (!cancelled) dispatch({ type: "state", state: st });
-      })
-      .catch(() => undefined);
-    return () => {
-      cancelled = true;
-    };
-  }, [active, request]);
-
   // compact 后重拉历史（压缩摘要替换旧气泡）
   useEffect(() => {
-    if (!active || state.sessionReason !== "compact") return;
-    request<{ messages: HistoryMessage[] }>("pi:getMessages")
+    if (!active || state.sessionReason !== "compact" || !processId) return;
+    request<{ messages: HistoryMessage[] }>("pi:chatHistory", { processId })
       .then((r) => dispatch({ type: "history", messages: r.messages ?? [] }))
       .catch(() => undefined);
-  }, [state.sessionReason, active, request]);
+  }, [state.sessionReason, active, processId, request]);
 
-  // 历史加载（仅首次）：进程当前会话 = 本 tab 会话（state.sessionFile 匹配）且未加载过才拉
+  // 历史加载（仅首次）：进程绑定（processId 非空）且未加载过才拉
   // ——切回已加载 tab 不重拉，reducer 状态直接显示（long-live）
   useEffect(() => {
-    if (!active || loadedRef.current) return;
-    if (!state.sessionFile || state.sessionFile !== sessionId) return; // 进程未切到本会话——等
+    if (!active || loadedRef.current || !processId) return;
     loadedRef.current = true;
     let cancelled = false;
-    request<{ messages: HistoryMessage[] }>("pi:getMessages")
+    request<{ messages: HistoryMessage[] }>("pi:chatHistory", { processId })
       .then((r) => {
         if (!cancelled) dispatch({ type: "history", messages: r.messages ?? [] });
       })
@@ -95,7 +83,7 @@ export const ChatTab = memo(function ChatTab({
     return () => {
       cancelled = true;
     };
-  }, [active, state.sessionFile, sessionId, request]);
+  }, [active, processId, request]);
 
   // 激活时注册分发器（进程当前会话 = 激活 tab——事件/历史按 sessionId 路由）
   useEffect(() => {
@@ -112,21 +100,24 @@ export const ChatTab = memo(function ChatTab({
 
   const send = useCallback(
     (text: string) => {
-      request("pi:chatSend", { processId: "host", text, deliverAs: "steer" }).catch(() => undefined);
+      if (!processId) return;
+      request("pi:chatSend", { processId, text, deliverAs: "steer" }).catch(() => undefined);
     },
-    [request],
+    [request, processId],
   );
 
   const abort = useCallback(() => {
-    request("pi:chatAbort", { processId: "host" }).catch(() => undefined);
-  }, [request]);
+    if (!processId) return;
+    request("pi:chatAbort", { processId }).catch(() => undefined);
+  }, [request, processId]);
 
-  // web 提问回答：本进程（单进程多会话——回答走宿主 registry）
+  // web 提问回答：按进程路由（TUI 注册者 / spawn 实例——经服务进程下行）
   const answerAsk = useCallback(
     (toolCallId: string, answer: unknown) => {
-      request("web-ask:answer", { toolCallId, answer, processId: "host" }).catch(() => undefined);
+      if (!processId) return;
+      request("web-ask:answer", { toolCallId, answer, processId }).catch(() => undefined);
     },
-    [request],
+    [request, processId],
   );
 
   return (

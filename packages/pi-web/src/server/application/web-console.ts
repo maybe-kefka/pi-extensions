@@ -21,6 +21,9 @@ import {
 import { createCoalescer, type Coalescer } from "../infrastructure/coalescer.js";
 import { probePrivileged } from "../domain/privilege-probe.js";
 import { portAlive } from "../infrastructure/net-probe.js";
+import { resolveConnectAction } from "../domain/orchestrate.js";
+import type { WebStateFile } from "../domain/registry.js";
+import { webServiceSpawnSpec } from "../domain/spawn-spec.js";
 import { startWebServer, WebServerError, type WebServerHandle } from "../infrastructure/server.js";
 import { makeEvent, serialize } from "../domain/protocol.js";
 import { buildState } from "../domain/state.js";
@@ -225,6 +228,7 @@ export class WebConsole {
           this.broadcastAgentEvent(processId, event);
         },
         onAgentClose: (processId) => {
+          console.log(`[pi-web] agent close: ${processId}`);
           this.state.registry.remove(processId);
           this.broadcastAgentList();
           this.broadcast("agent_closed", { processId });
@@ -253,6 +257,46 @@ export class WebConsole {
     this.broadcastAgentList();
     if (open) await this.openBrowser(server.url);
     return { url: server.url };
+  }
+
+  /**
+   * /web 注册编排（无宿主语义）：无服务 → 自动 spawn 服务进程 → 注册；残留清理。
+   */
+  async ensureWebService(cwd: string): Promise<{ url: string }> {
+    if (this.state.agent) return { url: this.state.agent.hostUrl };
+    if (this.state.server) throw new WebServerError(1, "本进程是服务进程，无需注册");
+    const shared = WebConsole.readStateFile(cwd);
+    const alive = shared ? await portAlive(shared.port, netConnect) : false;
+    const action = resolveConnectAction(shared, alive);
+    if (action !== "connect") {
+      if (action === "cleanup-spawn") WebConsole.clearStateFile(cwd);
+      await this.spawnWebService(cwd);
+    }
+    return this.connectToHost(cwd);
+  }
+
+  /** spawn 独立服务进程（detached + stdin pipe 保活——rpc 进程 stdin EOF 退出教训）并等状态文件就绪 */
+  async spawnWebService(cwd: string): Promise<void> {
+    if (!this.extensionPath) throw new WebServerError(1, "扩展路径未知，无法 spawn 服务进程");
+    const spec = webServiceSpawnSpec({
+      execPath: process.execPath,
+      piEntry: process.argv[1] ?? "",
+      extensionPath: this.extensionPath,
+    });
+    const child = spawn(spec.execPath, spec.argv, {
+      cwd,
+      env: { ...process.env, ...spec.env },
+      detached: true,
+      stdio: ["pipe", "ignore", "ignore"],
+    });
+    child.unref();
+    const deadline = Date.now() + 20_000;
+    while (Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 300));
+      const sf = WebConsole.readStateFile(cwd);
+      if (sf && (await portAlive(sf.port, netConnect))) return;
+    }
+    throw new WebServerError(1, "web 服务进程启动超时（20s）");
   }
 
   /**
@@ -298,7 +342,7 @@ export class WebConsole {
   }
 
   /** 读宿主状态文件；不存在/非法返回 null */
-  static readStateFile(cwd: string): { port: number; token: string; serverPid: number } | null {
+  static readStateFile(cwd: string): WebStateFile | null {
     try {
       return parseStateFile(readFileSync(stateFilePath(cwd), "utf8"));
     } catch {

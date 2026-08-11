@@ -113,6 +113,10 @@ export default function (pi: ExtensionAPI): void {
   // multi-instance：扩展入口路径（spawn 新实例用——宿主/注册者都设置）
   webConsole.setExtensionPath(new URL(import.meta.url).pathname);
 
+  // 幂等：重复注册只覆盖 handleRequest 闭包（引用的仍是单例 state）——
+  // 必须在 start 之前（startWebServer 捕获 handleRequest 引用）
+  registerRpcHandler(webConsole);
+
   // web 服务独立进程（pi-web bin 注入 PI_WEB_SERVICE）：rpc 模式常驻，只起服务，不注册自己、无会话 tab
   if (process.env.PI_WEB_SERVICE === "1") {
     if (!webConsole.isRunning()) {
@@ -125,9 +129,6 @@ export default function (pi: ExtensionAPI): void {
 
   // multi-instance：spawn 实例自动注册（宿主注入的环境变量）——不等 /web
   webConsole.autoRegisterIfNeeded(process.cwd());
-
-  // 幂等：重复注册只覆盖 handleRequest 闭包（引用的仍是单例 state）
-  registerRpcHandler(webConsole);
 
   // R25：web 提问工具（阻塞等待回答）
   registerWebAskTools(pi);
@@ -142,7 +143,7 @@ export default function (pi: ExtensionAPI): void {
     if (webConsole.isAgent()) {
       webConsole.refreshAgentHello();
     }
-    if (webConsole.isRunning()) {
+    if (webConsole.isRunning() || webConsole.isAgent()) {
       // R26 session-follow：切换后主动探测特权有效性（TUI 切换 → stale → 降级提示立即生效；
       // web 内切换 → withSession 续链 → ok，不降级）
       // ④ 探测+清 stale 收进 WebConsole 方法（领域逻辑不进接线层）
@@ -183,26 +184,19 @@ export default function (pi: ExtensionAPI): void {
       const cwd = ctx.sessionManager.getCwd();
 
       if (opts.stop) {
-        if (!webConsole.isRunning()) {
+        if (webConsole.isRunning()) {
+          await webConsole.stop();
+          ctx.ui.notify("web 服务已停止", "info");
+        } else if (webConsole.isAgent()) {
+          ctx.ui.notify("本进程是注册者，web 服务由独立进程运行（可结束 pi-web 进程停止）", "info");
+        } else {
           ctx.ui.notify("web 服务未在运行", "info");
-          return;
         }
-        await webConsole.stop();
-        ctx.ui.notify("web 服务已停止", "info");
         return;
       }
 
       if (webConsole.isRunning()) {
-        // 本进程已是宿主：显示已有服务（或注册进共享实例）
-        if (webConsole.isAgent()) {
-          ctx.ui.notify(webConsole.agentHostUrl() ?? "已连接共享 web 服务", "info");
-          return;
-        }
-        if (opts.port !== 0 && opts.port !== webConsole.port) {
-          ctx.ui.notify(`已在 ${webConsole.url} 运行；请先 /web --stop 再换端口`, "error");
-          return;
-        }
-        // R26 session-follow：重跑 /web → 特权重新捕获 → 广播恢复（前端自动清降级提示）
+        // 本进程是服务进程：显示服务 URL
         broadcast(webConsole, "privilege_status", { ok: true });
         ctx.ui.notify(webConsole.url ?? "", "info");
         if (opts.open) await webConsole.openBrowser(webConsole.url ?? "");
@@ -210,8 +204,9 @@ export default function (pi: ExtensionAPI): void {
       }
 
       try {
-        const { url, mode } = await webConsole.startOrConnect(cwd, opts.port, opts.open);
-        ctx.ui.notify(mode === "agent" ? `已连接共享 web 控制台：${url}` : url, "info");
+        // 无宿主语义：注册自己（无服务 → 自动 spawn 服务进程 → 注册）
+        const { url } = await webConsole.ensureWebService(cwd);
+        ctx.ui.notify(`已连接 web 控制台：${url}`, "info");
         if (opts.open) await webConsole.openBrowser(url);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
