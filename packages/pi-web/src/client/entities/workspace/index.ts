@@ -3,4 +3,5 @@
  */
 
 export * from "./layout";
+export * from "./split-tree";
 export * from "./tabs";

@@ -10,9 +10,11 @@ export interface TabsBarProps {
   onClose: (id: string) => void;
   /** 拖拽调序（moveTab 纯函数——from 拖到 to 位置） */
   onMove: (fromId: string, toId: string) => void;
+  /** 拖拽开始/结束通知（02 分区：拖出 tab 到主区——null = 拖拽结束） */
+  onDragStartTab?: (id: string | null) => void;
 }
 
-export function TabsBar({ tabs, active, onActivate, onClose, onMove }: TabsBarProps) {
+export function TabsBar({ tabs, active, onActivate, onClose, onMove, onDragStartTab }: TabsBarProps) {
   const dragRef = useRef<string | null>(null);
   const [overId, setOverId] = useState<string | null>(null);
   return (
@@ -31,6 +33,7 @@ export function TabsBar({ tabs, active, onActivate, onClose, onMove }: TabsBarPr
             onDragStart={(e) => {
               dragRef.current = id;
               e.dataTransfer.effectAllowed = "move";
+              onDragStartTab?.(id);
             }}
             onDragOver={(e) => {
               e.preventDefault();
@@ -46,6 +49,7 @@ export function TabsBar({ tabs, active, onActivate, onClose, onMove }: TabsBarPr
             onDragEnd={() => {
               dragRef.current = null;
               setOverId(null);
+              onDragStartTab?.(null);
             }}
             className={`flex max-w-48 shrink-0 cursor-pointer items-center gap-1.5 border-r px-3 text-xs ${
               isActive ? "bg-background text-foreground shadow-[inset_0_2px_0_0_var(--primary)]" : "bg-muted/40 text-muted-foreground hover:bg-muted/60"

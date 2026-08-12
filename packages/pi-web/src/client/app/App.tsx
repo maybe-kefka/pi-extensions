@@ -1,4 +1,5 @@
 import { memo, startTransition, useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import { toast } from "sonner";
 import { createRpcClient, type RpcClient } from "@/shared/api";
 import { initialState, metaEquals, pickStreamMeta, type StreamAction, type StreamState, type StreamStateMeta } from "@/entities/chat";
@@ -20,7 +21,7 @@ import {
   closeChatTab,
   closeTab,
   diffPathOf,
-  initialState as initialWorkspace,
+  initialTree as initialWorkspace,
   openChatTab,
   chatLeaveAction,
   chatOpenAction,
@@ -35,9 +36,16 @@ import {
   tabDirty,
   type WorkspaceState,
 } from "@/entities/workspace";
+import { mapLeaf, singleLeafOf, splitGroup, type LayoutNode, type LeafNode, type SplitSide } from "@/entities/workspace";
+
+// 01：单组模式的叶子路由——组内操作复用 tabs.ts（groupId 由 mapLeaf 恢复）；分区后改为按聚焦组路由
+function applyToLeaf(s: LayoutNode, fn: (leaf: WorkspaceState) => WorkspaceState): LayoutNode {
+  return mapLeaf(s, singleLeafOf(s).groupId, fn);
+}
 import type { EditorPaneHandle } from "@/features/files";
 import { clampPanelWidth, loadPanelWidth, savePanelWidth } from "@/entities/workspace";
 import { ActivityBar, type ActivityPanel } from "@/features/activity-bar";
+import { SplitView } from "@/features/workspace";
 import { SessionPanel } from "@/features/sessions";
 import { SettingsPanel } from "@/features/settings";
 import { GitPanel } from "@/features/git-panel";
@@ -125,7 +133,7 @@ export default function App() {
   // vscode-align 03：activity bar 面板（null = 收起）
   const [panel, setPanel] = useState<ActivityPanel | null>(null);
   // 关闭 dirty tab 确认（vscode-align 02：三选）
-  const [pendingClose, setPendingClose] = useState<string | null>(null);
+  const [pendingClose, setPendingClose] = useState<{ groupId: string; id: string } | null>(null);
   const [pendingSaving, setPendingSaving] = useState(false);
   // 保存成功 → 递增（文件面板 git 状态联动刷新）
   const [gitRefreshKey, setGitRefreshKey] = useState(0);
@@ -153,51 +161,58 @@ export default function App() {
     window.addEventListener("mouseup", onUp);
   }, [panelWidth]);
   const editorRefs = useRef<Record<string, EditorPaneHandle | null>>({});
+  // 02：拖拽分区——拖拽中的 tab（TabsBar dragstart 上报）
+  const [dragTabId, setDragTabId] = useState<string | null>(null);
   // vscode-align：工作区 tab 状态（文件 tab + 聊天 tab）
-  const [workspace, dispatchWs] = useReducer(
+  const [workspaceTree, dispatchWs] = useReducer(
     (
-      s: WorkspaceState,
+      s: LayoutNode,
       a:
         | { kind: "open"; path: string; name: string; preview?: boolean }
         | { kind: "open-diff"; path: string; name: string; repoRoot?: string }
-        | { kind: "activate"; id: string }
-        | { kind: "close"; id: string }
+        | { kind: "activate"; groupId: string; id: string }
+        | { kind: "close"; groupId: string; id: string }
         | { kind: "dirty"; path: string; dirty: boolean }
         | { kind: "promote"; path: string }
         | { kind: "rename-chat"; sessionId: string; name: string }
         | { kind: "open-chat"; sessionId: string; name: string }
         | { kind: "close-chat"; sessionId: string }
         | { kind: "dead-chat"; sessionId: string }
-        | { kind: "move"; fromId: string; toId: string },
-    ): WorkspaceState => {
+        | { kind: "move"; groupId: string; fromId: string; toId: string }
+        | { kind: "split"; groupId: string; side: SplitSide; tabId: string },
+    ): LayoutNode => {
       switch (a.kind) {
         case "open":
-          return openFile(s, a.path, a.name, { preview: a.preview });
+          return applyToLeaf(s, (leaf) => openFile(leaf, a.path, a.name, { preview: a.preview }));
         case "open-diff":
-          return openDiffTab(s, a.path, a.name, a.repoRoot);
+          return applyToLeaf(s, (leaf) => openDiffTab(leaf, a.path, a.name, a.repoRoot));
         case "activate":
-          return activateTab(s, a.id);
+          return mapLeaf(s, a.groupId, (leaf) => activateTab(leaf, a.id));
         case "close":
-          return closeTab(s, a.id);
+          return mapLeaf(s, a.groupId, (leaf) => closeTab(leaf, a.id));
         case "dirty":
-          return setDirty(s, a.path, a.dirty);
+          return applyToLeaf(s, (leaf) => setDirty(leaf, a.path, a.dirty));
         case "promote":
-          return promotePreview(s, a.path);
+          return applyToLeaf(s, (leaf) => promotePreview(leaf, a.path));
         case "rename-chat":
-          return renameChatTab(s, a.sessionId, a.name);
+          return applyToLeaf(s, (leaf) => renameChatTab(leaf, a.sessionId, a.name));
         case "open-chat":
-          return openChatTab(s, a.sessionId, a.name);
+          return applyToLeaf(s, (leaf) => openChatTab(leaf, a.sessionId, a.name));
         case "close-chat":
-          return closeChatTab(s, a.sessionId);
+          return applyToLeaf(s, (leaf) => closeChatTab(leaf, a.sessionId));
         case "dead-chat":
-          return markChatDead(s, a.sessionId);
+          return applyToLeaf(s, (leaf) => markChatDead(leaf, a.sessionId));
         case "move":
-          return moveTab(s, a.fromId, a.toId);
+          return mapLeaf(s, a.groupId, (leaf) => moveTab(leaf, a.fromId, a.toId));
+        case "split":
+          return splitGroup(s, a.groupId, a.side, a.tabId);
       }
     },
     undefined,
     initialWorkspace,
   );
+  // 01：单组等价——渲染侧仍读叶子内容（分区后按组渲染）
+  const workspace = singleLeafOf(workspaceTree);
   // workspace 最新引用（事件回调闭包读取）
   const workspaceRef = useRef(workspace);
   workspaceRef.current = workspace;
@@ -343,7 +358,7 @@ export default function App() {
         dispatchWs({ kind: "close-chat", sessionId: j.sessionFile });
       }
       dispatchWs({ kind: "open-chat", sessionId: j.sessionFile, name: j.sessionName ?? sessionLabelFromFile(j.sessionFile) });
-      dispatchWs({ kind: "activate", id: chatTabId(j.sessionFile) });
+      dispatchWs({ kind: "activate", groupId: singleLeafOf(workspaceRef.current).groupId, id: chatTabId(j.sessionFile) });
     }
     for (const sid of diff.leave) {
       // dead（断线保留待重拉）保持；正常消失（TUI 切换）关闭
@@ -442,12 +457,12 @@ export default function App() {
   const openChat = useCallback((path: string, name: string) => {
     const decision = chatOpenAction(workspaceRef.current, agentsRef.current, path);
     if (decision.kind === "activate") {
-      dispatchWs({ kind: "activate", id: chatTabId(path) });
+      dispatchWs({ kind: "activate", groupId: singleLeafOf(workspaceRef.current).groupId, id: chatTabId(path) });
       return;
     }
     if (decision.kind === "open") {
       dispatchWs({ kind: "open-chat", sessionId: path, name: name || decision.name });
-      dispatchWs({ kind: "activate", id: chatTabId(path) });
+      dispatchWs({ kind: "activate", groupId: singleLeafOf(workspaceRef.current).groupId, id: chatTabId(path) });
       return;
     }
     // 无实例：服务进程 spawn 独立实例 → agent_list 事件自动开 tab
@@ -584,6 +599,96 @@ export default function App() {
     [models, hostState.model, hostState.thinkingLevel, hostState.availableThinkingLevels, setModel, setThinking, themePref, onThemeChange],
   );
 
+  // 02：叶子内容渲染（TabsBar + chat/file/diff 内容区——常驻挂载模式不变，leaf 参数化）
+  const renderLeafContent = (leaf: LeafNode): ReactNode => {
+    const tabs = leaf.tabs;
+    const active = leaf.active;
+    return (
+      <>
+        <TabsBar
+          tabs={tabs}
+          active={active}
+          onActivate={(id) => dispatchWs({ kind: "activate", groupId: leaf.groupId, id })}
+          onMove={(fromId, toId) => dispatchWs({ kind: "move", groupId: leaf.groupId, fromId, toId })}
+          onClose={(id) => {
+            if (chatSessionOf(id) !== null) {
+              // chat 与 file 同级：直接关闭；spawn 实例同步杀进程（TUI 注册者保留注册）
+              const sid = chatSessionOf(id) as string;
+              const entry = agents.find((ag) => ag.sessionFile === sid);
+              if (entry && entry.kind === "spawned") {
+                rpcRef.current?.request("pi:closeAgent", { processId: entry.processId }).catch(() => undefined);
+              }
+              dispatchWs({ kind: "close", groupId: leaf.groupId, id });
+              return;
+            }
+            if (tabDirty(leaf, id)) {
+              setPendingClose({ groupId: leaf.groupId, id });
+            } else {
+              dispatchWs({ kind: "close", groupId: leaf.groupId, id });
+            }
+          }}
+          onDragStartTab={setDragTabId}
+        />
+        <div className="min-h-0 flex-1">
+          {active === "" && tabs.length === 0 && <ChatEmptyGuide />}
+          {/* chat 与 file 同级常驻挂载（hidden 保状态——input/滚动不丢）；conn open 才挂 ChatTab */}
+          {conn === "open" &&
+            tabs
+              .filter((t) => t.kind === "chat")
+              .map((t) => (
+                <div key={t.sessionId} className={chatTabId(t.sessionId) === active ? "h-full" : "hidden"}>
+                  <ChatTab
+                    sessionId={t.sessionId}
+                    name={t.name}
+                    processId={agents.find((ag) => ag.sessionFile === t.sessionId)?.processId ?? ""}
+                    dead={t.kind === "chat" && t.dead === true}
+                    usage={usageBySession[t.sessionId] ?? null}
+                    onRevive={(sid) => openChat(sid, t.kind === "chat" ? t.name : "聊天")}
+                    active={chatTabId(t.sessionId) === active}
+                    request={getRequest()}
+                    conn={conn}
+                    skills={skills}
+                    commands={commands}
+                    files={files}
+                    pickerLoading={pickerLoading}
+                    onPickerOpen={refreshPicker}
+                    onFork={fork}
+                    onRegisterDispatch={registerDispatch}
+                    onUnregisterDispatch={unregisterDispatch}
+                    onStateChange={handleTabStateChange}
+                  />
+                </div>
+              ))}
+          {tabs
+            .filter((t) => t.kind === "file")
+            .map((t) => (
+              <div key={t.path} className={active === t.path ? "h-full" : "hidden"}>
+                <EditorPane
+                  path={t.path}
+                  request={getRequest()}
+                  ref={(h) => {
+                    editorRefs.current[t.path] = h;
+                  }}
+                  onDirtyChange={(path, dirty) => {
+                    dispatchWs({ kind: "dirty", path, dirty });
+                    if (dirty) dispatchWs({ kind: "promote", path }); // 编辑自动转正式
+                  }}
+                  onSaved={() => setGitRefreshKey((k) => k + 1)}
+                />
+              </div>
+            ))}
+          {tabs
+            .filter((t) => t.kind === "diff")
+            .map((t) => (
+              <div key={`diff:${t.path}`} className={active === `diff:${t.path}` ? "h-full" : "hidden"}>
+                <DiffSplitView path={t.path} request={getRequest()} repoRoot={t.repoRoot} />
+              </div>
+            ))}
+        </div>
+      </>
+    );
+  };
+
   return (
     <div className="flex h-dvh flex-col bg-background text-foreground">
       <div className="flex min-h-0 flex-1">
@@ -617,86 +722,14 @@ export default function App() {
           </aside>
         )}
         <main className="flex min-h-0 min-w-0 flex-1 flex-col">
-          <TabsBar
-            tabs={workspace.tabs}
-            active={workspace.active}
-            onActivate={(id) => dispatchWs({ kind: "activate", id })}
-            onMove={(fromId, toId) => dispatchWs({ kind: "move", fromId, toId })}
-            onClose={(id) => {
-              if (chatSessionOf(id) !== null) {
-                // chat 与 file 同级：直接关闭；spawn 实例同步杀进程（TUI 注册者保留注册）
-                const sid = chatSessionOf(id) as string;
-                const entry = agents.find((ag) => ag.sessionFile === sid);
-                if (entry && entry.kind === "spawned") {
-                  rpcRef.current?.request("pi:closeAgent", { processId: entry.processId }).catch(() => undefined);
-                }
-                dispatchWs({ kind: "close", id });
-                return;
-              }
-              if (tabDirty(workspace, id)) {
-                setPendingClose(id);
-              } else {
-                dispatchWs({ kind: "close", id });
-              }
-            }}
-          />
-      <div className="min-h-0 flex-1">
           <DisconnectBannerMemo conn={conn} />
-          {workspace.active === "" && <ChatEmptyGuide />}
-          {/* chat 与 file 同级常驻挂载（hidden 保状态——input/滚动不丢）；conn open 才挂 ChatTab */}
-          {conn === "open" && workspace.tabs
-            .filter((t) => t.kind === "chat")
-            .map((t) => (
-              <div key={t.sessionId} className={chatTabId(t.sessionId) === workspace.active ? "h-full" : "hidden"}>
-                <ChatTab
-                  sessionId={t.sessionId}
-                  name={t.name}
-                  processId={agents.find((ag) => ag.sessionFile === t.sessionId)?.processId ?? ""}
-                  dead={t.kind === "chat" && t.dead === true}
-                  usage={usageBySession[t.sessionId] ?? null}
-                  onRevive={(sid) => openChat(sid, t.kind === "chat" ? t.name : "聊天")}
-                  active={chatTabId(t.sessionId) === workspace.active}
-                  request={getRequest()}
-                  conn={conn}
-                  skills={skills}
-                  commands={commands}
-                  files={files}
-                  pickerLoading={pickerLoading}
-                  onPickerOpen={refreshPicker}
-                  onFork={fork}
-                  onRegisterDispatch={registerDispatch}
-                  onUnregisterDispatch={unregisterDispatch}
-                  onStateChange={handleTabStateChange}
-                />
-              </div>
-            ))}
-          {workspace.tabs
-            .filter((t) => t.kind === "file")
-            .map((t) => (
-              <div key={t.path} className={workspace.active === t.path ? "h-full" : "hidden"}>
-                <EditorPane
-                  path={t.path}
-                  request={getRequest()}
-                  ref={(h) => {
-                    editorRefs.current[t.path] = h;
-                  }}
-                  onDirtyChange={(path, dirty) => {
-                    dispatchWs({ kind: "dirty", path, dirty });
-                    if (dirty) dispatchWs({ kind: "promote", path }); // 编辑自动转正式
-                  }}
-                  onSaved={() => setGitRefreshKey((k) => k + 1)}
-                />
-              </div>
-            ))}
-          {workspace.tabs
-            .filter((t) => t.kind === "diff")
-            .map((t) => (
-              <div key={`diff:${t.path}`} className={workspace.active === `diff:${t.path}` ? "h-full" : "hidden"}>
-                <DiffSplitView path={t.path} request={getRequest()} repoRoot={t.repoRoot} />
-              </div>
-            ))}
-        </div>
-      </main>
+          <SplitView
+            tree={workspaceTree}
+            dragTabId={dragTabId}
+            onSplit={(groupId, side, tabId) => dispatchWs({ kind: "split", groupId, side, tabId })}
+            renderLeaf={renderLeafContent}
+          />
+        </main>
       </div>
       <Dialog
         open={pendingClose !== null}
@@ -706,14 +739,14 @@ export default function App() {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>保存对 {pendingClose ? pendingClose.split("/").pop() : ""} 的更改？</DialogTitle>
+            <DialogTitle>保存对 {pendingClose ? pendingClose.id.split("/").pop() : ""} 的更改？</DialogTitle>
             <DialogDescription>文件有未保存的修改，关闭前请选择处理方式。</DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2">
             <Button
               variant="outline"
               onClick={() => {
-                if (pendingClose) dispatchWs({ kind: "close", id: pendingClose });
+                if (pendingClose) dispatchWs({ kind: "close", groupId: pendingClose.groupId, id: pendingClose.id });
                 setPendingClose(null);
               }}
             >
@@ -724,10 +757,10 @@ export default function App() {
               onClick={async () => {
                 if (!pendingClose) return;
                 setPendingSaving(true);
-                const ok = await editorRefs.current[pendingClose]?.save();
+                const ok = await editorRefs.current[pendingClose.id]?.save();
                 setPendingSaving(false);
                 if (ok) {
-                  dispatchWs({ kind: "close", id: pendingClose });
+                  dispatchWs({ kind: "close", groupId: pendingClose.groupId, id: pendingClose.id });
                   setPendingClose(null);
                 }
               }}
