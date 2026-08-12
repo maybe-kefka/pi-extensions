@@ -148,4 +148,19 @@ describe("SplitView 05：divider 拖动", () => {
     fireEvent.pointerUp(divider, { pointerId: 1 });
   });
 });
+
+describe("SplitView 08：bug 修复回归", () => {
+  it("DropZone bottom 方向：高亮框底部对齐（不含 inset-y-0 覆盖）", () => {
+    mockRect(400, 300);
+    const s = setup({ tree: twoLeafTree(), dragTabId: "chat:/s.jsonl" });
+    render(<SplitView {...s} />);
+    // 左侧原组 leaf 底部 dragover → bottom 高亮
+    dragOverAt(screen.getByTestId("leaf-g1"), 200, 295);
+    const zone = document.querySelector('[data-testid="drop-bottom"]');
+    expect(zone).not.toBeNull();
+    const cls = zone?.getAttribute("class") ?? "";
+    expect(cls).toContain("bottom-0");
+    expect(cls).not.toContain("inset-y-0");
+  });
+});
 });

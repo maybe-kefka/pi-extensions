@@ -175,10 +175,10 @@ export default function App() {
   const editorRefs = useRef<Record<string, EditorPaneHandle | null>>({});
   // 02：拖拽分区——拖拽中的 tab（TabsBar dragstart 上报）
   const [dragTabId, setDragTabId] = useState<string | null>(null);
-  // 07：chat input 草稿（App 保存——split 重挂后恢复；非受控 contentEditable 的 DOM 内容会随重挂丢失）
-  const [chatDrafts, setChatDrafts] = useState<Record<string, string>>({});
+  // 07：chat input 草稿（ref 存储——split 重挂后恢复；08：ref 写入不触发渲染，打字不卡顿）
+  const chatDraftsRef = useRef<Record<string, string>>({});
   const handleDraftChange = useCallback((sessionId: string, text: string) => {
-    setChatDrafts((prev) => (prev[sessionId] === text ? prev : { ...prev, [sessionId]: text }));
+    chatDraftsRef.current[sessionId] = text;
   }, []);
   // 04：聚焦区（最后交互的组）——外部打开/新注册会话的落点；从未交互 → 第一组
   const [focusGroupId, setFocusGroupId] = useState<string | null>(null);
@@ -724,7 +724,7 @@ export default function App() {
                     pickerLoading={pickerLoading}
                     onPickerOpen={refreshPicker}
                     onFork={fork}
-                    draftText={chatDrafts[t.sessionId]}
+                    draftText={chatDraftsRef.current[t.sessionId]}
                     onDraftChange={(text) => handleDraftChange(t.sessionId, text)}
                     onRegisterDispatch={registerDispatch}
                     onUnregisterDispatch={unregisterDispatch}

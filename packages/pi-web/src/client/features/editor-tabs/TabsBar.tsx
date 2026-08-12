@@ -36,9 +36,10 @@ export function TabsBar({ tabs, active, onActivate, onClose, onMove, onDragStart
         if (tabs.length === 0 && from) {
           e.preventDefault();
           onDropTab?.(from);
-          dragRef.current = null;
-          setOverId(null);
+          onDragStartTab?.(null); // 08：drop 即拖拽结束（dragend 可能不触发 → SplitView 高亮残留）
         }
+        dragRef.current = null;
+        setOverId(null);
       }}
     >
       {tabs.map((tab) => {
@@ -67,6 +68,7 @@ export function TabsBar({ tabs, active, onActivate, onClose, onMove, onDragStart
               e.preventDefault();
               const from = dragRef.current ?? dragId ?? null;
               if (from && from !== id) onMove(from, id);
+              onDragStartTab?.(null); // 08：drop 即拖拽结束（SplitView 高亮清理）
               dragRef.current = null;
               setOverId(null);
             }}

@@ -142,5 +142,6 @@ function DropZone({ side }: { side: SplitSide }) {
         : side === "top"
           ? "inset-x-0 top-0 h-1/4"
           : "inset-x-0 bottom-0 h-1/4";
-  return <div data-testid={`drop-${side}`} className={`bg-primary/20 pointer-events-none absolute inset-y-0 z-10 ${cls}`} />;
+  // 08：base 不含 inset-y-0（否则 bottom 分支的 top:0 被它覆盖 → 高亮框显示在顶部）
+  return <div data-testid={`drop-${side}`} className={`bg-primary/20 pointer-events-none absolute z-10 ${cls}`} />;
 }
