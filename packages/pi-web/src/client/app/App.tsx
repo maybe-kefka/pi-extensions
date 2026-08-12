@@ -36,12 +36,20 @@ import {
   tabDirty,
   type WorkspaceState,
 } from "@/entities/workspace";
-import { mapLeaf, moveTabToGroup, removeEmptyLeaf, singleLeafOf, splitGroup, type LayoutNode, type LeafNode, type SplitSide } from "@/entities/workspace";
-
-// 01：单组模式的叶子路由——组内操作复用 tabs.ts（groupId 由 mapLeaf 恢复）；分区后改为按聚焦组路由
-function applyToLeaf(s: LayoutNode, fn: (leaf: WorkspaceState) => WorkspaceState): LayoutNode {
-  return mapLeaf(s, singleLeafOf(s).groupId, fn);
-}
+import {
+  findGroupOfTree,
+  findLeaf,
+  flattenTabs,
+  mapLeaf,
+  moveTabToGroup,
+  removeEmptyLeaf,
+  removeTabFromTree,
+  singleLeafOf,
+  splitGroup,
+  type LayoutNode,
+  type LeafNode,
+  type SplitSide,
+} from "@/entities/workspace";
 import type { EditorPaneHandle } from "@/features/files";
 import { clampPanelWidth, loadPanelWidth, savePanelWidth } from "@/entities/workspace";
 import { ActivityBar, type ActivityPanel } from "@/features/activity-bar";
@@ -163,45 +171,47 @@ export default function App() {
   const editorRefs = useRef<Record<string, EditorPaneHandle | null>>({});
   // 02：拖拽分区——拖拽中的 tab（TabsBar dragstart 上报）
   const [dragTabId, setDragTabId] = useState<string | null>(null);
+  // 04：聚焦区（最后交互的组）——外部打开/新注册会话的落点；从未交互 → 第一组
+  const [focusGroupId, setFocusGroupId] = useState<string | null>(null);
   // vscode-align：工作区 tab 状态（文件 tab + 聊天 tab）
   const [workspaceTree, dispatchWs] = useReducer(
     (
       s: LayoutNode,
       a:
-        | { kind: "open"; path: string; name: string; preview?: boolean }
-        | { kind: "open-diff"; path: string; name: string; repoRoot?: string }
+        | { kind: "open"; groupId: string; path: string; name: string; preview?: boolean }
+        | { kind: "open-diff"; groupId: string; path: string; name: string; repoRoot?: string }
         | { kind: "activate"; groupId: string; id: string }
         | { kind: "close"; groupId: string; id: string }
-        | { kind: "dirty"; path: string; dirty: boolean }
-        | { kind: "promote"; path: string }
-        | { kind: "rename-chat"; sessionId: string; name: string }
-        | { kind: "open-chat"; sessionId: string; name: string }
+        | { kind: "dirty"; groupId: string; path: string; dirty: boolean }
+        | { kind: "promote"; groupId: string; path: string }
+        | { kind: "rename-chat"; groupId: string; sessionId: string; name: string }
+        | { kind: "open-chat"; groupId: string; sessionId: string; name: string }
         | { kind: "close-chat"; sessionId: string }
-        | { kind: "dead-chat"; sessionId: string }
+        | { kind: "dead-chat"; groupId: string; sessionId: string }
         | { kind: "move"; groupId: string; fromId: string; toId: string | null }
         | { kind: "split"; groupId: string; side: SplitSide; tabId: string },
     ): LayoutNode => {
       switch (a.kind) {
         case "open":
-          return applyToLeaf(s, (leaf) => openFile(leaf, a.path, a.name, { preview: a.preview }));
+          return mapLeaf(s, a.groupId, (leaf) => openFile(leaf, a.path, a.name, { preview: a.preview }));
         case "open-diff":
-          return applyToLeaf(s, (leaf) => openDiffTab(leaf, a.path, a.name, a.repoRoot));
+          return mapLeaf(s, a.groupId, (leaf) => openDiffTab(leaf, a.path, a.name, a.repoRoot));
         case "activate":
           return mapLeaf(s, a.groupId, (leaf) => activateTab(leaf, a.id));
         case "close":
           return removeEmptyLeaf(mapLeaf(s, a.groupId, (leaf) => closeTab(leaf, a.id)));
         case "dirty":
-          return applyToLeaf(s, (leaf) => setDirty(leaf, a.path, a.dirty));
+          return mapLeaf(s, a.groupId, (leaf) => setDirty(leaf, a.path, a.dirty));
         case "promote":
-          return applyToLeaf(s, (leaf) => promotePreview(leaf, a.path));
+          return mapLeaf(s, a.groupId, (leaf) => promotePreview(leaf, a.path));
         case "rename-chat":
-          return applyToLeaf(s, (leaf) => renameChatTab(leaf, a.sessionId, a.name));
+          return mapLeaf(s, a.groupId, (leaf) => renameChatTab(leaf, a.sessionId, a.name));
         case "open-chat":
-          return applyToLeaf(s, (leaf) => openChatTab(leaf, a.sessionId, a.name));
+          return mapLeaf(s, a.groupId, (leaf) => openChatTab(leaf, a.sessionId, a.name));
         case "close-chat":
-          return removeEmptyLeaf(applyToLeaf(s, (leaf) => closeChatTab(leaf, a.sessionId)));
+          return removeTabFromTree(s, chatTabId(a.sessionId));
         case "dead-chat":
-          return applyToLeaf(s, (leaf) => markChatDead(leaf, a.sessionId));
+          return mapLeaf(s, a.groupId, (leaf) => markChatDead(leaf, a.sessionId));
         case "move":
           return moveTabToGroup(s, a.groupId, a.fromId, a.toId);
         case "split":
@@ -213,19 +223,24 @@ export default function App() {
   );
   // 01：单组等价——渲染侧仍读叶子内容（分区后按组渲染）
   const workspace = singleLeafOf(workspaceTree);
+  // 04：聚焦组/聚焦 leaf（外部打开落点；focusGroupId 失效时回退第一组）
+  const focusGroup = focusGroupId && findLeaf(workspaceTree, focusGroupId) ? focusGroupId : singleLeafOf(workspaceTree).groupId;
+  const focusLeaf = findLeaf(workspaceTree, focusGroup) ?? singleLeafOf(workspaceTree);
   // workspace 最新引用（事件回调闭包读取）
   const workspaceRef = useRef(workspace);
   workspaceRef.current = workspace;
+  const focusRef = useRef(focusGroup);
+  focusRef.current = focusGroup;
 
   // host 会话名变化 → 激活 chat tab 标题同步（若有）
   useEffect(() => {
-    const sid = chatSessionOf(workspace.active);
-    if (hostState.sessionName && sid) dispatchWs({ kind: "rename-chat", sessionId: sid, name: hostState.sessionName });
-  }, [hostState.sessionName, workspace.active]);
+    const sid = chatSessionOf(focusLeaf.active);
+    if (hostState.sessionName && sid) dispatchWs({ kind: "rename-chat", groupId: focusRef.current, sessionId: sid, name: hostState.sessionName });
+  }, [hostState.sessionName, focusLeaf.active]);
 
   // 激活 chat tab：会话不同 → 切换进程会话（历史由 ChatTab 首次加载；切回不重拉）
   useEffect(() => {
-    const sid = chatSessionOf(workspace.active);
+    const sid = chatSessionOf(focusLeaf.active);
     if (!sid || !hostState.sessionFile) return; // 会话信息未就绪（getState 未回）——等
     if (hostState.sessionFile !== sid) {
       rpcRef.current?.request("pi:switchSession", { path: sid }).catch(() => undefined);
@@ -306,7 +321,12 @@ export default function App() {
         if (evt.type === "agent_closed") {
           const pid = typeof evt.processId === "string" ? evt.processId : "";
           const entry = agentsRef.current.find((ag) => ag.processId === pid);
-          if (entry?.sessionFile) dispatchWs({ kind: "dead-chat", sessionId: entry.sessionFile });
+          if (entry?.sessionFile)
+            dispatchWs({
+              kind: "dead-chat",
+              groupId: findGroupOfTree(workspaceRef.current, chatTabId(entry.sessionFile)) ?? focusRef.current,
+              sessionId: entry.sessionFile,
+            });
           return;
         }
         // TUI 接管提示（TUI 切到 web 已实例化的会话 → 该实例被杀）
@@ -354,15 +374,15 @@ export default function App() {
     const diff = diffAgentTabs(workspaceRef.current, list);
     for (const j of diff.join) {
       // dead 的 tab 重建复活（reducer 状态已随实例死亡丢失——历史由 ChatTab 重拉）
-      if (chatLeaveAction(workspaceRef.current.tabs, j.sessionFile) === "keep") {
+      if (chatLeaveAction(flattenTabs(workspaceRef.current), j.sessionFile) === "keep") {
         dispatchWs({ kind: "close-chat", sessionId: j.sessionFile });
       }
-      dispatchWs({ kind: "open-chat", sessionId: j.sessionFile, name: j.sessionName ?? sessionLabelFromFile(j.sessionFile) });
-      dispatchWs({ kind: "activate", groupId: singleLeafOf(workspaceRef.current).groupId, id: chatTabId(j.sessionFile) });
+      dispatchWs({ kind: "open-chat", groupId: focusRef.current, sessionId: j.sessionFile, name: j.sessionName ?? sessionLabelFromFile(j.sessionFile) });
+      dispatchWs({ kind: "activate", groupId: focusRef.current, id: chatTabId(j.sessionFile) });
     }
     for (const sid of diff.leave) {
       // dead（断线保留待重拉）保持；正常消失（TUI 切换）关闭
-      if (chatLeaveAction(workspaceRef.current.tabs, sid) === "close") {
+      if (chatLeaveAction(flattenTabs(workspaceRef.current), sid) === "close") {
         dispatchWs({ kind: "close-chat", sessionId: sid });
       }
     }
@@ -455,14 +475,15 @@ export default function App() {
 
   /** 打开会话 tab（会话管理点击）——激活时自动切换进程会话 */
   const openChat = useCallback((path: string, name: string) => {
-    const decision = chatOpenAction(workspaceRef.current, agentsRef.current, path);
+    const decision = chatOpenAction({ ...workspaceRef.current, tabs: flattenTabs(workspaceRef.current) }, agentsRef.current, path);
     if (decision.kind === "activate") {
-      dispatchWs({ kind: "activate", groupId: singleLeafOf(workspaceRef.current).groupId, id: chatTabId(path) });
+      // 已开 tab：激活其所在组（而非聚焦组——tab 不跨组移动）
+      dispatchWs({ kind: "activate", groupId: findGroupOfTree(workspaceRef.current, chatTabId(path)) ?? focusRef.current, id: chatTabId(path) });
       return;
     }
     if (decision.kind === "open") {
-      dispatchWs({ kind: "open-chat", sessionId: path, name: name || decision.name });
-      dispatchWs({ kind: "activate", groupId: singleLeafOf(workspaceRef.current).groupId, id: chatTabId(path) });
+      dispatchWs({ kind: "open-chat", groupId: focusRef.current, sessionId: path, name: name || decision.name });
+      dispatchWs({ kind: "activate", groupId: focusRef.current, id: chatTabId(path) });
       return;
     }
     // 无实例：服务进程 spawn 独立实例 → agent_list 事件自动开 tab
@@ -608,9 +629,18 @@ export default function App() {
         <TabsBar
           tabs={tabs}
           active={active}
-          onActivate={(id) => dispatchWs({ kind: "activate", groupId: leaf.groupId, id })}
-          onMove={(fromId, toId) => dispatchWs({ kind: "move", groupId: leaf.groupId, fromId, toId })}
-          onDropTab={(fromId) => dispatchWs({ kind: "move", groupId: leaf.groupId, fromId, toId: null })}
+          onActivate={(id) => {
+            setFocusGroupId(leaf.groupId);
+            dispatchWs({ kind: "activate", groupId: leaf.groupId, id });
+          }}
+          onMove={(fromId, toId) => {
+            setFocusGroupId(leaf.groupId);
+            dispatchWs({ kind: "move", groupId: leaf.groupId, fromId, toId });
+          }}
+          onDropTab={(fromId) => {
+            setFocusGroupId(leaf.groupId);
+            dispatchWs({ kind: "move", groupId: leaf.groupId, fromId, toId: null });
+          }}
           onClose={(id) => {
             if (chatSessionOf(id) !== null) {
               // chat 与 file 同级：直接关闭；spawn 实例同步杀进程（TUI 注册者保留注册）
@@ -672,8 +702,8 @@ export default function App() {
                     editorRefs.current[t.path] = h;
                   }}
                   onDirtyChange={(path, dirty) => {
-                    dispatchWs({ kind: "dirty", path, dirty });
-                    if (dirty) dispatchWs({ kind: "promote", path }); // 编辑自动转正式
+                    dispatchWs({ kind: "dirty", groupId: leaf.groupId, path, dirty });
+                    if (dirty) dispatchWs({ kind: "promote", groupId: leaf.groupId, path }); // 编辑自动转正式
                   }}
                   onSaved={() => setGitRefreshKey((k) => k + 1)}
                 />
@@ -712,13 +742,13 @@ export default function App() {
             {panel === "files" && (
               <FilesTree
                 request={getRequest()}
-                onOpenFile={(path, name, preview) => dispatchWs({ kind: "open", path, name, preview })}
+                onOpenFile={(path, name, preview) => dispatchWs({ kind: "open", groupId: focusRef.current, path, name, preview })}
                 activePath={chatSessionOf(workspace.active) !== null ? null : workspace.active}
                 gitRefreshKey={gitRefreshKey}
-                onOpenDiff={(path) => dispatchWs({ kind: "open-diff", path, name: path.split("/").pop() ?? path })}
+                onOpenDiff={(path) => dispatchWs({ kind: "open-diff", groupId: focusRef.current, path, name: path.split("/").pop() ?? path })}
               />
             )}
-            {panel === "git" && <GitPanel request={getRequest()} gitRefreshKey={gitRefreshKey} onOpenFile={(path, repoRoot) => dispatchWs({ kind: "open-diff", path, name: path.split("/").pop() ?? path, repoRoot })} />}
+            {panel === "git" && <GitPanel request={getRequest()} gitRefreshKey={gitRefreshKey} onOpenFile={(path, repoRoot) => dispatchWs({ kind: "open-diff", groupId: focusRef.current, path, name: path.split("/").pop() ?? path, repoRoot })} />}
             {panel === "sessions" && <SessionPanel {...sessionPanelProps} />}
             {panel === "settings" && <SettingsPanel {...settingsPanelProps} />}
           </aside>
@@ -728,7 +758,10 @@ export default function App() {
           <SplitView
             tree={workspaceTree}
             dragTabId={dragTabId}
-            onSplit={(groupId, side, tabId) => dispatchWs({ kind: "split", groupId, side, tabId })}
+            onSplit={(groupId, side, tabId) => {
+              setFocusGroupId(groupId);
+              dispatchWs({ kind: "split", groupId, side, tabId });
+            }}
             renderLeaf={renderLeafContent}
           />
         </main>

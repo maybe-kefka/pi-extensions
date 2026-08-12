@@ -107,6 +107,35 @@ function findGroupOf(tree: LayoutNode, tabId: string): string | null {
   return findGroupOf(tree.a, tabId) ?? findGroupOf(tree.b, tabId);
 }
 
+/** 导出版（04：按 tab 定位组——agent 生命周期/改名等外部操作） */
+export function findGroupOfTree(tree: LayoutNode, tabId: string): string | null {
+  return findGroupOf(tree, tabId);
+}
+
+/** 按 groupId 找 leaf（聚焦区定位）；不存在 → null */
+export function findLeaf(tree: LayoutNode, groupId: string): LeafNode | null {
+  if (tree.kind === "leaf") return tree.groupId === groupId ? tree : null;
+  return findLeaf(tree.a, groupId) ?? findLeaf(tree.b, groupId);
+}
+
+/** 展平所有组的 tabs（agent 生命周期等全局查找用） */
+export function flattenTabs(tree: LayoutNode): WorkspaceTab[] {
+  if (tree.kind === "leaf") return tree.tabs;
+  return [...flattenTabs(tree.a), ...flattenTabs(tree.b)];
+}
+
+/** 从所在组移除 tab（不指定组——内部定位）；组空自动合并 */
+export function removeTabFromTree(tree: LayoutNode, tabId: string): LayoutNode {
+  const groupId = findGroupOf(tree, tabId);
+  if (!groupId) return tree;
+  const removed = updateLeaf(tree, groupId, (leaf) =>
+    leaf.tabs.some((t) => tabKeyOf(t) === tabId)
+      ? { ...closeTab(leaf, tabId), kind: "leaf", groupId: leaf.groupId }
+      : leaf,
+  );
+  return removeEmptyLeaf(removed);
+}
+
 /** 移动 tab 到目标组（跨组/同组调序统一）：toId 前插入（null = 追加末尾）；跨组激活目标、原组激活相邻；空组自动合并 */
 export function moveTabToGroup(tree: LayoutNode, toGroupId: string, fromId: string, toId: string | null): LayoutNode {
   const fromGroupId = findGroupOf(tree, fromId);
