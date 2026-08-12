@@ -175,6 +175,11 @@ export default function App() {
   const editorRefs = useRef<Record<string, EditorPaneHandle | null>>({});
   // 02：拖拽分区——拖拽中的 tab（TabsBar dragstart 上报）
   const [dragTabId, setDragTabId] = useState<string | null>(null);
+  // 07：chat input 草稿（App 保存——split 重挂后恢复；非受控 contentEditable 的 DOM 内容会随重挂丢失）
+  const [chatDrafts, setChatDrafts] = useState<Record<string, string>>({});
+  const handleDraftChange = useCallback((sessionId: string, text: string) => {
+    setChatDrafts((prev) => (prev[sessionId] === text ? prev : { ...prev, [sessionId]: text }));
+  }, []);
   // 04：聚焦区（最后交互的组）——外部打开/新注册会话的落点；从未交互 → 第一组
   const [focusGroupId, setFocusGroupId] = useState<string | null>(null);
   // vscode-align：工作区 tab 状态（文件 tab + 聊天 tab）
@@ -227,12 +232,8 @@ export default function App() {
     },
     undefined,
     () => {
-      // 06：恢复分区布局（localStorage）；损坏/旧格式兜底初始树
-      try {
-        return deserializeTree(localStorage.getItem(SPLIT_TREE_STORAGE_KEY) ?? "");
-      } catch {
-        return initialWorkspace();
-      }
+      // 06：恢复分区布局——当前恢复渲染有 #185 循环（已知问题，隔离中）；临时禁用恢复（保存保留）
+      return initialWorkspace();
     },
   );
   // 01：单组等价——渲染侧仍读叶子内容（分区后按组渲染）
@@ -723,6 +724,8 @@ export default function App() {
                     pickerLoading={pickerLoading}
                     onPickerOpen={refreshPicker}
                     onFork={fork}
+                    draftText={chatDrafts[t.sessionId]}
+                    onDraftChange={(text) => handleDraftChange(t.sessionId, text)}
                     onRegisterDispatch={registerDispatch}
                     onUnregisterDispatch={unregisterDispatch}
                     onStateChange={handleTabStateChange}

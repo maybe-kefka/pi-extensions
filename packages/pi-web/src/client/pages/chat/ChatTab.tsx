@@ -38,6 +38,9 @@ export interface ChatTabProps {
   pickerLoading: boolean;
   onPickerOpen: () => void;
   onFork: (userIndex: number) => void;
+  /** 07：input 草稿恢复/上报（split 重挂后不丢） */
+  draftText?: string;
+  onDraftChange?: (text: string) => void;
   /** 挂载/卸载时注册/注销 dispatch（App 事件分发用；key = sessionId） */
   onRegisterDispatch: (sessionId: string, dispatch: (a: StreamAction) => void) => void;
   onUnregisterDispatch: (sessionId: string) => void;
@@ -62,6 +65,8 @@ export const ChatTab = memo(function ChatTab({
   pickerLoading,
   onPickerOpen,
   onFork,
+  draftText,
+  onDraftChange,
   onRegisterDispatch,
   onUnregisterDispatch,
   onStateChange,
@@ -104,6 +109,7 @@ export const ChatTab = memo(function ChatTab({
     onRegisterDispatch(sessionId, dispatch);
     return () => onUnregisterDispatch(sessionId);
   }, [sessionId, onRegisterDispatch, onUnregisterDispatch]);
+
 
   // 状态上报（App 镜像激活 tab——会话元数据用）
   useEffect(() => {
@@ -176,6 +182,8 @@ export const ChatTab = memo(function ChatTab({
             onSend={send}
             onAbort={abort}
             onPickerOpen={onPickerOpen}
+            draftText={draftText}
+            onDraftChange={onDraftChange}
           />
         </div>
       </div>

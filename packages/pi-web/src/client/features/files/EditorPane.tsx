@@ -187,10 +187,12 @@ export const EditorPane = forwardRef<EditorPaneHandle, EditorPaneProps>(function
     save: () => doSave(stateRef.current.edit),
   }));
 
-  // 编辑 → 上报 dirty（仅状态变化时）
+  // 编辑 → 上报 dirty（仅状态变化时）——onDirtyChange 用 ref（调用方内联函数每次渲染新引用，直接依赖会 effect 循环）
+  const onDirtyChangeRef = useRef(onDirtyChange);
+  onDirtyChangeRef.current = onDirtyChange;
   useEffect(() => {
-    onDirtyChange?.(path, edit.dirty);
-  }, [edit.dirty, path, onDirtyChange]);
+    onDirtyChangeRef.current?.(path, edit.dirty);
+  }, [edit.dirty, path]);
 
   // CodeMirror 扩展数组稳定（每次渲染重建会触发 reconfigure；无条件 hooks——须在条件 return 前）
   const extensions = useMemo(

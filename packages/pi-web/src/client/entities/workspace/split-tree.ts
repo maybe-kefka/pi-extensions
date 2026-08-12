@@ -64,9 +64,9 @@ function splitGroupRaw(tree: LayoutNode, groupId: string, side: SplitSide, tabId
     const idx = leaf.tabs.findIndex((t) => tabKeyOf(t) === tabId);
     if (idx === -1) return leaf;
     const [moved] = leaf.tabs.slice(idx, idx + 1);
-    const rest = leaf.tabs.filter((_, i) => i !== idx);
-    // 原组激活处理复用 closeTab 语义（移除后激活相邻）——补回 kind/groupId（closeTab 只返回 {tabs,active}）
-    const remain: LeafNode = { ...closeTab({ ...leaf, tabs: rest }, tabId), kind: "leaf", groupId: leaf.groupId };
+    // 原组激活处理复用 closeTab 语义（用完整 leaf——内部按原 tabs 定位 idx 才能正确激活相邻；
+    // 传移除后的 rest 会导致 idx=-1 → active 被清空（chat 丢聚焦）
+    const remain: LeafNode = { ...closeTab(leaf, tabId), kind: "leaf", groupId: leaf.groupId };
     const fresh: LeafNode = { kind: "leaf", groupId: nextId(), tabs: [moved], active: tabId };
     const dir: SplitDir = side === "left" || side === "right" ? "row" : "col";
     const a = side === "left" || side === "top" ? fresh : remain;

@@ -112,7 +112,7 @@ export function SplitView({ tree, dragTabId, renderLeaf, onSplit, onRatio }: Spl
         data-testid={`split-${node.dir}`}
         className={`flex min-h-0 min-w-0 flex-1 ${node.dir === "row" ? "flex-row" : "flex-col"}`}
       >
-        <div className="min-h-0 min-w-0" style={{ flex: `0 1 ${node.ratio * 100}%` }}>
+        <div className="flex min-h-0 min-w-0" style={{ flex: `0 1 ${node.ratio * 100}%` }}>
           {renderNode(node.a)}
         </div>
         <div
@@ -122,7 +122,7 @@ export function SplitView({ tree, dragTabId, renderLeaf, onSplit, onRatio }: Spl
           onPointerMove={(e) => handleDividerMove(node.id, node.dir, e)}
           onPointerUp={handleDividerUp}
         />
-        <div className="min-h-0 min-w-0" style={{ flex: `0 1 ${(1 - node.ratio) * 100}%` }}>
+        <div className="flex min-h-0 min-w-0" style={{ flex: `0 1 ${(1 - node.ratio) * 100}%` }}>
           {renderNode(node.b)}
         </div>
       </div>

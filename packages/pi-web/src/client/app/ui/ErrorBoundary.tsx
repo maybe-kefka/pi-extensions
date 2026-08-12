@@ -16,6 +16,7 @@ export class ErrorBoundary extends Component<Props, State> {
     return { error };
   }
 
+
   render() {
     if (this.state.error) {
       return (

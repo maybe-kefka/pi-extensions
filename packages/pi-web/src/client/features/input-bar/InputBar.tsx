@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type * as React from "react";
 import { ArrowUp, Square } from "lucide-react";
 import { Button } from "@/shared/ui";
@@ -25,10 +25,13 @@ export function InputBar(props: {
   /** 顶部 border（ChatTab 全宽 border 盖过进度条时传 false） */
   bordered?: boolean;
   onSend: (text: string) => void;
+  /** 07：草稿恢复/上报（重挂后 input 内容不丢） */
+  draftText?: string;
+  onDraftChange?: (text: string) => void;
   onAbort: () => void;
   onPickerOpen: () => void;
 }) {
-  const { busy, queue, conn, skills, commands, files, pickerLoading, bordered = true, onSend, onAbort, onPickerOpen } = props;
+  const { busy, queue, conn, skills, commands, files, pickerLoading, bordered = true, onSend, onAbort, onPickerOpen, draftText, onDraftChange } = props;
   const [hasInput, setHasInput] = useState(false);
   // mention 状态机用 ref 同步更新（连续按键同 tick 时 React 批量更新会让第二次 keydown 读到旧状态，
   // 导致 space 后紧跟 / 的触发序列丢失）；tick 仅驱动渲染
@@ -303,8 +306,20 @@ export function InputBar(props: {
   );
 
   /** R18：IME 上屏等不经 keydown 的输入——从 DOM 反推 query（与 keydown 累积双轨） */
+  // 07：非受控 contentEditable——挂载时恢复草稿（split 重挂后 input 内容不丢）
+  const draftRestored = useRef(false);
+  useEffect(() => {
+    if (draftRestored.current) return;
+    draftRestored.current = true;
+    if (draftText && editorRef.current && editorRef.current.textContent === "") {
+      editorRef.current.textContent = draftText;
+      setHasInput(true);
+    }
+  }, [draftText]);
+
   const handleInput = useCallback(() => {
     setHasInput(true);
+    onDraftChange?.(editorRef.current?.textContent ?? "");
     const el = editorRef.current;
     if (!el || !mentionRef.current.active) return;
     const sel = window.getSelection();

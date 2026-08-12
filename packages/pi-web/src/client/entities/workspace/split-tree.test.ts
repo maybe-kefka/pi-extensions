@@ -421,3 +421,29 @@ describe("split-tree 06：持久化", () => {
     for (const id of newIds) expect(ids.has(id)).toBe(false);
   });
 });
+
+describe("split-tree 07：bug 修复回归", () => {
+  it("splitGroup：原组 active 是被拖 tab 时激活相邻（chat 不丢聚焦）", () => {
+    let tree = initialTree();
+    const gid = singleLeafOf(tree).groupId;
+    tree = mapLeaf(tree, gid, (leaf) => openChatTab(leaf, "/s.jsonl", "会话"));
+    tree = mapLeaf(tree, gid, (leaf) => openFile(leaf, "/a.ts", "a.ts")); // active = file
+    tree = splitGroup(tree, gid, "right", "/a.ts");
+    const groups = leafTabsOf(tree);
+    const left = groups.find((g) => g.groupId === gid);
+    expect(left?.paths).toEqual([null]); // chat 保留
+    expect(left?.active).toBe("chat:/s.jsonl"); // 激活相邻（chat）
+    expect(groups[1].active).toBe("/a.ts"); // 新组激活被拖 tab
+  });
+
+  it("splitGroup：原组 active 不是被拖 tab 时保持", () => {
+    let tree = initialTree();
+    const gid = singleLeafOf(tree).groupId;
+    tree = mapLeaf(tree, gid, (leaf) => openChatTab(leaf, "/s.jsonl", "会话"));
+    tree = mapLeaf(tree, gid, (leaf) => openFile(leaf, "/a.ts", "a.ts"));
+    tree = mapLeaf(tree, gid, (leaf) => openChatTab(leaf, "/s.jsonl", "会话")); // 激活回 chat
+    tree = splitGroup(tree, gid, "right", "/a.ts");
+    const groups = leafTabsOf(tree);
+    expect(groups.find((g) => g.groupId === gid)?.active).toBe("chat:/s.jsonl");
+  });
+});
