@@ -38,9 +38,12 @@ export interface ChatTabProps {
   pickerLoading: boolean;
   onPickerOpen: () => void;
   onFork: (userIndex: number) => void;
-  /** 07：input 草稿恢复/上报（split 重挂后不丢） */
+  /** input 草稿恢复/上报（split 重挂后不丢） */
   draftText?: string;
   onDraftChange?: (text: string) => void;
+  /** 状态快照恢复：重挂时用上次快照初始化 reducer（split 跨父重挂后消息内容不丢、不重拉历史） */
+  savedState?: StreamState;
+  onStateSave?: (sessionId: string, state: StreamState) => void;
   /** 挂载/卸载时注册/注销 dispatch（App 事件分发用；key = sessionId） */
   onRegisterDispatch: (sessionId: string, dispatch: (a: StreamAction) => void) => void;
   onUnregisterDispatch: (sessionId: string) => void;
@@ -67,13 +70,22 @@ export const ChatTab = memo(function ChatTab({
   onFork,
   draftText,
   onDraftChange,
+  savedState,
+  onStateSave,
   onRegisterDispatch,
   onUnregisterDispatch,
   onStateChange,
 }: ChatTabProps) {
-  const [state, dispatch] = useReducer(streamReducer, initialState);
-  /** 历史已加载标记（切回 tab 不重拉——reducer 状态 long-live） */
-  const loadedRef = useRef(false);
+  const [state, dispatch] = useReducer(streamReducer, savedState ?? initialState);
+  /** 历史已加载标记（切回 tab 不重拉——reducer 状态 long-live）；有快照恢复 → 视为已加载（不重拉） */
+  const loadedRef = useRef(!!savedState);
+  /** 最新 state 快照（卸载时上报 App——跨父重挂后恢复） */
+  const stateRef = useRef(state);
+  stateRef.current = state;
+  useEffect(() => {
+    return () => onStateSave?.(sessionId, stateRef.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId, onStateSave]);
 
   // 全局连接状态同步（conn 事件只分发激活 tab——非激活 tab 的 reducer 需同步，避免误显"等待连接"）
   useEffect(() => {

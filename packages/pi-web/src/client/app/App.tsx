@@ -177,6 +177,11 @@ export default function App() {
   const [dragTabId, setDragTabId] = useState<string | null>(null);
   // chat input 草稿（ref 存储——split 重挂后恢复；ref 写入不触发渲染，打字不卡顿）
   const chatDraftsRef = useRef<Record<string, string>>({});
+  // chat reducer 状态快照（跨父重挂恢复——卸载时由 ChatTab 上报）
+  const chatStatesRef = useRef<Record<string, StreamState>>({});
+  const handleStateSave = useCallback((sessionId: string, state: StreamState) => {
+    chatStatesRef.current[sessionId] = state;
+  }, []);
   const handleDraftChange = useCallback((sessionId: string, text: string) => {
     chatDraftsRef.current[sessionId] = text;
   }, []);
@@ -736,6 +741,8 @@ export default function App() {
                     onFork={fork}
                     draftText={chatDraftsRef.current[t.sessionId]}
                     onDraftChange={(text) => handleDraftChange(t.sessionId, text)}
+                    savedState={chatStatesRef.current[t.sessionId]}
+                    onStateSave={handleStateSave}
                     onRegisterDispatch={registerDispatch}
                     onUnregisterDispatch={unregisterDispatch}
                     onStateChange={handleTabStateChange}
