@@ -124,6 +124,21 @@ export function flattenTabs(tree: LayoutNode): WorkspaceTab[] {
   return [...flattenTabs(tree.a), ...flattenTabs(tree.b)];
 }
 
+export const MIN_SPLIT_RATIO = 0.2;
+
+/** 调整 split 比例（clamp 到 [minRatio, 1-minRatio]）；不存在的 splitId → 原树 */
+export function setSplitRatio(tree: LayoutNode, splitId: string, ratio: number, minRatio: number = MIN_SPLIT_RATIO): LayoutNode {
+  if (tree.kind === "leaf") return tree;
+  if (tree.id === splitId) {
+    const r = Math.min(1 - minRatio, Math.max(minRatio, ratio));
+    return r === tree.ratio ? tree : { ...tree, ratio: r };
+  }
+  const a = setSplitRatio(tree.a, splitId, ratio, minRatio);
+  const b = setSplitRatio(tree.b, splitId, ratio, minRatio);
+  if (a === tree.a && b === tree.b) return tree;
+  return { ...tree, a, b };
+}
+
 /** 从所在组移除 tab（不指定组——内部定位）；组空自动合并 */
 export function removeTabFromTree(tree: LayoutNode, tabId: string): LayoutNode {
   const groupId = findGroupOf(tree, tabId);

@@ -5,7 +5,7 @@
  */
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { resolveDropSide, type LayoutNode, type LeafNode, type SplitSide } from "@/entities/workspace";
+import { MIN_SPLIT_RATIO, resolveDropSide, type LayoutNode, type LeafNode, type SplitDir, type SplitSide } from "@/entities/workspace";
 
 export interface SplitViewProps {
   tree: LayoutNode;
@@ -15,6 +15,8 @@ export interface SplitViewProps {
   renderLeaf: (leaf: LeafNode) => ReactNode;
   /** drop 触发分区 */
   onSplit: (groupId: string, side: SplitSide, tabId: string) => void;
+  /** divider 拖动调整比例（05） */
+  onRatio: (splitId: string, ratio: number) => void;
 }
 
 interface DropState {
@@ -22,8 +24,11 @@ interface DropState {
   side: SplitSide;
 }
 
-export function SplitView({ tree, dragTabId, renderLeaf, onSplit }: SplitViewProps) {
+export function SplitView({ tree, dragTabId, renderLeaf, onSplit, onRatio }: SplitViewProps) {
   const [drop, setDrop] = useState<DropState | null>(null);
+  // divider 拖动中（05：pointer capture 期间）——ref 双写（pointermove 可能同帧）
+  const [draggingSplit, setDraggingSplit] = useState<string | null>(null);
+  const draggingRef = useRef<string | null>(null);
   // dragover 高频 setState；drop 事件可能同帧到达——ref 双写保证 drop 读到最新
   const dropRef = useRef<DropState | null>(null);
   const dragRef = useRef(dragTabId);
@@ -59,6 +64,35 @@ export function SplitView({ tree, dragTabId, renderLeaf, onSplit }: SplitViewPro
     setDrop(null);
   };
 
+  // 05：divider 拖动（pointer capture）——clamp 到 [max(MIN, px/rect), 1-...]
+  const handleDividerDown = (splitId: string, dir: SplitDir, e: React.PointerEvent<HTMLDivElement>): void => {
+    e.preventDefault();
+    draggingRef.current = splitId;
+    setDraggingSplit(splitId);
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+      /* 合成事件无活动指针——忽略 */
+    }
+  };
+  const handleDividerMove = (splitId: string, dir: SplitDir, e: React.PointerEvent<HTMLDivElement>): void => {
+    if (draggingRef.current !== splitId) return;
+    const rect = e.currentTarget.parentElement?.getBoundingClientRect();
+    if (!rect || rect.width === 0) return;
+    const raw = dir === "row" ? (e.clientX - rect.left) / rect.width : (e.clientY - rect.top) / rect.height;
+    const minRatio = Math.max(MIN_SPLIT_RATIO, 160 / (dir === "row" ? rect.width : rect.height));
+    onRatio(splitId, Math.min(1 - minRatio, Math.max(minRatio, raw)));
+  };
+  const handleDividerUp = (e: React.PointerEvent<HTMLDivElement>): void => {
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {
+      /* 同上 */
+    }
+    draggingRef.current = null;
+    setDraggingSplit(null);
+  };
+
   const renderNode = (node: LayoutNode): ReactNode => {
     if (node.kind === "leaf") {
       return (
@@ -83,7 +117,10 @@ export function SplitView({ tree, dragTabId, renderLeaf, onSplit }: SplitViewPro
         </div>
         <div
           data-testid="split-divider"
-          className={`bg-border shrink-0 ${node.dir === "row" ? "w-px" : "h-px"}`}
+          className={`bg-border shrink-0 cursor-col-resize ${node.dir === "row" ? "w-px" : "h-px"}`}
+          onPointerDown={(e) => handleDividerDown(node.id, node.dir, e)}
+          onPointerMove={(e) => handleDividerMove(node.id, node.dir, e)}
+          onPointerUp={handleDividerUp}
         />
         <div className="min-h-0 min-w-0" style={{ flex: `0 1 ${(1 - node.ratio) * 100}%` }}>
           {renderNode(node.b)}

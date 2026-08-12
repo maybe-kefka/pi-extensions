@@ -21,6 +21,7 @@ function twoLeafTree(side: "right" | "top" = "right"): LayoutNode {
 
 function setup(partial: Partial<SplitViewProps> = {}) {
   const onSplit = vi.fn();
+  const onRatio = vi.fn();
   const renderLeaf = vi.fn((leaf: { groupId: string }) => (
     <div data-testid={`content-${leaf.groupId}`}>leaf</div>
   ));
@@ -29,9 +30,10 @@ function setup(partial: Partial<SplitViewProps> = {}) {
     dragTabId: null,
     renderLeaf,
     onSplit,
+    onRatio,
     ...partial,
   };
-  return { ...props, renderLeaf, onSplit, rerender: (p: Partial<SplitViewProps>) => render(<SplitView {...props} {...p} />) };
+  return { ...props, renderLeaf, onSplit, onRatio, rerender: (p: Partial<SplitViewProps>) => render(<SplitView {...props} {...p} />) };
 }
 
 afterEach(cleanup);
@@ -121,4 +123,29 @@ describe("SplitView 02：分区渲染与拖拽", () => {
     expect(document.querySelector('[data-testid^="drop-"]')).toBeNull();
   });
 
+
+describe("SplitView 05：divider 拖动", () => {
+  it("pointer 拖动 divider：实时回调 onRatio（clamp 后比例）", () => {
+    mockRect(800, 600);
+    const s = setup({ tree: twoLeafTree() });
+    render(<SplitView {...s} />);
+    const divider = document.querySelector('[data-testid="split-divider"]') as HTMLElement;
+    fireEvent.pointerDown(divider, { pointerId: 1, clientX: 400, clientY: 300 });
+    fireEvent.pointerMove(divider, { pointerId: 1, clientX: 200, clientY: 300 });
+    // 200/800 = 0.25（在 [0.2, 0.8] 内）
+    expect(s.onRatio).toHaveBeenCalledWith(expect.any(String), 0.25);
+    fireEvent.pointerUp(divider, { pointerId: 1 });
+  });
+
+  it("拖动到边缘：clamp 到最小/最大比例", () => {
+    mockRect(800, 600);
+    const s = setup({ tree: twoLeafTree() });
+    render(<SplitView {...s} />);
+    const divider = document.querySelector('[data-testid="split-divider"]') as HTMLElement;
+    fireEvent.pointerDown(divider, { pointerId: 1, clientX: 400, clientY: 300 });
+    fireEvent.pointerMove(divider, { pointerId: 1, clientX: 5, clientY: 300 });
+    expect(s.onRatio).toHaveBeenLastCalledWith(expect.any(String), 0.2);
+    fireEvent.pointerUp(divider, { pointerId: 1 });
+  });
+});
 });

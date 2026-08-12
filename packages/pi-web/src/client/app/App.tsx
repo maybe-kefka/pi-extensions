@@ -44,6 +44,7 @@ import {
   moveTabToGroup,
   removeEmptyLeaf,
   removeTabFromTree,
+  setSplitRatio,
   singleLeafOf,
   splitGroup,
   type LayoutNode,
@@ -189,7 +190,8 @@ export default function App() {
         | { kind: "close-chat"; sessionId: string }
         | { kind: "dead-chat"; groupId: string; sessionId: string }
         | { kind: "move"; groupId: string; fromId: string; toId: string | null }
-        | { kind: "split"; groupId: string; side: SplitSide; tabId: string },
+        | { kind: "split"; groupId: string; side: SplitSide; tabId: string }
+        | { kind: "set-ratio"; splitId: string; ratio: number },
     ): LayoutNode => {
       switch (a.kind) {
         case "open":
@@ -216,6 +218,8 @@ export default function App() {
           return moveTabToGroup(s, a.groupId, a.fromId, a.toId);
         case "split":
           return splitGroup(s, a.groupId, a.side, a.tabId);
+        case "set-ratio":
+          return setSplitRatio(s, a.splitId, a.ratio);
       }
     },
     undefined,
@@ -762,6 +766,7 @@ export default function App() {
               setFocusGroupId(groupId);
               dispatchWs({ kind: "split", groupId, side, tabId });
             }}
+            onRatio={(splitId, ratio) => dispatchWs({ kind: "set-ratio", splitId, ratio })}
             renderLeaf={renderLeafContent}
           />
         </main>

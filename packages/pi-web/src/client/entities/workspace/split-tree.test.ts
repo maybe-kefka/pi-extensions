@@ -9,6 +9,7 @@ import {
   findLeaf,
   flattenTabs,
   initialTree,
+  setSplitRatio,
   mapLeaf,
   moveTabToGroup,
   removeEmptyLeaf,
@@ -305,5 +306,48 @@ describe("split-tree 04：按组定位与任意组移除", () => {
     // 左组唯一 tab 移除 → 合并（单 leaf 只剩 /b.ts）
     expect(tree.kind).toBe("leaf");
     if (tree.kind === "leaf") expect(tree.tabs.map((t) => (t.kind === "file" ? t.path : null))).toEqual(["/b.ts"]);
+  });
+});
+
+describe("split-tree 05：split 比例调整", () => {
+  it("setSplitRatio：正常设置", () => {
+    const tree = twoLeaf();
+    if (tree.kind !== "split") return;
+    const id = tree.id;
+    const next = setSplitRatio(tree, id, 0.3);
+    if (next.kind !== "split") return;
+    expect(next.ratio).toBe(0.3);
+  });
+
+  it("setSplitRatio：clamp 下限/上限", () => {
+    const tree = twoLeaf();
+    if (tree.kind !== "split") return;
+    const id = tree.id;
+    expect((setSplitRatio(tree, id, 0.05) as { ratio: number }).ratio).toBe(0.2);
+    expect((setSplitRatio(tree, id, 0.97) as { ratio: number }).ratio).toBe(0.8);
+  });
+
+  it("setSplitRatio：自定义 minRatio（像素换算）", () => {
+    const tree = twoLeaf();
+    if (tree.kind !== "split") return;
+    const id = tree.id;
+    expect((setSplitRatio(tree, id, 0.1, 0.3) as { ratio: number }).ratio).toBe(0.3);
+  });
+
+  it("setSplitRatio：不存在的 splitId → 原树不变；嵌套只改目标层", () => {
+    const tree = twoLeaf();
+    expect(setSplitRatio(tree, "nope", 0.3)).toBe(tree);
+    // 嵌套：外层 split + 内层再分——只改内层
+    if (tree.kind !== "split") return;
+    const aGid = (tree.a as { kind: "leaf"; groupId: string }).groupId;
+    let nested: LayoutNode = tree;
+    nested = mapLeaf(nested, aGid, (leaf) => openFile(leaf, "/c.ts", "c.ts"));
+    nested = splitGroup(nested, aGid, "bottom", "/c.ts");
+    if (nested.kind !== "split") return;
+    const inner = (nested.a as { kind: "split"; id: string }).id;
+    const next = setSplitRatio(nested, inner, 0.4);
+    if (next.kind !== "split") return;
+    expect((next.a as { ratio: number }).ratio).toBe(0.4);
+    expect(next.ratio).toBe(0.5); // 外层不变
   });
 });
