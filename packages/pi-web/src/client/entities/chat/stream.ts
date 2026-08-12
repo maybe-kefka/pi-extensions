@@ -706,7 +706,9 @@ export function streamReducer(state: StreamState, action: StreamAction): StreamS
       const ctx = (s.context ?? state.context) as StreamState["context"];
       return {
         ...state,
-        streaming: typeof s.isStreaming === "boolean" ? s.isStreaming : state.streaming,
+        // 服务进程快照的 isStreaming 恒 false（服务进程永远空闲）——只允许 true 覆盖（兜底置位），
+        // false 不覆盖 agent 事件（agent_start/agent_end）驱动的 streaming（否则停止按钮不出现）
+        streaming: s.isStreaming === true ? true : state.streaming,
         sessionFile: (s.sessionFile as string) ?? state.sessionFile,
         sessionName: (s.sessionName as string) ?? state.sessionName,
         model: (s.model as StreamState["model"]) ?? state.model,

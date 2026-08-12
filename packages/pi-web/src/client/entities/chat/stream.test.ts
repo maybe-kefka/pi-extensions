@@ -252,6 +252,29 @@ describe("agent 状态与会话切换", () => {
     expect(s3.tools).toHaveLength(0);
   });
 
+  it("state 事件 isStreaming=false 不覆盖 agent 事件已置的 streaming=true（服务进程快照恒 false）", () => {
+    // 服务进程的 buildStateSnapshot isStreaming=!ctx.isIdle()（服务进程永远空闲）→ 恒 false；
+    // 若 state 事件覆盖，agent_start 置的 streaming=true 会被打回 → 停止按钮不出现
+    const s1 = reduce([{ type: "agent_start" }]);
+    expect(s1.streaming).toBe(true);
+    const s2 = reduce([{ type: "state", state: { isStreaming: false } }], s1);
+    expect(s2.streaming).toBe(true);
+  });
+
+  it("state 事件 isStreaming=true 可覆盖（agent_start 丢失时兜底置位）", () => {
+    const s1 = reduce([]);
+    expect(s1.streaming).toBe(false);
+    const s2 = reduce([{ type: "state", state: { isStreaming: true } }], s1);
+    expect(s2.streaming).toBe(true);
+  });
+
+  it("agent_settled 置 false 后 state 事件不把它打回 true", () => {
+    const s1 = reduce([{ type: "agent_start" }, { type: "agent_settled" }]);
+    expect(s1.streaming).toBe(false);
+    const s2 = reduce([{ type: "state", state: { isStreaming: false } }], s1);
+    expect(s2.streaming).toBe(false);
+  });
+
   it("queue_update / notify / setStatus / setWidget / conn / state 保留行为", () => {
     const s = reduce([
       { type: "conn", state: "open" },
