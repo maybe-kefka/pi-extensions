@@ -812,7 +812,10 @@ export interface StreamStateMeta {
   bridge: StreamState["bridge"];
 }
 
-/** 从完整 StreamState 提取元数据子集（App 每 delta 只接收这个） */
+/** 空桥接（服务进程 snapshot 无 bridge 字段——getState 回填时兜底，防渲染崩） */
+export const EMPTY_BRIDGE = { status: {}, widget: null, notifies: [] } as const;
+
+/** 从完整 StreamState 提取元数据子集（App 每 delta 只接收这个）；bridge 缺失兜底空桥 */
 export function pickStreamMeta(st: StreamState): StreamStateMeta {
   return {
     sessionFile: st.sessionFile,
@@ -820,7 +823,7 @@ export function pickStreamMeta(st: StreamState): StreamStateMeta {
     model: st.model,
     thinkingLevel: st.thinkingLevel,
     availableThinkingLevels: st.availableThinkingLevels,
-    bridge: st.bridge,
+    bridge: st.bridge ?? EMPTY_BRIDGE,
   };
 }
 

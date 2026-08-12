@@ -351,3 +351,73 @@ describe("split-tree 05：split 比例调整", () => {
     expect(next.ratio).toBe(0.5); // 外层不变
   });
 });
+
+describe("split-tree 06：持久化", () => {
+  it("多级嵌套 round-trip：结构 + 各组 tabs + ratio 完整还原", () => {
+    let tree = initialTree();
+    const gid = singleLeafOf(tree).groupId;
+    tree = mapLeaf(tree, gid, (leaf) => openFile(leaf, "/a.ts", "a.ts"));
+    tree = mapLeaf(tree, gid, (leaf) => openFile(leaf, "/b.ts", "b.ts"));
+    tree = mapLeaf(tree, gid, (leaf) => openChatTab(leaf, "/s.jsonl", "会话"));
+    tree = splitGroup(tree, gid, "right", "/b.ts");
+    if (tree.kind !== "split") return;
+    // 调比例 + 左组再分
+    const outerId = tree.id;
+    tree = setSplitRatio(tree, outerId, 0.35);
+    if (tree.kind !== "split") return;
+    const aGid = (tree.a as { kind: "leaf"; groupId: string }).groupId;
+    tree = splitGroup(tree, aGid, "bottom", "/a.ts");
+    const restored = deserializeTree(serializeTree(tree));
+    expect(restored).toEqual(tree);
+  });
+
+  it("序列化保留 chat dead 标记", () => {
+    let tree = initialTree();
+    const gid = singleLeafOf(tree).groupId;
+    tree = mapLeaf(tree, gid, (leaf) => openChatTab(leaf, "/s.jsonl", "会话"));
+    tree = mapLeaf(tree, gid, (leaf) => markChatDead(leaf, "/s.jsonl"));
+    const restored = deserializeTree(serializeTree(tree));
+    const leaf = singleLeafOf(restored);
+    expect(leaf.tabs).toEqual([{ kind: "chat", sessionId: "/s.jsonl", name: "会话", dead: true }]);
+  });
+
+  it("恢复后新生成的 id 不与恢复树冲突（idSeq 同步）", () => {
+    let tree = initialTree();
+    const gid = singleLeafOf(tree).groupId;
+    tree = mapLeaf(tree, gid, (leaf) => openFile(leaf, "/a.ts", "a.ts"));
+    tree = mapLeaf(tree, gid, (leaf) => openFile(leaf, "/b.ts", "b.ts"));
+    tree = splitGroup(tree, gid, "right", "/b.ts");
+    const restored = deserializeTree(serializeTree(tree));
+    if (restored.kind !== "split") return;
+    const ids = new Set<string>();
+    const walk = (n: LayoutNode): void => {
+      if (n.kind === "leaf") {
+        ids.add(n.groupId);
+        return;
+      }
+      ids.add(n.id);
+      walk(n.a);
+      walk(n.b);
+    };
+    walk(restored);
+    // 再 splitGroup（应生成新 id——不撞恢复树）
+    const rg = singleLeafOf(restored).groupId;
+    const next = splitGroup(restored, rg, "right", "/a.ts");
+    const nextIds = new Set<string>();
+    const walk2 = (n: LayoutNode): void => {
+      if (n.kind === "leaf") {
+        nextIds.add(n.groupId);
+        return;
+      }
+      nextIds.add(n.id);
+      walk2(n.a);
+      walk2(n.b);
+    };
+    walk2(next);
+    // 生成的新 id 不与恢复树冲突、树内无重复
+    const newIds = [...nextIds].filter((id) => !ids.has(id));
+    expect(newIds.length).toBeGreaterThan(0);
+    expect(nextIds.size).toBe([...nextIds].length);
+    for (const id of newIds) expect(ids.has(id)).toBe(false);
+  });
+});

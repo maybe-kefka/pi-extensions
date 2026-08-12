@@ -198,6 +198,9 @@ export function resolveDropSide(x: number, y: number): SplitSide | null {
 
 const SERIALIZE_VERSION = 1;
 
+/** localStorage 存储键（06：分区布局持久化——独立于 panel width 键） */
+export const SPLIT_TREE_STORAGE_KEY = "pi-web.split-tree.v1";
+
 /** 树 → JSON（版本化） */
 export function serializeTree(tree: LayoutNode): string {
   return JSON.stringify({ v: SERIALIZE_VERSION, tree });
@@ -207,11 +210,32 @@ export function serializeTree(tree: LayoutNode): string {
 export function deserializeTree(json: string): LayoutNode {
   try {
     const data: unknown = JSON.parse(json);
-    if (isValidData(data)) return data.tree;
+    if (isValidData(data)) {
+      syncIdSeq(data.tree);
+      return data.tree;
+    }
   } catch {
     /* 损坏 → 兜底 */
   }
   return initialTree();
+}
+
+/** 恢复树后同步 id 计数器（groupId/splitId 数字后缀取最大）——避免后续生成撞 id */
+function syncIdSeq(tree: LayoutNode): void {
+  const nums: number[] = [];
+  const walk = (n: LayoutNode): void => {
+    if (n.kind === "leaf") {
+      const m = /(\d+)$/.exec(n.groupId);
+      if (m) nums.push(Number(m[1]));
+      return;
+    }
+    const m = /(\d+)$/.exec(n.id);
+    if (m) nums.push(Number(m[1]));
+    walk(n.a);
+    walk(n.b);
+  };
+  walk(tree);
+  if (nums.length > 0) idSeq = Math.max(idSeq, ...nums);
 }
 
 function isValidData(data: unknown): data is { v: number; tree: LayoutNode } {

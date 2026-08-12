@@ -44,6 +44,9 @@ import {
   moveTabToGroup,
   removeEmptyLeaf,
   removeTabFromTree,
+  serializeTree,
+  deserializeTree,
+  SPLIT_TREE_STORAGE_KEY,
   setSplitRatio,
   singleLeafOf,
   splitGroup,
@@ -223,10 +226,41 @@ export default function App() {
       }
     },
     undefined,
-    initialWorkspace,
+    () => {
+      // 06：恢复分区布局（localStorage）；损坏/旧格式兜底初始树
+      try {
+        return deserializeTree(localStorage.getItem(SPLIT_TREE_STORAGE_KEY) ?? "");
+      } catch {
+        return initialWorkspace();
+      }
+    },
   );
   // 01：单组等价——渲染侧仍读叶子内容（分区后按组渲染）
   const workspace = singleLeafOf(workspaceTree);
+  // 06：分区布局持久化（树变化即存）
+  useEffect(() => {
+    try {
+      localStorage.setItem(SPLIT_TREE_STORAGE_KEY, serializeTree(workspaceTree));
+    } catch {
+      /* 存储不可用（隐私模式等）——忽略 */
+    }
+  }, [workspaceTree]);
+
+  // 06：恢复的 chat tab 无注册 agent → 标 dead（可复活）；agent_list 到达后由 join 复活
+  useEffect(() => {
+    if (agents.length > 0) return;
+    for (const tab of flattenTabs(workspaceTree)) {
+      if (tab.kind === "chat" && !tab.dead) {
+        dispatchWs({
+          kind: "dead-chat",
+          groupId: findGroupOfTree(workspaceTree, chatTabId(tab.sessionId)) ?? focusRef.current,
+          sessionId: tab.sessionId,
+        });
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [agents]);
+
   // 04：聚焦组/聚焦 leaf（外部打开落点；focusGroupId 失效时回退第一组）
   const focusGroup = focusGroupId && findLeaf(workspaceTree, focusGroupId) ? focusGroupId : singleLeafOf(workspaceTree).groupId;
   const focusLeaf = findLeaf(workspaceTree, focusGroup) ?? singleLeafOf(workspaceTree);

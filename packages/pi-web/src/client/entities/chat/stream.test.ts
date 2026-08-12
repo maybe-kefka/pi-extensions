@@ -723,6 +723,16 @@ describe("pickStreamMeta / metaEquals（App 订阅元数据——防流式 delta
     expect(meta).not.toHaveProperty("tools");
   });
 
+  it("pickStreamMeta：bridge 缺失（服务进程 snapshot）兜底空桥——不产出 undefined", () => {
+    const st = {
+      ...initialState,
+      sessionFile: "/s.jsonl",
+      bridge: undefined as unknown as StreamState["bridge"],
+    };
+    const meta = pickStreamMeta(st);
+    expect(meta.bridge).toEqual({ status: {}, widget: null, notifies: [] });
+  });
+
   it("metaEquals：仅会话元数据差异才为 false（bubbles 差异无关）", () => {
     const a = pickStreamMeta(initialState);
     const b = pickStreamMeta({ ...initialState, sessionName: "新名" });
