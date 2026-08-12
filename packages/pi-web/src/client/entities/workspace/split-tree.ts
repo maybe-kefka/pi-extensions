@@ -58,8 +58,8 @@ export type SplitSide = "left" | "right" | "top" | "bottom";
 let idSeq = 0;
 const nextId = (): string => `w${++idSeq}`;
 
-/** 拖拽分区（内部）：目标 leaf 一分为二，被拖 tab 移入新组（新组初始只有它自己）；原组移除该 tab（激活相邻） */
-function splitGroupRaw(tree: LayoutNode, groupId: string, side: SplitSide, tabId: string): LayoutNode {
+/** 拖拽分区：目标 leaf 一分为二，被拖 tab 移入新组（新组初始只有它自己）；原组移除该 tab（激活相邻）；原组空自动合并 */
+export function splitGroup(tree: LayoutNode, groupId: string, side: SplitSide, tabId: string): LayoutNode {
   return updateLeaf(tree, groupId, (leaf) => {
     const idx = leaf.tabs.findIndex((t) => tabKeyOf(t) === tabId);
     if (idx === -1) return leaf;
@@ -71,21 +71,12 @@ function splitGroupRaw(tree: LayoutNode, groupId: string, side: SplitSide, tabId
     const dir: SplitDir = side === "left" || side === "right" ? "row" : "col";
     const a = side === "left" || side === "top" ? fresh : remain;
     const b = side === "left" || side === "top" ? remain : fresh;
-    return { kind: "split", id: nextId(), dir, ratio: 0.5, a, b };
+    return removeEmptyLeaf({ kind: "split", id: nextId(), dir, ratio: 0.5, a, b });
   });
 }
 
-/** 拖拽分区（03：原组空时自动合并）——wrapper 保留签名 */
-function splitGroupMerged(tree: LayoutNode, groupId: string, side: SplitSide, tabId: string): LayoutNode {
-  return removeEmptyLeaf(splitGroupRaw(tree, groupId, side, tabId));
-}
-
-/** @deprecated 内部实现（03 起由 splitGroupMerged 包裹空合并） */
-export function splitGroup(tree: LayoutNode, groupId: string, side: SplitSide, tabId: string): LayoutNode {
-  return splitGroupMerged(tree, groupId, side, tabId);
-}
-
-function tabKeyOf(t: WorkspaceTab): string {
+/** tab 唯一标识（与 TabsBar 的 id 派生一致）——review：去重 */
+export function tabKeyOf(t: WorkspaceTab): string {
   return t.kind === "file" ? t.path : t.kind === "diff" ? `diff:${t.path}` : `chat:${t.sessionId}`;
 }
 
@@ -249,7 +240,15 @@ function isValidNode(node: unknown): node is LayoutNode {
   const n = node as { kind?: unknown };
   if (n.kind === "leaf") {
     const l = node as { groupId?: unknown; tabs?: unknown; active?: unknown };
-    return typeof l.groupId === "string" && Array.isArray(l.tabs) && typeof l.active === "string";
+    if (typeof l.groupId !== "string" || !Array.isArray(l.tabs) || typeof l.active !== "string") return false;
+    // review：tab 对象形状校验（损坏项 → 兜底初始树）
+    return l.tabs.every((tb) => {
+      if (typeof tb !== "object" || tb === null) return false;
+      const x = tb as { kind?: unknown; path?: unknown; sessionId?: unknown };
+      if (x.kind === "file" || x.kind === "diff") return typeof x.path === "string";
+      if (x.kind === "chat") return typeof x.sessionId === "string";
+      return false;
+    });
   }
   if (n.kind === "split") {
     const s = node as { id?: unknown; dir?: unknown; ratio?: unknown; a?: unknown; b?: unknown };

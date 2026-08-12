@@ -44,6 +44,21 @@ describe("InputBar 发送/abort 融合", () => {
     expect(screen.getByRole("button", { name: "发送" }).hasAttribute("disabled")).toBe(true);
   });
 
+  it("发送后草稿上报空（draft 不残留已发送内容）", () => {
+    const onDraftChange = vi.fn();
+    const onSend = vi.fn();
+    render(<InputBar {...base} onDraftChange={onDraftChange} onSend={onSend} />);
+    const editor = document.querySelector("[contenteditable]") as HTMLElement;
+    editor.textContent = "要发送的内容";
+    fireEvent.input(editor, { bubbles: true });
+    const send = screen.getByRole("button", { name: "发送" });
+    send.click();
+    expect(onSend).toHaveBeenCalledWith("要发送的内容");
+    // 发送后：编辑器清空且草稿上报空（重挂不会恢复已发送内容）
+    expect(onDraftChange).toHaveBeenLastCalledWith("");
+  });
+
+
   it("队列 > 0：显示已排队提示条", () => {
     render(<InputBar {...base} queue={{ steering: [], followUp: ["a", "b"] }} />);
     expect(screen.getByText(/已排队 2 条/)).toBeTruthy();

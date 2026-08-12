@@ -175,14 +175,14 @@ export default function App() {
   const editorRefs = useRef<Record<string, EditorPaneHandle | null>>({});
   // 02：拖拽分区——拖拽中的 tab（TabsBar dragstart 上报）
   const [dragTabId, setDragTabId] = useState<string | null>(null);
-  // 07：chat input 草稿（ref 存储——split 重挂后恢复；08：ref 写入不触发渲染，打字不卡顿）
+  // chat input 草稿（ref 存储——split 重挂后恢复；ref 写入不触发渲染，打字不卡顿）
   const chatDraftsRef = useRef<Record<string, string>>({});
   const handleDraftChange = useCallback((sessionId: string, text: string) => {
     chatDraftsRef.current[sessionId] = text;
   }, []);
   // 04：聚焦区（最后交互的组）——外部打开/新注册会话的落点；从未交互 → 第一组
   const [focusGroupId, setFocusGroupId] = useState<string | null>(null);
-  // 08：file tab 首帧延迟挂载（恢复的初始渲染挂 EditorPane 触发 #185 渲染循环——下帧挂载与手动路径一致）
+  // file tab 首帧延迟挂载（恢复的初始渲染挂 EditorPane 触发 #185 渲染循环——下帧挂载与手动路径一致）
   const [fileDeferred, setFileDeferred] = useState(false);
   useEffect(() => {
     setFileDeferred(true);
@@ -293,7 +293,7 @@ export default function App() {
     if (hostState.sessionFile !== sid) {
       rpcRef.current?.request("pi:switchSession", { path: sid }).catch(() => undefined);
     }
-  }, [workspace.active, hostState.sessionFile]);
+  }, [focusLeaf.active, hostState.sessionFile]);
 
   // R26：主题偏好（localStorage 持久化）+ 系统深浅（toast 联动）
   const [themePref, setThemePref] = useState<ThemePreference>(() => loadPreference(window.localStorage));
@@ -693,6 +693,7 @@ export default function App() {
             if (chatSessionOf(id) !== null) {
               // chat 与 file 同级：直接关闭；spawn 实例同步杀进程（TUI 注册者保留注册）
               const sid = chatSessionOf(id) as string;
+              delete chatDraftsRef.current[sid]; // review：关闭后清草稿（无界增长）
               const entry = agents.find((ag) => ag.sessionFile === sid);
               if (entry && entry.kind === "spawned") {
                 rpcRef.current?.request("pi:closeAgent", { processId: entry.processId }).catch(() => undefined);

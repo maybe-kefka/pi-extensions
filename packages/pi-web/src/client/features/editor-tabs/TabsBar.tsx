@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { FileDiff, MessageSquareText, X } from "lucide-react";
-import { chatTabId, type WorkspaceTab } from "@/entities/workspace";
+import { tabKeyOf, type WorkspaceTab } from "@/entities/workspace";
 
 export interface TabsBarProps {
   tabs: WorkspaceTab[];
@@ -43,7 +43,7 @@ export function TabsBar({ tabs, active, onActivate, onClose, onMove, onDragStart
       }}
     >
       {tabs.map((tab) => {
-        const id = tab.kind === "chat" ? chatTabId(tab.sessionId) : tab.kind === "diff" ? `diff:${tab.path}` : tab.path;
+        const id = tabKeyOf(tab);
         const isActive = active === id;
         const isOver = overId === id;
         const label = tab.name;

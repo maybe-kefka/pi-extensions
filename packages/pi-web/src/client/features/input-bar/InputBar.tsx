@@ -56,7 +56,8 @@ export function InputBar(props: {
     el.innerHTML = "";
     setHasInput(false);
     resetMention();
-  }, [onSend, resetMention]);
+    onDraftChange?.(""); // review：发送后清草稿（重挂不恢复已发送内容）
+  }, [onSend, resetMention, onDraftChange]);
 
   /**
    * 删除"触发字符 + 过滤词"（光标前最近出现的 " /" 或 " @" 之后的所有内容）。
@@ -306,7 +307,7 @@ export function InputBar(props: {
   );
 
   /** R18：IME 上屏等不经 keydown 的输入——从 DOM 反推 query（与 keydown 累积双轨） */
-  // 07：非受控 contentEditable——挂载时恢复草稿（split 重挂后 input 内容不丢）
+  // 非受控 contentEditable——挂载时恢复草稿（split 重挂后 input 内容不丢）
   const draftRestored = useRef(false);
   useEffect(() => {
     if (draftRestored.current) return;
