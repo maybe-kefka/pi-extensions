@@ -182,6 +182,11 @@ export default function App() {
   }, []);
   // 04：聚焦区（最后交互的组）——外部打开/新注册会话的落点；从未交互 → 第一组
   const [focusGroupId, setFocusGroupId] = useState<string | null>(null);
+  // 08：file tab 首帧延迟挂载（恢复的初始渲染挂 EditorPane 触发 #185 渲染循环——下帧挂载与手动路径一致）
+  const [fileDeferred, setFileDeferred] = useState(false);
+  useEffect(() => {
+    setFileDeferred(true);
+  }, []);
   // vscode-align：工作区 tab 状态（文件 tab + 聊天 tab）
   const [workspaceTree, dispatchWs] = useReducer(
     (
@@ -232,8 +237,12 @@ export default function App() {
     },
     undefined,
     () => {
-      // 06：恢复分区布局——当前恢复渲染有 #185 循环（已知问题，隔离中）；临时禁用恢复（保存保留）
-      return initialWorkspace();
+      // 06：恢复分区布局（localStorage）；损坏/旧格式兜底初始树
+      try {
+        return deserializeTree(localStorage.getItem(SPLIT_TREE_STORAGE_KEY) ?? "");
+      } catch {
+        return initialWorkspace();
+      }
     },
   );
   // 01：单组等价——渲染侧仍读叶子内容（分区后按组渲染）
@@ -736,6 +745,7 @@ export default function App() {
             .filter((t) => t.kind === "file")
             .map((t) => (
               <div key={t.path} className={active === t.path ? "h-full" : "hidden"}>
+                {conn === "open" && fileDeferred ? (
                 <EditorPane
                   path={t.path}
                   request={getRequest()}
@@ -748,6 +758,9 @@ export default function App() {
                   }}
                   onSaved={() => setGitRefreshKey((k) => k + 1)}
                 />
+                ) : (
+                  <div className="flex h-full items-center justify-center text-xs text-muted-foreground">加载中…</div>
+                )}
               </div>
             ))}
           {tabs
