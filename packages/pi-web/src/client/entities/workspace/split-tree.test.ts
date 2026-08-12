@@ -4,7 +4,17 @@
  * 01 切片：单组等价（树结构 + 组内操作路由 + 序列化骨架）。
  */
 import { describe, expect, it } from "vitest";
-import { initialTree, mapLeaf, singleLeafOf, serializeTree, deserializeTree, splitGroup, resolveDropSide } from "./split-tree";
+import {
+  initialTree,
+  mapLeaf,
+  moveTabToGroup,
+  removeEmptyLeaf,
+  resolveDropSide,
+  serializeTree,
+  deserializeTree,
+  singleLeafOf,
+  splitGroup,
+} from "./split-tree";
 import { openFile, closeTab, moveTab, openChatTab, renameChatTab, markChatDead } from "./tabs";
 import type { LayoutNode } from "./split-tree";
 
@@ -140,13 +150,14 @@ describe("split-tree 02：拖拽分区", () => {
 
   it("splitGroup 在嵌套 split 的子 leaf 上定位（递归）", () => {
     let tree = splitGroup(twoFileTree(), singleLeafOf(twoFileTree()).groupId, "right", "/b.ts");
-    // 再对左侧原组（a）分区
+    // 再对左侧原组（a）分区——先给 a 组加 /d.ts（否则 /a.ts 移走后 a 空 → 合并）
     if (tree.kind !== "split") return;
     const aGid = (tree.a as { kind: "leaf"; groupId: string }).groupId;
+    tree = mapLeaf(tree, aGid, (leaf) => openFile(leaf, "/d.ts", "d.ts"));
     tree = splitGroup(tree, aGid, "bottom", "/a.ts");
     const groups = leafTabsOf(tree);
     expect(groups).toHaveLength(3);
-    expect(groups.map((g) => g.paths)).toEqual([[], ["/a.ts"], ["/b.ts"]]);
+    expect(groups.map((g) => g.paths)).toEqual([["/d.ts"], ["/a.ts"], ["/b.ts"]]);
   });
 
   it("splitGroup 不存在的 tabId → 原树不变", () => {
@@ -160,17 +171,6 @@ describe("split-tree 02：拖拽分区", () => {
     expect(splitGroup(tree, "nope", "right", "/a.ts")).toBe(tree);
   });
 
-  it("被拖 tab 是原组唯一 tab：原组变空 leaf 保留（空组合并属于 03）", () => {
-    let tree = initialTree();
-    const gid = singleLeafOf(tree).groupId;
-    tree = mapLeaf(tree, gid, (leaf) => openFile(leaf, "/a.ts", "a.ts"));
-    const result = splitGroup(tree, gid, "right", "/a.ts");
-    if (result.kind !== "split") return;
-    const groups = leafTabsOf(result);
-    expect(groups[0].paths).toEqual([]);
-    expect(groups[1].paths).toEqual(["/a.ts"]);
-  });
-
   it("resolveDropSide：四向边缘判定 + 中央 null", () => {
     expect(resolveDropSide(0.05, 0.5)).toBe("left");
     expect(resolveDropSide(0.95, 0.5)).toBe("right");
@@ -179,5 +179,88 @@ describe("split-tree 02：拖拽分区", () => {
     expect(resolveDropSide(0.5, 0.5)).toBeNull();
     // 角落：左右优先
     expect(resolveDropSide(0.05, 0.05)).toBe("left");
+  });
+});
+
+describe("split-tree 03：跨组移动与空组合并", () => {
+  /** 两 leaf：g1=[/a.ts]（左），g2=[/b.ts]（右，被 splitGroup 移入） */
+  const twoLeaf = (): LayoutNode => {
+    let tree = initialTree();
+    const gid = singleLeafOf(tree).groupId;
+    tree = mapLeaf(tree, gid, (leaf) => openFile(leaf, "/a.ts", "a.ts"));
+    tree = mapLeaf(tree, gid, (leaf) => openFile(leaf, "/b.ts", "b.ts"));
+    return splitGroup(tree, gid, "right", "/b.ts");
+  };
+  const gids = (tree: LayoutNode): string[] => leafTabsOf(tree).map((g) => g.groupId);
+
+  it("跨组移动：原组移除、目标组插入（toId 前）、目标激活、原组激活相邻", () => {
+    let tree = twoLeaf();
+    const [left, right] = gids(tree);
+    // 再在左组开 /c.ts（目标：把左组 /a.ts 移到右组 /b.ts 前）
+    tree = mapLeaf(tree, left, (leaf) => openFile(leaf, "/c.ts", "c.ts"));
+    tree = moveTabToGroup(tree, right, "/a.ts", "/b.ts");
+    const groups = leafTabsOf(tree);
+    expect(groups.find((g) => g.groupId === right)?.paths).toEqual(["/a.ts", "/b.ts"]);
+    expect(groups.find((g) => g.groupId === right)?.active).toBe("/a.ts");
+    expect(groups.find((g) => g.groupId === left)?.paths).toEqual(["/c.ts"]);
+    expect(groups.find((g) => g.groupId === left)?.active).toBe("/c.ts");
+  });
+
+  it("跨组移动到空组/末尾（toId null）：追加", () => {
+    let tree = twoLeaf();
+    const [left, right] = gids(tree);
+    tree = mapLeaf(tree, right, (leaf) => closeTab(leaf, "/b.ts"));
+    tree = moveTabToGroup(tree, right, "/a.ts", null);
+    const groups = leafTabsOf(tree);
+    // 左组唯一 tab 移走 → 左组合并（只剩右组）
+    expect(groups).toHaveLength(1);
+    expect(groups[0].groupId).toBe(right);
+    expect(groups[0].paths).toEqual(["/a.ts"]);
+  });
+
+  it("同组移动退化为调序", () => {
+    let tree = twoLeaf();
+    const [left] = gids(tree);
+    tree = mapLeaf(tree, left, (leaf) => openFile(leaf, "/c.ts", "c.ts"));
+    tree = moveTabToGroup(tree, left, "/c.ts", "/a.ts");
+    const groups = leafTabsOf(tree);
+    expect(groups.find((g) => g.groupId === left)?.paths).toEqual(["/c.ts", "/a.ts"]);
+  });
+
+  it("移走唯一 tab：原组自动合并（树回单 leaf，被移 tab 保留）", () => {
+    let tree = twoLeaf();
+    const [left, right] = gids(tree);
+    // 左组只有 /a.ts——移走后左组空 → 合并 → 只剩右组
+    tree = moveTabToGroup(tree, right, "/a.ts", null);
+    expect(tree.kind).toBe("leaf");
+    if (tree.kind === "leaf") expect(tree.tabs.map((t) => (t.kind === "file" ? t.path : null))).toEqual(["/b.ts", "/a.ts"]);
+  });
+
+  it("removeEmptyLeaf：嵌套 split 的空组递归提升", () => {
+    // 三层：g1=[/a] | (g2=[/b] | g3=[/c])——清空 g1 所在分支后提升
+    let tree = initialTree();
+    const gid = singleLeafOf(tree).groupId;
+    for (const p of ["/a.ts", "/b.ts", "/c.ts"]) tree = mapLeaf(tree, gid, (leaf) => openFile(leaf, p, p));
+    tree = splitGroup(tree, gid, "right", "/b.ts"); // g1=[/a,/c] | g2=[/b]
+    if (tree.kind !== "split") return;
+    const g1 = singleLeafOf(tree).groupId;
+    tree = splitGroup(tree, g1, "bottom", "/c.ts"); // (g1=[/a] | g3=[/c]) | g2=[/b]
+    const groups = leafTabsOf(tree);
+    const g3 = groups.find((g) => g.paths[0] === "/c.ts")!.groupId;
+    // 清空 g3（/c.ts 关闭）→ g3 空 → 提升 g1 到该层
+    tree = mapLeaf(tree, g3, (leaf) => closeTab(leaf, "/c.ts"));
+    tree = removeEmptyLeaf(tree);
+    const after = leafTabsOf(tree);
+    expect(after).toHaveLength(2);
+    expect(after.map((g) => g.paths)).toEqual([["/a.ts"], ["/b.ts"]]);
+  });
+
+  it("splitGroup 后原组空 → 合并（单 tab 拖出无分区）", () => {
+    let tree = initialTree();
+    const gid = singleLeafOf(tree).groupId;
+    tree = mapLeaf(tree, gid, (leaf) => openFile(leaf, "/a.ts", "a.ts"));
+    tree = splitGroup(tree, gid, "right", "/a.ts");
+    expect(tree.kind).toBe("leaf");
+    if (tree.kind === "leaf") expect(tree.tabs.map((t) => (t.kind === "file" ? t.path : null))).toEqual(["/a.ts"]);
   });
 });

@@ -10,12 +10,13 @@ import { SplitView } from "@/features/workspace";
 import type { SplitViewProps } from "@/features/workspace";
 import { initialTree, mapLeaf, openFile, singleLeafOf, splitGroup, type LayoutNode } from "@/entities/workspace";
 
-/** 构造两 leaf 树：g1 含 /a.ts，split 后 /a.ts 在新组（side 决定方向） */
+/** 构造两 leaf 树：g1=[/a.ts, /b.ts]，split 后 /b.ts 在新组（side 决定方向）——原组留 /a.ts 不触发空合并 */
 function twoLeafTree(side: "right" | "top" = "right"): LayoutNode {
   let tree = initialTree();
   const gid = singleLeafOf(tree).groupId;
   tree = mapLeaf(tree, gid, (leaf) => openFile(leaf, "/a.ts", "a.ts"));
-  return splitGroup(tree, gid, side, "/a.ts");
+  tree = mapLeaf(tree, gid, (leaf) => openFile(leaf, "/b.ts", "b.ts"));
+  return splitGroup(tree, gid, side, "/b.ts");
 }
 
 function setup(partial: Partial<SplitViewProps> = {}) {

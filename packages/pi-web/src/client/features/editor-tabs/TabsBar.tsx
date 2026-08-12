@@ -12,13 +12,35 @@ export interface TabsBarProps {
   onMove: (fromId: string, toId: string) => void;
   /** 拖拽开始/结束通知（02 分区：拖出 tab 到主区——null = 拖拽结束） */
   onDragStartTab?: (id: string | null) => void;
+  /** 空栏 drop（03：拖 tab 到空组的 tab 栏——追加到该组末尾） */
+  onDropTab?: (fromId: string) => void;
+  /** 外部拖拽中的 tab（03 跨组移动——App 状态；拖拽源组与目标组共享） */
+  dragId?: string | null;
 }
 
-export function TabsBar({ tabs, active, onActivate, onClose, onMove, onDragStartTab }: TabsBarProps) {
+export function TabsBar({ tabs, active, onActivate, onClose, onMove, onDragStartTab, onDropTab, dragId }: TabsBarProps) {
   const dragRef = useRef<string | null>(null);
   const [overId, setOverId] = useState<string | null>(null);
   return (
-    <div className="scrollbar-none flex h-9 shrink-0 items-stretch overflow-x-auto border-b">
+    <div
+      role="tablist"
+      className="scrollbar-none flex h-9 shrink-0 items-stretch overflow-x-auto border-b"
+      onDragOver={(e) => {
+        // 阻止冒泡到 SplitView 的 leaf 容器（tab 上的拖拽不应触发分区）；空栏可 drop（拖入本组）
+        e.stopPropagation();
+        if (tabs.length === 0 && (dragRef.current ?? dragId)) e.preventDefault();
+      }}
+      onDrop={(e) => {
+        e.stopPropagation();
+        const from = dragRef.current ?? dragId ?? null;
+        if (tabs.length === 0 && from) {
+          e.preventDefault();
+          onDropTab?.(from);
+          dragRef.current = null;
+          setOverId(null);
+        }
+      }}
+    >
       {tabs.map((tab) => {
         const id = tab.kind === "chat" ? chatTabId(tab.sessionId) : tab.kind === "diff" ? `diff:${tab.path}` : tab.path;
         const isActive = active === id;
@@ -37,12 +59,14 @@ export function TabsBar({ tabs, active, onActivate, onClose, onMove, onDragStart
             }}
             onDragOver={(e) => {
               e.preventDefault();
-              if (dragRef.current && dragRef.current !== id) setOverId(id);
+              const from = dragRef.current ?? dragId ?? null;
+              if (from && from !== id) setOverId(id);
             }}
             onDragLeave={() => setOverId((o) => (o === id ? null : o))}
             onDrop={(e) => {
               e.preventDefault();
-              if (dragRef.current && dragRef.current !== id) onMove(dragRef.current, id);
+              const from = dragRef.current ?? dragId ?? null;
+              if (from && from !== id) onMove(from, id);
               dragRef.current = null;
               setOverId(null);
             }}

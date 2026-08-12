@@ -36,7 +36,7 @@ import {
   tabDirty,
   type WorkspaceState,
 } from "@/entities/workspace";
-import { mapLeaf, singleLeafOf, splitGroup, type LayoutNode, type LeafNode, type SplitSide } from "@/entities/workspace";
+import { mapLeaf, moveTabToGroup, removeEmptyLeaf, singleLeafOf, splitGroup, type LayoutNode, type LeafNode, type SplitSide } from "@/entities/workspace";
 
 // 01：单组模式的叶子路由——组内操作复用 tabs.ts（groupId 由 mapLeaf 恢复）；分区后改为按聚焦组路由
 function applyToLeaf(s: LayoutNode, fn: (leaf: WorkspaceState) => WorkspaceState): LayoutNode {
@@ -178,7 +178,7 @@ export default function App() {
         | { kind: "open-chat"; sessionId: string; name: string }
         | { kind: "close-chat"; sessionId: string }
         | { kind: "dead-chat"; sessionId: string }
-        | { kind: "move"; groupId: string; fromId: string; toId: string }
+        | { kind: "move"; groupId: string; fromId: string; toId: string | null }
         | { kind: "split"; groupId: string; side: SplitSide; tabId: string },
     ): LayoutNode => {
       switch (a.kind) {
@@ -189,7 +189,7 @@ export default function App() {
         case "activate":
           return mapLeaf(s, a.groupId, (leaf) => activateTab(leaf, a.id));
         case "close":
-          return mapLeaf(s, a.groupId, (leaf) => closeTab(leaf, a.id));
+          return removeEmptyLeaf(mapLeaf(s, a.groupId, (leaf) => closeTab(leaf, a.id)));
         case "dirty":
           return applyToLeaf(s, (leaf) => setDirty(leaf, a.path, a.dirty));
         case "promote":
@@ -199,11 +199,11 @@ export default function App() {
         case "open-chat":
           return applyToLeaf(s, (leaf) => openChatTab(leaf, a.sessionId, a.name));
         case "close-chat":
-          return applyToLeaf(s, (leaf) => closeChatTab(leaf, a.sessionId));
+          return removeEmptyLeaf(applyToLeaf(s, (leaf) => closeChatTab(leaf, a.sessionId)));
         case "dead-chat":
           return applyToLeaf(s, (leaf) => markChatDead(leaf, a.sessionId));
         case "move":
-          return mapLeaf(s, a.groupId, (leaf) => moveTab(leaf, a.fromId, a.toId));
+          return moveTabToGroup(s, a.groupId, a.fromId, a.toId);
         case "split":
           return splitGroup(s, a.groupId, a.side, a.tabId);
       }
@@ -610,6 +610,7 @@ export default function App() {
           active={active}
           onActivate={(id) => dispatchWs({ kind: "activate", groupId: leaf.groupId, id })}
           onMove={(fromId, toId) => dispatchWs({ kind: "move", groupId: leaf.groupId, fromId, toId })}
+          onDropTab={(fromId) => dispatchWs({ kind: "move", groupId: leaf.groupId, fromId, toId: null })}
           onClose={(id) => {
             if (chatSessionOf(id) !== null) {
               // chat 与 file 同级：直接关闭；spawn 实例同步杀进程（TUI 注册者保留注册）
@@ -628,6 +629,7 @@ export default function App() {
             }
           }}
           onDragStartTab={setDragTabId}
+          dragId={dragTabId}
         />
         <div className="min-h-0 flex-1">
           {active === "" && tabs.length === 0 && <ChatEmptyGuide />}

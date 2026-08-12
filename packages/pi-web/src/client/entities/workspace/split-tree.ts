@@ -58,8 +58,8 @@ export type SplitSide = "left" | "right" | "top" | "bottom";
 let idSeq = 0;
 const nextId = (): string => `w${++idSeq}`;
 
-/** 拖拽分区：目标 leaf 一分为二，被拖 tab 移入新组（新组初始只有它自己）；原组移除该 tab（激活相邻） */
-export function splitGroup(tree: LayoutNode, groupId: string, side: SplitSide, tabId: string): LayoutNode {
+/** 拖拽分区（内部）：目标 leaf 一分为二，被拖 tab 移入新组（新组初始只有它自己）；原组移除该 tab（激活相邻） */
+function splitGroupRaw(tree: LayoutNode, groupId: string, side: SplitSide, tabId: string): LayoutNode {
   return updateLeaf(tree, groupId, (leaf) => {
     const idx = leaf.tabs.findIndex((t) => tabKeyOf(t) === tabId);
     if (idx === -1) return leaf;
@@ -75,8 +75,71 @@ export function splitGroup(tree: LayoutNode, groupId: string, side: SplitSide, t
   });
 }
 
+/** 拖拽分区（03：原组空时自动合并）——wrapper 保留签名 */
+function splitGroupMerged(tree: LayoutNode, groupId: string, side: SplitSide, tabId: string): LayoutNode {
+  return removeEmptyLeaf(splitGroupRaw(tree, groupId, side, tabId));
+}
+
+/** @deprecated 内部实现（03 起由 splitGroupMerged 包裹空合并） */
+export function splitGroup(tree: LayoutNode, groupId: string, side: SplitSide, tabId: string): LayoutNode {
+  return splitGroupMerged(tree, groupId, side, tabId);
+}
+
 function tabKeyOf(t: WorkspaceTab): string {
   return t.kind === "file" ? t.path : t.kind === "diff" ? `diff:${t.path}` : `chat:${t.sessionId}`;
+}
+
+/** 空 leaf 自动合并：内部空组提升兄弟，递归到单 leaf（根不空） */
+export function removeEmptyLeaf(tree: LayoutNode): LayoutNode {
+  if (tree.kind === "leaf") return tree;
+  const a = removeEmptyLeaf(tree.a);
+  const b = removeEmptyLeaf(tree.b);
+  const aEmpty = a.kind === "leaf" && a.tabs.length === 0;
+  const bEmpty = b.kind === "leaf" && b.tabs.length === 0;
+  if (aEmpty && bEmpty) return { kind: "leaf", groupId: a.kind === "leaf" ? a.groupId : b.kind === "leaf" ? b.groupId : "g1", tabs: [], active: "" };
+  if (aEmpty) return b;
+  if (bEmpty) return a;
+  return { ...tree, a, b };
+}
+
+function findGroupOf(tree: LayoutNode, tabId: string): string | null {
+  if (tree.kind === "leaf") return tree.tabs.some((t) => tabKeyOf(t) === tabId) ? tree.groupId : null;
+  return findGroupOf(tree.a, tabId) ?? findGroupOf(tree.b, tabId);
+}
+
+/** 移动 tab 到目标组（跨组/同组调序统一）：toId 前插入（null = 追加末尾）；跨组激活目标、原组激活相邻；空组自动合并 */
+export function moveTabToGroup(tree: LayoutNode, toGroupId: string, fromId: string, toId: string | null): LayoutNode {
+  const fromGroupId = findGroupOf(tree, fromId);
+  if (!fromGroupId) return tree;
+  if (fromGroupId === toGroupId) {
+    // 同组：调序/移至末尾（激活不变）
+    return updateLeaf(tree, toGroupId, (leaf) => {
+      const idx = leaf.tabs.findIndex((t) => tabKeyOf(t) === fromId);
+      const moved = leaf.tabs[idx];
+      if (idx === -1 || !moved) return leaf;
+      const rest = leaf.tabs.filter((_, i) => i !== idx);
+      const toIdx = toId ? leaf.tabs.findIndex((t) => tabKeyOf(t) === toId) : -1;
+      const tabs = toId && toIdx !== -1 ? [...rest.slice(0, toIdx), moved, ...rest.slice(toIdx)] : [...rest, moved];
+      return { ...leaf, tabs };
+    });
+  }
+  // 跨组：先移除（激活相邻）再插入（激活目标）
+  let movedTab: WorkspaceTab | null = null;
+  const afterRemove = updateLeaf(tree, fromGroupId, (leaf) => {
+    const idx = leaf.tabs.findIndex((t) => tabKeyOf(t) === fromId);
+    const moved = leaf.tabs[idx];
+    if (idx === -1 || !moved) return leaf;
+    movedTab = moved;
+    return { ...closeTab(leaf, fromId), kind: "leaf", groupId: leaf.groupId };
+  });
+  if (!movedTab) return tree;
+  const m = movedTab;
+  const afterInsert = updateLeaf(afterRemove, toGroupId, (leaf) => {
+    const toIdx = toId ? leaf.tabs.findIndex((t) => tabKeyOf(t) === toId) : -1;
+    const tabs = toId && toIdx !== -1 ? [...leaf.tabs.slice(0, toIdx), m, ...leaf.tabs.slice(toIdx)] : [...leaf.tabs, m];
+    return { ...leaf, tabs, active: fromId };
+  });
+  return removeEmptyLeaf(afterInsert);
 }
 
 /** 十字高亮方向判定：归一化坐标（0-1，相对目标 leaf 容器）→ 四向边缘 / 中央 null */

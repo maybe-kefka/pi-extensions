@@ -103,4 +103,21 @@ describe("TabsBar 拖拽调序", () => {
     fireEvent.drop(to, { dataTransfer: {} });
     expect(onMove).toHaveBeenCalledWith("chat:/s/a.jsonl", "a.ts");
   });
+
+  it("外部拖拽（dragId）：跨组 drop 到 tab → onMove(fromId, toId)", () => {
+    const onMove = vi.fn();
+    render(<TabsBar tabs={tabs} active="a.ts" onActivate={vi.fn()} onClose={vi.fn()} onMove={onMove} dragId="chat:/other.jsonl" />);
+    const to = screen.getByTitle("a.ts");
+    fireEvent.dragOver(to, { dataTransfer: {} });
+    fireEvent.drop(to, { dataTransfer: {} });
+    expect(onMove).toHaveBeenCalledWith("chat:/other.jsonl", "a.ts");
+  });
+
+  it("外部拖拽（dragId）：drop 到空栏 → onDropTab(fromId)", () => {
+    const onDropTab = vi.fn();
+    render(<TabsBar tabs={[]} active="" onActivate={vi.fn()} onClose={vi.fn()} onMove={vi.fn()} onDropTab={onDropTab} dragId="chat:/other.jsonl" />);
+    fireEvent.dragOver(screen.getByRole("tablist"), { dataTransfer: {} });
+    fireEvent.drop(screen.getByRole("tablist"), { dataTransfer: {} });
+    expect(onDropTab).toHaveBeenCalledWith("chat:/other.jsonl");
+  });
 });
