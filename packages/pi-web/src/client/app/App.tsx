@@ -831,6 +831,10 @@ export default function App() {
               setFocusGroupId(groupId);
               dispatchWs({ kind: "split", groupId, side, tabId });
             }}
+            onJoin={(groupId, tabId) => {
+              setFocusGroupId(groupId);
+              dispatchWs({ kind: "move", groupId, fromId: tabId, toId: null });
+            }}
             onRatio={(splitId, ratio) => dispatchWs({ kind: "set-ratio", splitId, ratio })}
             renderLeaf={renderLeafContent}
           />

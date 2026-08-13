@@ -89,17 +89,61 @@ describe("SplitView 02：分区渲染与拖拽", () => {
     expect(s.onSplit).toHaveBeenCalledWith("g1", "right", "chat:/s.jsonl");
   });
 
-  it("dragover 中央：无高亮，drop 不触发", () => {
+  it("dragover 中央：join 高亮（整容器），drop 触发 onJoin 并入目标组", () => {
     mockRect(400, 300);
     const s = setup({
       tree: twoLeafTree(),
       dragTabId: "chat:/s.jsonl",
+      onJoin: vi.fn(),
     });
     render(<SplitView {...s} />);
     dragOverAt(screen.getByTestId("leaf-g1"), 200, 150);
-    expect(document.querySelector('[data-testid^="drop-"]')).toBeNull();
+    expect(document.querySelector('[data-testid="drop-join"]')).not.toBeNull();
     fireEvent.drop(screen.getByTestId("leaf-g1"), { clientX: 200, clientY: 150 });
+    expect(s.onJoin).toHaveBeenCalledWith("g1", "chat:/s.jsonl");
     expect(s.onSplit).not.toHaveBeenCalled();
+  });
+
+  it("R27 守卫：源组=目标组 且仅 1 tab → 无高亮、drop 无效果", () => {
+    mockRect(400, 300);
+    let tree = initialTree();
+    const gid = singleLeafOf(tree).groupId;
+    tree = mapLeaf(tree, gid, (leaf) => openFile(leaf, "/a.ts", "a.ts"));
+    const s = setup({ tree, dragTabId: "/a.ts", onJoin: vi.fn() });
+    render(<SplitView {...s} />);
+    // 自身组右缘 / 中央均不预览
+    dragOverAt(screen.getByTestId("leaf-g1"), 380, 150);
+    expect(document.querySelector('[data-testid^="drop-"]')).toBeNull();
+    dragOverAt(screen.getByTestId("leaf-g1"), 200, 150);
+    expect(document.querySelector('[data-testid^="drop-"]')).toBeNull();
+    fireEvent.drop(screen.getByTestId("leaf-g1"), { clientX: 380, clientY: 150 });
+    expect(s.onSplit).not.toHaveBeenCalled();
+    expect(s.onJoin).not.toHaveBeenCalled();
+  });
+
+  it("R27 跨组拖拽：拖 g1 的 tab 到另一组边缘 → onSplit(目标组, side, tab)（01 领域层跨组语义）", () => {
+    mockRect(400, 300);
+    const tree = twoLeafTree();
+    const freshId = tree.kind === "split" && tree.b.kind === "leaf" ? tree.b.groupId : "w1";
+    const s = setup({ tree, dragTabId: "/a.ts", onJoin: vi.fn() });
+    render(<SplitView {...s} />);
+    const bLeaf = screen.getByTestId(`leaf-${freshId}`);
+    dragOverAt(bLeaf, 380, 150);
+    expect(document.querySelector('[data-testid="drop-right"]')).not.toBeNull();
+    fireEvent.drop(bLeaf, { clientX: 380, clientY: 150 });
+    expect(s.onSplit).toHaveBeenCalledWith(freshId, "right", "/a.ts");
+  });
+
+  it("R27 边缘高亮 = 实际半区（w-1/2，非命中区 w-1/4）", () => {
+    mockRect(400, 300);
+    const s = setup({ tree: twoLeafTree(), dragTabId: "chat:/s.jsonl" });
+    render(<SplitView {...s} />);
+    dragOverAt(screen.getByTestId("leaf-g1"), 380, 150);
+    const zone = document.querySelector('[data-testid="drop-right"]');
+    expect(zone).not.toBeNull();
+    const cls = zone?.getAttribute("class") ?? "";
+    expect(cls).toContain("w-1/2");
+    expect(cls).not.toContain("w-1/4");
   });
 
   it("无拖拽中的 tab：dragover 无高亮", () => {
