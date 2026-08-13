@@ -433,6 +433,9 @@ export default function App() {
   const syncAgents = useCallback((list: AgentInfo[]) => {
     setAgents(list);
     agentsRef.current = list;
+    // R27：注册表为空（服务端重启/重连初期瞬态）不驱动 leave 关闭——树是持久状态，
+    // 瞬态空列表会误关所有 tab（agent 退出走 agent_closed → dead 标记，不依赖 leave）
+    if (list.length === 0) return;
     // R27：diff 基于完整树展平（workspaceRef 只是单 leaf——split 后其他组的 tab 会被误判为未开而重复 open）
     const flat = { ...workspaceRef.current, tabs: flattenTabs(workspaceTreeRef.current) };
     const diff = diffAgentTabs(flat, list);
