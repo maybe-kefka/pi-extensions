@@ -1,5 +1,6 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useReducer, useRef, useState } from "react";
 import { keymap } from "@codemirror/view";
+import { EditorSelection } from "@codemirror/state";
 import CodeMirror from "@uiw/react-codemirror";
 import type { EditorView } from "@codemirror/view";
 import { redo, undo } from "@codemirror/commands";
@@ -57,6 +58,17 @@ export interface EditorPaneProps {
   onDirtyChange?: (path: string, dirty: boolean) => void;
   /** 保存成功回调（git 状态联动刷新） */
   onSaved?: (path: string) => void;
+  /** R28：重挂恢复——上次实例的完整编辑器快照（split/移动后状态零损失） */
+  savedState?: EditorSnapshot;
+  /** R28：持续上报编辑器快照（App ref 写——重挂时新实例读到的总是最新） */
+  onStateSave?: (path: string, snapshot: EditorSnapshot) => void;
+}
+
+/** R28：编辑器快照（内容/哈希/脏标记在 EditState；光标与滚动取自 CodeMirror） */
+export interface EditorSnapshot {
+  edit: EditState;
+  selection: { anchor: number; head: number } | null;
+  scrollTop: number | null;
 }
 
 export interface EditorPaneHandle {
@@ -97,13 +109,34 @@ function fmtSize(n: number): string {
 
 const EMPTY: OpenedFile = { path: "", name: "", content: "", mode: "text", size: 0, mtimeMs: 0, hash: "" };
 
-export const EditorPane = forwardRef<EditorPaneHandle, EditorPaneProps>(function EditorPane({ path, request, onDirtyChange, onSaved }, ref) {
+export const EditorPane = forwardRef<EditorPaneHandle, EditorPaneProps>(function EditorPane(
+  { path, request, onDirtyChange, onSaved, savedState, onStateSave },
+  ref,
+) {
   const [file, setFile] = useState<OpenedFile | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [edit, dispatch] = useReducer(reducer, EMPTY, initialEditState);
+  // R28：重挂恢复——savedState.edit 整体初始化（内容/哈希/脏标记/冲突）；否则磁盘初始态
+  const [edit, dispatch] = useReducer(reducer, EMPTY, (empty) => savedState?.edit ?? initialEditState(empty));
   const filePathRef = useRef<string | null>(null);
 
   const viewRef = useRef<EditorView | null>(null);
+  // R28：首次加载跳过 reload（恢复内容优先）——只消费一次
+  const skipFirstReloadRef = useRef(!!savedState);
+  // R28：快照上报——edit 读 ref 最新（onUpdate 高频回调闭包）；selection/scroll 由 onUpdate 维护
+  const editRef = useRef(edit);
+  editRef.current = edit;
+  const selectionRef = useRef<{ anchor: number; head: number } | null>(null);
+  const scrollRef = useRef<number | null>(null);
+  const onStateSaveRef = useRef(onStateSave);
+  onStateSaveRef.current = onStateSave;
+  const reportState = useCallback(() => {
+    onStateSaveRef.current?.(path, { edit: editRef.current, selection: selectionRef.current, scrollTop: scrollRef.current });
+  }, [path]);
+  // 卸载兜底上报（持续上报已覆盖——防御性保留）
+  useEffect(() => {
+    return () => reportState();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const loadFile = useCallback(
     async (p: string) => {
       try {
@@ -111,6 +144,12 @@ export const EditorPane = forwardRef<EditorPaneHandle, EditorPaneProps>(function
         const opened: OpenedFile = { path: p, name: p.split("/").pop() ?? p, ...r };
         setFile(opened);
         setLoadError(null);
+        // R28：恢复场景（有 savedState）首次加载不 dispatch reload——磁盘内容不得覆盖未保存修改；
+        // 手动"重新加载"按钮（丢弃未保存）不受影响（skip 只消费一次）
+        if (skipFirstReloadRef.current) {
+          skipFirstReloadRef.current = false;
+          return;
+        }
         dispatch({ kind: "reload", file: opened });
       } catch (e) {
         setLoadError(e instanceof Error ? e.message : String(e));
@@ -288,6 +327,21 @@ export const EditorPane = forwardRef<EditorPaneHandle, EditorPaneProps>(function
             extensions={extensions}
             onCreateEditor={(view) => {
               viewRef.current = view;
+              // R28：重挂恢复光标与滚动（selection/scrollTop 来自上次实例快照）
+              const sel = savedState?.selection;
+              if (sel) {
+                view.dispatch({
+                  selection: EditorSelection.create([EditorSelection.range(sel.anchor, sel.head)]),
+                });
+              }
+              if (savedState?.scrollTop != null) view.scrollDOM.scrollTop = savedState.scrollTop;
+            }}
+            onUpdate={(vu) => {
+              // R28：持续上报——每次 view 更新（内容/光标/滚动）同步最新快照到 App ref
+              const sel = vu.state.selection.main;
+              selectionRef.current = { anchor: sel.anchor, head: sel.head };
+              scrollRef.current = vu.view.scrollDOM.scrollTop;
+              reportState();
             }}
             readOnly={!editable}
             onChange={(v) => dispatch({ kind: "content", content: v })}
