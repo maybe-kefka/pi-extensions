@@ -40,7 +40,9 @@ function MessageScrollerViewport({
     <MessageScrollerPrimitive.Viewport
       data-slot="message-scroller-viewport"
       className={cn(
-        "size-full min-h-0 min-w-0 scroll-fade-b scrollbar-thin scrollbar-gutter-stable overflow-y-auto overscroll-contain contain-content data-autoscrolling:scrollbar-none",
+        // R27 split-drag-ux：无 data-autoscrolling:scrollbar-none——autoscroll 期间隐藏滚动条 180ms
+        // 会在 split 宽度变化时与 ResizeObserver 形成自持闪烁循环；滚动条常显 thin
+        "size-full min-h-0 min-w-0 scroll-fade-b scrollbar-thin scrollbar-gutter-stable overflow-y-auto overscroll-contain contain-content",
         className
       )}
       {...props}
