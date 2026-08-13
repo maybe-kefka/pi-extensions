@@ -440,9 +440,14 @@ export default function App() {
     const flat = { ...workspaceRef.current, tabs: flattenTabs(workspaceTreeRef.current) };
     const diff = diffAgentTabs(flat, list);
     for (const j of diff.join) {
-      // dead 的 tab 重建复活（reducer 状态已随实例死亡丢失——历史由 ChatTab 重拉）
+      // dead 的 tab 重建复活（reducer 状态已随实例死亡丢失——历史由 ChatTab 重拉）；
+      // R27：原地重建（close 全树移除后 open 回原组）——不并入焦点组，保持 split 布局
       if (chatLeaveAction(flat.tabs, j.sessionFile) === "keep") {
+        const origin = findGroupOfTree(workspaceTreeRef.current, chatTabId(j.sessionFile)) ?? focusRef.current;
         dispatchWs({ kind: "close-chat", sessionId: j.sessionFile });
+        dispatchWs({ kind: "open-chat", groupId: origin, sessionId: j.sessionFile, name: j.sessionName ?? sessionLabelFromFile(j.sessionFile) });
+        dispatchWs({ kind: "activate", groupId: origin, id: chatTabId(j.sessionFile) });
+        continue;
       }
       dispatchWs({ kind: "open-chat", groupId: focusRef.current, sessionId: j.sessionFile, name: j.sessionName ?? sessionLabelFromFile(j.sessionFile) });
       dispatchWs({ kind: "activate", groupId: focusRef.current, id: chatTabId(j.sessionFile) });
