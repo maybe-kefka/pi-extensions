@@ -49,7 +49,8 @@ export function SplitView({ tree, dragTabId, renderLeaf, onSplit, onRatio }: Spl
     const x = (e.clientX - rect.left) / rect.width;
     const y = (e.clientY - rect.top) / rect.height;
     const side = resolveDropSide(x, y);
-    const next: DropState | null = side ? { groupId: leaf.groupId, side } : null;
+    // join（中央）暂不接——05 切片接入 join 高亮/drop；此前保持"中央无效果"现状
+    const next: DropState | null = side && side !== "join" ? { groupId: leaf.groupId, side } : null;
     dropRef.current = next;
     setDrop((prev) => (prev?.groupId === next?.groupId && prev?.side === next?.side ? prev : next));
   };

@@ -58,21 +58,48 @@ export type SplitSide = "left" | "right" | "top" | "bottom";
 let idSeq = 0;
 const nextId = (): string => `w${++idSeq}`;
 
-/** 拖拽分区：目标 leaf 一分为二，被拖 tab 移入新组（新组初始只有它自己）；原组移除该 tab（激活相邻）；原组空自动合并 */
-export function splitGroup(tree: LayoutNode, groupId: string, side: SplitSide, tabId: string): LayoutNode {
-  return updateLeaf(tree, groupId, (leaf) => {
+/** 拖拽分区：把 tab（可在任意组）拆到目标组——目标 leaf 一分为二，tab 移入新组（新组初始只有它自己）；
+ *  同组：原组移除该 tab（激活相邻）；跨组：先从源组移除（激活相邻）再拆目标组；空组自动回收。
+ *  守卫：源组 = 目标组 且仅 1 个 tab → 原树不变（无意义拆分）。 */
+export function splitGroup(tree: LayoutNode, toGroupId: string, side: SplitSide, tabId: string): LayoutNode {
+  const fromGroupId = findGroupOf(tree, tabId);
+  if (!fromGroupId) return tree;
+  if (!findLeaf(tree, toGroupId)) return tree; // 目标组不存在 → 原树（先校验再移除，避免半应用）
+  // 守卫：源=目标 且 源组仅 1 tab → 拆分无意义（拖走即空 → 回收）
+  if (fromGroupId === toGroupId) {
+    const src = findLeaf(tree, fromGroupId);
+    if (src && src.tabs.length <= 1) return tree;
+  }
+  // 跨组：先从源组移除（复用 closeTab 语义激活相邻）
+  let movedTab: WorkspaceTab | null = null;
+  let base = tree;
+  if (fromGroupId !== toGroupId) {
+    base = updateLeaf(tree, fromGroupId, (leaf) => {
+      const idx = leaf.tabs.findIndex((t) => tabKeyOf(t) === tabId);
+      const moved = leaf.tabs[idx];
+      if (idx === -1 || !moved) return leaf;
+      movedTab = moved;
+      return { ...closeTab(leaf, tabId), kind: "leaf", groupId: leaf.groupId };
+    });
+    if (!movedTab) return tree;
+  }
+  // 目标组一分为二：原组激活处理复用 closeTab 语义（用完整 leaf——内部按原 tabs 定位 idx 才能正确激活相邻；
+  // 传移除后的 rest 会导致 idx=-1 → active 被清空（chat 丢聚焦）
+  const result = updateLeaf(base, toGroupId, (leaf) => {
     const idx = leaf.tabs.findIndex((t) => tabKeyOf(t) === tabId);
-    if (idx === -1) return leaf;
-    const [moved] = leaf.tabs.slice(idx, idx + 1);
-    // 原组激活处理复用 closeTab 语义（用完整 leaf——内部按原 tabs 定位 idx 才能正确激活相邻；
-    // 传移除后的 rest 会导致 idx=-1 → active 被清空（chat 丢聚焦）
-    const remain: LeafNode = { ...closeTab(leaf, tabId), kind: "leaf", groupId: leaf.groupId };
+    const moved = movedTab ?? (idx !== -1 ? leaf.tabs[idx] : null);
+    if (!moved) return leaf;
+    const remain: LeafNode =
+      fromGroupId === toGroupId
+        ? { ...closeTab(leaf, tabId), kind: "leaf", groupId: leaf.groupId }
+        : leaf;
     const fresh: LeafNode = { kind: "leaf", groupId: nextId(), tabs: [moved], active: tabId };
     const dir: SplitDir = side === "left" || side === "right" ? "row" : "col";
     const a = side === "left" || side === "top" ? fresh : remain;
     const b = side === "left" || side === "top" ? remain : fresh;
     return removeEmptyLeaf({ kind: "split", id: nextId(), dir, ratio: 0.5, a, b });
   });
+  return removeEmptyLeaf(result);
 }
 
 /** tab 唯一标识（与 TabsBar 的 id 派生一致）——review：去重 */
@@ -177,14 +204,16 @@ export function moveTabToGroup(tree: LayoutNode, toGroupId: string, fromId: stri
   return removeEmptyLeaf(afterInsert);
 }
 
-/** 十字高亮方向判定：归一化坐标（0-1，相对目标 leaf 容器）→ 四向边缘 / 中央 null */
-export function resolveDropSide(x: number, y: number): SplitSide | null {
+/** 落点判定：四向边缘（25% 贴边）/ 中央 join（并入目标组） */
+export type SplitZone = SplitSide | "join";
+
+export function resolveDropSide(x: number, y: number): SplitZone {
   const EDGE = 0.25;
   if (x < EDGE) return "left";
   if (x > 1 - EDGE) return "right";
   if (y < EDGE) return "top";
   if (y > 1 - EDGE) return "bottom";
-  return null;
+  return "join";
 }
 
 const SERIALIZE_VERSION = 1;

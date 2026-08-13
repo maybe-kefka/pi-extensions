@@ -176,12 +176,12 @@ describe("split-tree 02：拖拽分区", () => {
     expect(splitGroup(tree, "nope", "right", "/a.ts")).toBe(tree);
   });
 
-  it("resolveDropSide：四向边缘判定 + 中央 null", () => {
+  it("resolveDropSide：四向边缘判定 + 中央 join", () => {
     expect(resolveDropSide(0.05, 0.5)).toBe("left");
     expect(resolveDropSide(0.95, 0.5)).toBe("right");
     expect(resolveDropSide(0.5, 0.05)).toBe("top");
     expect(resolveDropSide(0.5, 0.95)).toBe("bottom");
-    expect(resolveDropSide(0.5, 0.5)).toBeNull();
+    expect(resolveDropSide(0.5, 0.5)).toBe("join");
     // 角落：左右优先
     expect(resolveDropSide(0.05, 0.05)).toBe("left");
   });
@@ -261,13 +261,77 @@ describe("split-tree 03：跨组移动与空组合并", () => {
     expect(after.map((g) => g.paths)).toEqual([["/a.ts"], ["/b.ts"]]);
   });
 
-  it("splitGroup 后原组空 → 合并（单 tab 拖出无分区）", () => {
+  it("splitGroup 单 tab 守卫：源组=目标组 且仅 1 tab → 原树不变（无意义拆分）", () => {
     let tree = initialTree();
     const gid = singleLeafOf(tree).groupId;
     tree = mapLeaf(tree, gid, (leaf) => openFile(leaf, "/a.ts", "a.ts"));
-    tree = splitGroup(tree, gid, "right", "/a.ts");
-    expect(tree.kind).toBe("leaf");
-    if (tree.kind === "leaf") expect(tree.tabs.map((t) => (t.kind === "file" ? t.path : null))).toEqual(["/a.ts"]);
+    expect(splitGroup(tree, gid, "right", "/a.ts")).toBe(tree);
+    expect(splitGroup(tree, gid, "left", "/a.ts")).toBe(tree);
+    expect(splitGroup(tree, gid, "top", "/a.ts")).toBe(tree);
+  });
+});
+
+describe("split-tree 05：跨组拆分", () => {
+  const twoLeaf = (): LayoutNode => {
+    let tree = initialTree();
+    const gid = singleLeafOf(tree).groupId;
+    tree = mapLeaf(tree, gid, (leaf) => openFile(leaf, "/a.ts", "a.ts"));
+    tree = mapLeaf(tree, gid, (leaf) => openFile(leaf, "/b.ts", "b.ts"));
+    return splitGroup(tree, gid, "right", "/b.ts");
+  };
+  const gids = (tree: LayoutNode): string[] => leafTabsOf(tree).map((g) => g.groupId);
+
+  it("跨组右缘拆分：从源组移除、目标组一分为二、tab 入新组（右）", () => {
+    let tree = twoLeaf();
+    const [left, right] = gids(tree);
+    tree = mapLeaf(tree, left, (leaf) => openFile(leaf, "/c.ts", "c.ts"));
+    tree = splitGroup(tree, right, "right", "/a.ts");
+    expect(tree.kind).toBe("split");
+    if (tree.kind !== "split") return;
+    expect(tree.dir).toBe("row");
+    expect(tree.ratio).toBe(0.5);
+    const groups = leafTabsOf(tree);
+    expect(groups).toHaveLength(3);
+    expect(groups.map((g) => g.paths)).toEqual([["/c.ts"], ["/b.ts"], ["/a.ts"]]);
+    expect(groups[2].active).toBe("/a.ts");
+  });
+
+  it("跨组左缘拆分：新组在左", () => {
+    let tree = twoLeaf();
+    const [left, right] = gids(tree);
+    tree = mapLeaf(tree, left, (leaf) => openFile(leaf, "/c.ts", "c.ts"));
+    tree = splitGroup(tree, right, "left", "/a.ts");
+    const groups = leafTabsOf(tree);
+    expect(groups.map((g) => g.paths)).toEqual([["/c.ts"], ["/a.ts"], ["/b.ts"]]);
+  });
+
+  it("跨组拆分源组空 → 自动回收", () => {
+    let tree = twoLeaf(); // 左=[/a.ts] 右=[/b.ts]，均为单 tab
+    const [left, right] = gids(tree);
+    tree = splitGroup(tree, right, "right", "/a.ts");
+    const groups = leafTabsOf(tree);
+    expect(groups).toHaveLength(2);
+    expect(groups.map((g) => g.paths)).toEqual([["/b.ts"], ["/a.ts"]]);
+  });
+
+  it("单 tab 源组跨组拆分仍有效（目标=其他组）", () => {
+    let tree = twoLeaf(); // 左=[/a.ts] 右=[/b.ts]
+    const [left] = gids(tree);
+    tree = splitGroup(tree, left, "right", "/b.ts"); // 源右（单 tab），目标左
+    const groups = leafTabsOf(tree);
+    expect(groups).toHaveLength(2);
+    expect(groups.map((g) => g.paths)).toEqual([["/a.ts"], ["/b.ts"]]);
+  });
+
+  it("跨组拆分不存在的 tabId → 原树不变", () => {
+    let tree = twoLeaf();
+    const [, right] = gids(tree);
+    expect(splitGroup(tree, right, "right", "/nope.ts")).toBe(tree);
+  });
+
+  it("跨组拆分不存在的目标 groupId → 原树不变", () => {
+    let tree = twoLeaf();
+    expect(splitGroup(tree, "nope", "right", "/a.ts")).toBe(tree);
   });
 });
 
@@ -400,9 +464,10 @@ describe("split-tree 06：持久化", () => {
       walk(n.b);
     };
     walk(restored);
-    // 再 splitGroup（应生成新 id——不撞恢复树）
+    // 再 splitGroup（应生成新 id——不撞恢复树）；左组加 /c.ts 避免单 tab 守卫（守卫场景不生成新 id）
     const rg = singleLeafOf(restored).groupId;
-    const next = splitGroup(restored, rg, "right", "/a.ts");
+    const withC = mapLeaf(restored, rg, (leaf) => openFile(leaf, "/c.ts", "c.ts"));
+    const next = splitGroup(withC, rg, "right", "/a.ts");
     const nextIds = new Set<string>();
     const walk2 = (n: LayoutNode): void => {
       if (n.kind === "leaf") {
