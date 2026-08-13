@@ -84,9 +84,14 @@ export const ChatTab = memo(function ChatTab({
   const [state, dispatch] = useReducer(streamReducer, savedState ?? initialState);
   /** 历史已加载标记（切回 tab 不重拉——reducer 状态 long-live）；有快照恢复 → 视为已加载（不重拉） */
   const loadedRef = useRef(!!savedState);
-  /** 最新 state 快照（卸载时上报 App——跨父重挂后恢复） */
+  /** 最新 state 快照（持续上报 App——split 重挂时新实例 render 读到最新状态；
+   *  不能只靠卸载上报：卸载 cleanup 晚于新实例 render（隔代错位）） */
   const stateRef = useRef(state);
   stateRef.current = state;
+  useEffect(() => {
+    onStateSave?.(sessionId, stateRef.current);
+  }, [state, sessionId, onStateSave]);
+  // 卸载兜底（最后一次 state 已上报——防御性保留）
   useEffect(() => {
     return () => onStateSave?.(sessionId, stateRef.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps

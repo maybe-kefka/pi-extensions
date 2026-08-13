@@ -64,14 +64,24 @@ describe("ChatTab 状态快照", () => {
     expect(document.body.textContent).toContain("快照中的回复");
   });
 
-  it("卸载时上报最新状态快照（onStateSave 收到 reducer 状态）", () => {
+  it("state 变化即上报最新快照（不依赖卸载时序——split 重挂前 ref 已是最新）", () => {
+    const onStateSave = vi.fn();
+    const { rerender } = render(<ChatTab {...base({ onStateSave })} />);
+    expect(onStateSave.mock.calls.length).toBeGreaterThan(0); // 挂载即上报（含 conn 同步）
+    rerender(<ChatTab {...base({ onStateSave, conn: "closed" })} />); // conn 变化 → reducer state 变化
+    const last = onStateSave.mock.calls.at(-1) as [string, StreamState];
+    expect(last[0]).toBe("/s.jsonl");
+    expect(last[1].conn).toBe("closed");
+  });
+
+  it("卸载兜底上报（cleanup 仍写一次）", () => {
     const onStateSave = vi.fn();
     const { unmount } = render(<ChatTab {...base({ onStateSave })} />);
+    const callsBefore = onStateSave.mock.calls.length;
     unmount();
-    expect(onStateSave).toHaveBeenCalledTimes(1);
-    const [sid, state] = onStateSave.mock.calls[0] as [string, StreamState];
+    expect(onStateSave.mock.calls.length).toBeGreaterThanOrEqual(callsBefore);
+    const [sid, state] = onStateSave.mock.calls.at(-1) as [string, StreamState];
     expect(sid).toBe("/s.jsonl");
-    expect(state).toBeDefined();
     expect(Array.isArray(state.bubbles)).toBe(true);
   });
 });
