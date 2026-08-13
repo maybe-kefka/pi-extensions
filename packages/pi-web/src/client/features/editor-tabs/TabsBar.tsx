@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { FileDiff, MessageSquareText, X } from "lucide-react";
-import { resolveInsertIndex, tabKeyOf, type WorkspaceTab } from "@/entities/workspace";
+import { resolveInsertIndex, tabKeyOf, type TabRect, type WorkspaceTab } from "@/entities/workspace";
 
 export interface TabsBarProps {
   tabs: WorkspaceTab[];
@@ -39,7 +39,7 @@ export function TabsBar({ tabs, active, onActivate, onClose, onMove, onDragStart
     const rect = e.currentTarget.getBoundingClientRect();
     if (rect.width === 0) return null; // 未布局（jsdom 等）——drop 走默认末尾
     const x = e.clientX - rect.left;
-    const bounds = tabEls.current.slice(0, tabs.length).map((el) => {
+    const bounds: TabRect[] = tabEls.current.slice(0, tabs.length).map((el) => {
       const r = el?.getBoundingClientRect();
       return { left: (r?.left ?? rect.left) - rect.left, width: r?.width ?? 0 };
     });

@@ -14,7 +14,7 @@ import {
   moveTabToGroup,
   removeEmptyLeaf,
   removeTabFromTree,
-  resolveDropSide,
+  resolveDropZone,
   serializeTree,
   deserializeTree,
   singleLeafOf,
@@ -176,14 +176,14 @@ describe("split-tree 02：拖拽分区", () => {
     expect(splitGroup(tree, "nope", "right", "/a.ts")).toBe(tree);
   });
 
-  it("resolveDropSide：四向边缘判定 + 中央 join", () => {
-    expect(resolveDropSide(0.05, 0.5)).toBe("left");
-    expect(resolveDropSide(0.95, 0.5)).toBe("right");
-    expect(resolveDropSide(0.5, 0.05)).toBe("top");
-    expect(resolveDropSide(0.5, 0.95)).toBe("bottom");
-    expect(resolveDropSide(0.5, 0.5)).toBe("join");
+  it("resolveDropZone：四向边缘判定 + 中央 join", () => {
+    expect(resolveDropZone(0.05, 0.5)).toBe("left");
+    expect(resolveDropZone(0.95, 0.5)).toBe("right");
+    expect(resolveDropZone(0.5, 0.05)).toBe("top");
+    expect(resolveDropZone(0.5, 0.95)).toBe("bottom");
+    expect(resolveDropZone(0.5, 0.5)).toBe("join");
     // 角落：左右优先
-    expect(resolveDropSide(0.05, 0.05)).toBe("left");
+    expect(resolveDropZone(0.05, 0.05)).toBe("left");
   });
 });
 

@@ -1,7 +1,7 @@
 /**
  * 主区分区渲染（features/workspace/SplitView）——S2 seam。
  * 树 → 布局容器：split 节点 = row/col flex + divider；leaf 节点 = 叶子内容（App 提供 renderLeaf）+ 拖拽高亮层。
- * 拖拽：leaf 容器 dragover → resolveDropSide（归一化坐标，边缘/中央 join）→ 高亮；
+ * 拖拽：leaf 容器 dragover → resolveDropZone（归一化坐标，边缘/中央 join）→ 高亮；
  * drop → 边缘 onSplit(groupId, side, tabId)、中央 onJoin(groupId, tabId)。
  * R27：预览守卫——源组=目标组 且源组仅 1 tab 时不预览（拆分/并入均无意义）。
  */
@@ -9,9 +9,8 @@ import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import {
   MIN_SPLIT_RATIO,
-  findGroupOfTree,
-  findLeaf,
-  resolveDropSide,
+  isMeaninglessSplit,
+  resolveDropZone,
   type LayoutNode,
   type LeafNode,
   type SplitDir,
@@ -35,7 +34,7 @@ export interface SplitViewProps {
 
 interface DropState {
   groupId: string;
-  side: SplitZone;
+  zone: SplitZone;
 }
 
 export function SplitView({ tree, dragTabId, renderLeaf, onSplit, onJoin, onRatio }: SplitViewProps) {
@@ -62,30 +61,26 @@ export function SplitView({ tree, dragTabId, renderLeaf, onSplit, onJoin, onRati
     if (rect.width === 0 || rect.height === 0) return;
     const x = (e.clientX - rect.left) / rect.width;
     const y = (e.clientY - rect.top) / rect.height;
-    // R27 守卫：源组=目标组 且 源组仅 1 tab → 拆分/并入均无意义（不预览、drop 无效果）
-    const fromGroup = findGroupOfTree(tree, dragRef.current);
-    if (fromGroup === leaf.groupId) {
-      const src = findLeaf(tree, fromGroup);
-      if (src && src.tabs.length <= 1) {
-        dropRef.current = null;
-        setDrop((prev) => (prev ? null : prev));
-        return;
-      }
+    // R27 守卫（与领域层 splitGroup 同一谓词）：源组=目标组 且 源组仅 1 tab → 不预览、drop 无效果
+    if (isMeaninglessSplit(tree, dragRef.current, leaf.groupId)) {
+      dropRef.current = null;
+      setDrop((prev) => (prev ? null : prev));
+      return;
     }
-    const side = resolveDropSide(x, y);
-    const next: DropState = { groupId: leaf.groupId, side };
+    const side = resolveDropZone(x, y);
+    const next: DropState = { groupId: leaf.groupId, zone: side };
     dropRef.current = next;
-    setDrop((prev) => (prev?.groupId === next.groupId && prev?.side === next.side ? prev : next));
+    setDrop((prev) => (prev?.groupId === next.groupId && prev?.zone === next.zone ? prev : next));
   };
 
   const handleDrop = (leaf: LeafNode, e: React.DragEvent<HTMLDivElement>): void => {
     e.preventDefault();
     const target = dropRef.current;
     if (target && target.groupId === leaf.groupId && dragRef.current) {
-      if (target.side === "join") {
+      if (target.zone === "join") {
         onJoin?.(target.groupId, dragRef.current);
       } else {
-        onSplit(target.groupId, target.side, dragRef.current);
+        onSplit(target.groupId, target.zone, dragRef.current);
       }
     }
     dropRef.current = null;
@@ -131,7 +126,7 @@ export function SplitView({ tree, dragTabId, renderLeaf, onSplit, onJoin, onRati
           onDrop={(e) => handleDrop(node, e)}
         >
           {renderLeaf(node)}
-          {drop && drop.groupId === node.groupId && <DropZone side={drop.side} />}
+          {drop && drop.groupId === node.groupId && <DropZone side={drop.zone} />}
         </div>
       );
     }
