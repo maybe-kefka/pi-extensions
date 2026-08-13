@@ -27,6 +27,7 @@ import {
   chatOpenAction,
   diffAgentTabs,
   markChatDead,
+  reviveChatTab,
   moveTab,
   openDiffTab,
   openFile,
@@ -212,6 +213,7 @@ export default function App() {
         | { kind: "open-chat"; groupId: string; sessionId: string; name: string }
         | { kind: "close-chat"; sessionId: string }
         | { kind: "dead-chat"; groupId: string; sessionId: string }
+        | { kind: "revive-chat"; sessionId: string }
         | { kind: "move"; groupId: string; fromId: string; toId: string | null }
         | { kind: "split"; groupId: string; side: SplitSide; tabId: string }
         | { kind: "set-ratio"; splitId: string; ratio: number },
@@ -237,6 +239,11 @@ export default function App() {
           return removeTabFromTree(s, chatTabId(a.sessionId));
         case "dead-chat":
           return mapLeaf(s, a.groupId, (leaf) => markChatDead(leaf, a.sessionId));
+        case "revive-chat":
+          // R27：原地复活（清 dead 标记）——不 close/open（close 会触发空组合并，原组消失后无法回开）
+          return mapLeaf(s, findGroupOfTree(s, chatTabId(a.sessionId)) ?? singleLeafOf(s).groupId, (leaf) =>
+            reviveChatTab(leaf, a.sessionId),
+          );
         case "move":
           return moveTabToGroup(s, a.groupId, a.fromId, a.toId);
         case "split":
@@ -440,13 +447,10 @@ export default function App() {
     const flat = { ...workspaceRef.current, tabs: flattenTabs(workspaceTreeRef.current) };
     const diff = diffAgentTabs(flat, list);
     for (const j of diff.join) {
-      // dead 的 tab 重建复活（reducer 状态已随实例死亡丢失——历史由 ChatTab 重拉）；
-      // R27：原地重建（close 全树移除后 open 回原组）——不并入焦点组，保持 split 布局
+      // dead 的 tab 原地复活（清 dead 标记——agent 重连；历史由 ChatTab 实例重挂/事件流恢复）。
+      // R27：不能 close→open（close 触发空组合并，原组消失后 open 落空 → tab 丢失、布局破坏）
       if (chatLeaveAction(flat.tabs, j.sessionFile) === "keep") {
-        const origin = findGroupOfTree(workspaceTreeRef.current, chatTabId(j.sessionFile)) ?? focusRef.current;
-        dispatchWs({ kind: "close-chat", sessionId: j.sessionFile });
-        dispatchWs({ kind: "open-chat", groupId: origin, sessionId: j.sessionFile, name: j.sessionName ?? sessionLabelFromFile(j.sessionFile) });
-        dispatchWs({ kind: "activate", groupId: origin, id: chatTabId(j.sessionFile) });
+        dispatchWs({ kind: "revive-chat", sessionId: j.sessionFile });
         continue;
       }
       dispatchWs({ kind: "open-chat", groupId: focusRef.current, sessionId: j.sessionFile, name: j.sessionName ?? sessionLabelFromFile(j.sessionFile) });

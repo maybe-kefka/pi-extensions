@@ -19,6 +19,7 @@ import {
   openFile,
   promotePreview,
   resolveInsertIndex,
+  reviveChatTab,
   setDirty,
   tabDirty,
   type WorkspaceState,
@@ -281,6 +282,22 @@ describe("断线标记（agent 退出 → tab dead；重开复活）", () => {
     ];
     expect(chatLeaveAction(tabs, "/s/1.jsonl")).toBe("keep");
     expect(chatLeaveAction(tabs, "/s/2.jsonl")).toBe("close");
+  });
+
+  it("reviveChatTab：清 dead 标记（位置/顺序不变）；非 dead / 不存在 → 状态不变", () => {
+    const s: WorkspaceState = {
+      tabs: [
+        { kind: "chat", sessionId: "/s/1.jsonl", name: "A", dead: true },
+        { kind: "file", path: "/a.ts", name: "a.ts", dirty: false, preview: false },
+      ],
+      active: "",
+    };
+    const r = reviveChatTab(s, "/s/1.jsonl");
+    expect(r.tabs[0]).toMatchObject({ kind: "chat", sessionId: "/s/1.jsonl", dead: false });
+    expect(r.tabs[1]).toBe(s.tabs[1]); // 其他 tab 引用不变
+    expect(reviveChatTab(s, "/s/2.jsonl")).toBe(s); // 不存在
+    const alive: WorkspaceState = { tabs: [{ kind: "chat", sessionId: "/s/1.jsonl", name: "A" }], active: "" };
+    expect(reviveChatTab(alive, "/s/1.jsonl")).toBe(alive); // 非 dead → 引用相等
   });
 });
 

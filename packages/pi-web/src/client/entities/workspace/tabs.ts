@@ -208,6 +208,16 @@ export function markChatDead(state: WorkspaceState, sessionId: string): Workspac
   };
 }
 
+/** 复活 chat tab（清 dead 标记——agent 重连后原地恢复，不移动/不重建组）；不存在或非 dead → 状态不变 */
+export function reviveChatTab(state: WorkspaceState, sessionId: string): WorkspaceState {
+  const anyDead = state.tabs.some((t) => t.kind === "chat" && t.sessionId === sessionId && t.dead === true);
+  if (!anyDead) return state;
+  return {
+    ...state,
+    tabs: state.tabs.map((t) => (t.kind === "chat" && t.sessionId === sessionId ? { ...t, dead: false } : t)),
+  };
+}
+
 /** 会话消失时 tab 的处置：dead（断线保留待重拉）→ keep；正常 → close */
 export function chatLeaveAction(tabs: WorkspaceTab[], sessionId: string): "keep" | "close" {
   const t = tabs.find((x) => x.kind === "chat" && x.sessionId === sessionId);
