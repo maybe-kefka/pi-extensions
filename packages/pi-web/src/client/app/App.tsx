@@ -287,6 +287,10 @@ export default function App() {
   // workspace 最新引用（事件回调闭包读取）
   const workspaceRef = useRef(workspace);
   workspaceRef.current = workspace;
+  // R27：完整 split 树最新引用（事件回调需全树查找——workspaceRef 只是单 leaf 扁平视图，
+  // split 后其他组的 tab 不在其中，误用会重复 open/错误路由）
+  const workspaceTreeRef = useRef(workspaceTree);
+  workspaceTreeRef.current = workspaceTree;
   const focusRef = useRef(focusGroup);
   focusRef.current = focusGroup;
 
@@ -382,7 +386,7 @@ export default function App() {
           if (entry?.sessionFile)
             dispatchWs({
               kind: "dead-chat",
-              groupId: findGroupOfTree(workspaceRef.current, chatTabId(entry.sessionFile)) ?? focusRef.current,
+              groupId: findGroupOfTree(workspaceTreeRef.current, chatTabId(entry.sessionFile)) ?? focusRef.current,
               sessionId: entry.sessionFile,
             });
           return;
@@ -429,10 +433,12 @@ export default function App() {
   const syncAgents = useCallback((list: AgentInfo[]) => {
     setAgents(list);
     agentsRef.current = list;
-    const diff = diffAgentTabs(workspaceRef.current, list);
+    // R27：diff 基于完整树展平（workspaceRef 只是单 leaf——split 后其他组的 tab 会被误判为未开而重复 open）
+    const flat = { ...workspaceRef.current, tabs: flattenTabs(workspaceTreeRef.current) };
+    const diff = diffAgentTabs(flat, list);
     for (const j of diff.join) {
       // dead 的 tab 重建复活（reducer 状态已随实例死亡丢失——历史由 ChatTab 重拉）
-      if (chatLeaveAction(flattenTabs(workspaceRef.current), j.sessionFile) === "keep") {
+      if (chatLeaveAction(flat.tabs, j.sessionFile) === "keep") {
         dispatchWs({ kind: "close-chat", sessionId: j.sessionFile });
       }
       dispatchWs({ kind: "open-chat", groupId: focusRef.current, sessionId: j.sessionFile, name: j.sessionName ?? sessionLabelFromFile(j.sessionFile) });
@@ -440,7 +446,7 @@ export default function App() {
     }
     for (const sid of diff.leave) {
       // dead（断线保留待重拉）保持；正常消失（TUI 切换）关闭
-      if (chatLeaveAction(flattenTabs(workspaceRef.current), sid) === "close") {
+      if (chatLeaveAction(flat.tabs, sid) === "close") {
         dispatchWs({ kind: "close-chat", sessionId: sid });
       }
     }
@@ -533,10 +539,12 @@ export default function App() {
 
   /** 打开会话 tab（会话管理点击）——激活时自动切换进程会话 */
   const openChat = useCallback((path: string, name: string) => {
-    const decision = chatOpenAction({ ...workspaceRef.current, tabs: flattenTabs(workspaceRef.current) }, agentsRef.current, path);
+    // R27：决策基于完整树展平（workspaceRef 只是单 leaf——split 后其他组已开的会话会被误判为"无 tab"而重复 open/spawn）
+    const flat = { ...workspaceRef.current, tabs: flattenTabs(workspaceTreeRef.current) };
+    const decision = chatOpenAction(flat, agentsRef.current, path);
     if (decision.kind === "activate") {
       // 已开 tab：激活其所在组（而非聚焦组——tab 不跨组移动）
-      dispatchWs({ kind: "activate", groupId: findGroupOfTree(workspaceRef.current, chatTabId(path)) ?? focusRef.current, id: chatTabId(path) });
+      dispatchWs({ kind: "activate", groupId: findGroupOfTree(workspaceTreeRef.current, chatTabId(path)) ?? focusRef.current, id: chatTabId(path) });
       return;
     }
     if (decision.kind === "open") {
