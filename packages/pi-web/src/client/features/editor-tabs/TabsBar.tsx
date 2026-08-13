@@ -64,6 +64,12 @@ export function TabsBar({ tabs, active, onActivate, onClose, onMove, onDragStart
           setInsert(pos);
         }
       }}
+      onDragLeave={(e) => {
+        // 真正离开 tab 栏才清除指示器（dragleave 在进入子元素时也触发——relatedTarget 仍在栏内则忽略）
+        if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+        insertRef.current = null;
+        setInsert(null);
+      }}
       onDrop={(e) => {
         e.stopPropagation();
         e.preventDefault();
@@ -95,6 +101,10 @@ export function TabsBar({ tabs, active, onActivate, onClose, onMove, onDragStart
             draggable
             ref={(el) => {
               tabEls.current[i] = el;
+              // React 19 cleanup ref：索引槽随卸载/重排清空，避免错位
+              return () => {
+                tabEls.current[i] = null;
+              };
             }}
             aria-selected={isActive}
             onDragStart={(e) => {

@@ -652,8 +652,9 @@ export function Chat({
 
 /**
  * R27 split-drag-ux：滚动锚点管理（须在 MessageScrollerProvider 内）——
- * 卸载时上报当前可见首条消息 id（split 跨父重挂后恢复）；挂载且消息就绪后按锚点定位（仅一次；
- * 锚点消息不存在 → 原语 no-op → 保持默认贴底）。
+ * 可见首条消息 id 变化时持续上报（App ref 写入无渲染；split 跨父重挂时新实例 render 读到的
+ * 总是"重挂前最后一次可见状态"——不依赖卸载 cleanup 的时序）+ 卸载兜底上报；
+ * 挂载且消息就绪后按锚点定位（仅一次；锚点消息不存在 → 原语 no-op → 保持默认贴底）。
  */
 function ScrollAnchorManager({
   scrollAnchor,
@@ -666,13 +667,22 @@ function ScrollAnchorManager({
 }) {
   const { visibleMessageIds } = useMessageScrollerVisibility();
   const { scrollToMessage } = useMessageScroller();
-  // ref 镜像最新可见列表——卸载 cleanup 只执行一次，闭包需读最新值
+  // ref 镜像最新可见列表——卸载 cleanup 闭包读最新值
   const visibleRef = useRef(visibleMessageIds);
   visibleRef.current = visibleMessageIds;
+  const firstVisible = visibleMessageIds[0] ?? null;
+  // 持续上报：可见首条变化即更新（锚点总是"最新可见状态"，split 重挂读 ref 无隔代错位）
+  // 初始值 null 表示"初始即无可见"——首次挂载不上报
+  const reportedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (reportedRef.current === firstVisible) return;
+    reportedRef.current = firstVisible;
+    onScrollAnchorChange?.(firstVisible);
+  }, [firstVisible, onScrollAnchorChange]);
+  // 卸载兜底上报（最后一次可见变化后到卸载之间无变化时也写一次；cleanup 闭包读 ref 最新可见值）
   useEffect(() => {
     return () => onScrollAnchorChange?.(visibleRef.current[0] ?? null);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [onScrollAnchorChange]);
   const restoredRef = useRef(false);
   useEffect(() => {
     if (restoredRef.current || !scrollAnchor || !hasBubbles) return;

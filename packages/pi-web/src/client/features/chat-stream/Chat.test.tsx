@@ -697,6 +697,24 @@ describe("滚动锚点（R27 split-drag-ux）", () => {
     expect(onChange).toHaveBeenCalledWith("b2");
   });
 
+  it("可见首条变化时持续上报（不依赖卸载时序——split 重挂前 ref 已是最新）", () => {
+    const onChange = vi.fn();
+    const { rerender } = render(
+      <Chat state={withHistory()} dispatch={vi.fn()} onFork={vi.fn()} onAnswerAsk={vi.fn()} onScrollAnchorChange={onChange} />,
+    );
+    expect(onChange).not.toHaveBeenCalled(); // 首次挂载无可见消息 → 不上报
+    scrollerMocks.visibleMessageIds.push("b1");
+    rerender(
+      <Chat state={withHistory()} dispatch={vi.fn()} onFork={vi.fn()} onAnswerAsk={vi.fn()} onScrollAnchorChange={onChange} />,
+    );
+    expect(onChange).toHaveBeenCalledWith("b1");
+    scrollerMocks.visibleMessageIds[0] = "b2";
+    rerender(
+      <Chat state={withHistory()} dispatch={vi.fn()} onFork={vi.fn()} onAnswerAsk={vi.fn()} onScrollAnchorChange={onChange} />,
+    );
+    expect(onChange).toHaveBeenLastCalledWith("b2");
+  });
+
   it("无可见消息 → 上报 null", () => {
     const onChange = vi.fn();
     const { unmount } = render(

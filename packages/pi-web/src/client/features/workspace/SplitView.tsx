@@ -62,7 +62,7 @@ export function SplitView({ tree, dragTabId, renderLeaf, onSplit, onJoin, onRati
     const x = (e.clientX - rect.left) / rect.width;
     const y = (e.clientY - rect.top) / rect.height;
     // R27 守卫（与领域层 splitGroup 同一谓词）：源组=目标组 且 源组仅 1 tab → 不预览、drop 无效果
-    if (isMeaninglessSplit(tree, dragRef.current, leaf.groupId)) {
+    if (isMeaninglessSplit(tree, leaf.groupId, dragRef.current)) {
       dropRef.current = null;
       setDrop((prev) => (prev ? null : prev));
       return;

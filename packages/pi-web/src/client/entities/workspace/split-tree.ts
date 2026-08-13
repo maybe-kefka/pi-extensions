@@ -59,8 +59,8 @@ let idSeq = 0;
 const nextId = (): string => `w${++idSeq}`;
 
 /** R27：拆分是否无意义——源组 = 目标组 且源组仅 1 个 tab（拖走即空 → 回收，预览也误导）。
- *  领域层与 UI 层（SplitView 预览守卫）共用同一判定。 */
-export function isMeaninglessSplit(tree: LayoutNode, tabId: string, toGroupId: string): boolean {
+ *  领域层与 UI 层（SplitView 预览守卫）共用同一判定。参数顺序与 splitGroup 一致（toGroupId 在前）。 */
+export function isMeaninglessSplit(tree: LayoutNode, toGroupId: string, tabId: string): boolean {
   const fromGroupId = findGroupOf(tree, tabId);
   if (fromGroupId !== toGroupId) return false;
   const src = findLeaf(tree, fromGroupId);
@@ -72,6 +72,20 @@ function removeTabFromLeaf(leaf: LeafNode, tabId: string): LeafNode {
   return { ...closeTab(leaf, tabId), kind: "leaf", groupId: leaf.groupId };
 }
 
+/** 跨组 detach：从所在组移除 tab（激活相邻）并返回被移 tab；tab 不存在 → tab null（树不变）。
+ *  splitGroup 与 moveTabToGroup 的跨组块共用。 */
+function detachTab(tree: LayoutNode, tabId: string): { tree: LayoutNode; tab: WorkspaceTab | null } {
+  let tab: WorkspaceTab | null = null;
+  const t = updateLeaf(tree, findGroupOf(tree, tabId) ?? "", (leaf) => {
+    const idx = leaf.tabs.findIndex((x) => tabKeyOf(x) === tabId);
+    const moved = leaf.tabs[idx];
+    if (idx === -1 || !moved) return leaf;
+    tab = moved;
+    return removeTabFromLeaf(leaf, tabId);
+  });
+  return { tree: t, tab };
+}
+
 /** 拖拽分区：把 tab（可在任意组）拆到目标组——目标 leaf 一分为二，tab 移入新组（新组初始只有它自己）；
  *  同组：原组移除该 tab（激活相邻）；跨组：先从源组移除（激活相邻）再拆目标组；空组自动回收。
  *  守卫：源组 = 目标组 且仅 1 个 tab → 原树不变（无意义拆分）。 */
@@ -79,19 +93,15 @@ export function splitGroup(tree: LayoutNode, toGroupId: string, side: SplitSide,
   const fromGroupId = findGroupOf(tree, tabId);
   if (!fromGroupId) return tree;
   if (!findLeaf(tree, toGroupId)) return tree; // 目标组不存在 → 原树（先校验再移除，避免半应用）
-  if (isMeaninglessSplit(tree, tabId, toGroupId)) return tree;
+  if (isMeaninglessSplit(tree, toGroupId, tabId)) return tree;
   // 跨组：先从源组移除（复用 closeTab 语义激活相邻）
   let movedTab: WorkspaceTab | null = null;
   let base = tree;
   if (fromGroupId !== toGroupId) {
-    base = updateLeaf(tree, fromGroupId, (leaf) => {
-      const idx = leaf.tabs.findIndex((t) => tabKeyOf(t) === tabId);
-      const moved = leaf.tabs[idx];
-      if (idx === -1 || !moved) return leaf;
-      movedTab = moved;
-      return removeTabFromLeaf(leaf, tabId);
-    });
-    if (!movedTab) return tree;
+    const detached = detachTab(tree, tabId);
+    if (!detached.tab) return tree;
+    base = detached.tree;
+    movedTab = detached.tab;
   }
   // 目标组一分为二：原组激活处理复用 closeTab 语义（用完整 leaf——内部按原 tabs 定位 idx 才能正确激活相邻；
   // 传移除后的 rest 会导致 idx=-1 → active 被清空（chat 丢聚焦）
@@ -191,16 +201,10 @@ export function moveTabToGroup(tree: LayoutNode, toGroupId: string, fromId: stri
     });
   }
   // 跨组：先移除（激活相邻）再插入（激活目标）
-  let movedTab: WorkspaceTab | null = null;
-  const afterRemove = updateLeaf(tree, fromGroupId, (leaf) => {
-    const idx = leaf.tabs.findIndex((t) => tabKeyOf(t) === fromId);
-    const moved = leaf.tabs[idx];
-    if (idx === -1 || !moved) return leaf;
-    movedTab = moved;
-    return removeTabFromLeaf(leaf, fromId);
-  });
-  if (!movedTab) return tree;
-  const m = movedTab;
+  const detached = detachTab(tree, fromId);
+  if (!detached.tab) return tree;
+  const afterRemove = detached.tree;
+  const m = detached.tab;
   const afterInsert = updateLeaf(afterRemove, toGroupId, (leaf) => {
     const toIdx = toId ? leaf.tabs.findIndex((t) => tabKeyOf(t) === toId) : -1;
     const tabs = toId && toIdx !== -1 ? [...leaf.tabs.slice(0, toIdx), m, ...leaf.tabs.slice(toIdx)] : [...leaf.tabs, m];
