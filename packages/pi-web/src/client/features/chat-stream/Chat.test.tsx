@@ -5,6 +5,27 @@ import { render, screen, fireEvent, cleanup, within } from "@testing-library/rea
 import { Chat } from "./Chat";
 import { initialState, streamReducer, type StreamAction, type StreamState } from "@/entities/chat";
 
+// R27：滚动锚点契约测试——mock 原语 hooks（组件保留真实渲染）
+const scrollerMocks = vi.hoisted(() => ({
+  scrollToMessage: vi.fn(),
+  visibleMessageIds: [] as string[],
+}));
+vi.mock("@shadcn/react/message-scroller", async (importOriginal) => {
+  const mod = await importOriginal<typeof import("@shadcn/react/message-scroller")>();
+  return {
+    ...mod,
+    useMessageScroller: () => ({
+      scrollToEnd: vi.fn(),
+      scrollToMessage: scrollerMocks.scrollToMessage,
+      scrollToStart: vi.fn(),
+    }),
+    useMessageScrollerVisibility: () => ({
+      currentAnchorId: null,
+      visibleMessageIds: scrollerMocks.visibleMessageIds,
+    }),
+  };
+});
+
 function reduce(actions: StreamAction[]): StreamState {
   return actions.reduce((st, a) => streamReducer(st, a), initialState);
 }
@@ -654,5 +675,54 @@ describe("R25 web 提问工具渲染", () => {
     expect(answered).toBeTruthy();
     expect(answered?.textContent).toContain("B");
     expect(container.querySelector("[data-slot=web-ask-submit]")).toBeNull();
+  });
+});
+
+describe("滚动锚点（R27 split-drag-ux）", () => {
+  beforeEach(() => {
+    scrollerMocks.scrollToMessage.mockClear();
+    scrollerMocks.visibleMessageIds.length = 0;
+  });
+
+  const withHistory = (): StreamState =>
+    run([{ type: "history", messages: [{ role: "user", text: "问题一", userIndex: 0 }] }]);
+
+  it("卸载时上报当前可见首条消息 id", () => {
+    scrollerMocks.visibleMessageIds.push("b2");
+    const onChange = vi.fn();
+    const { unmount } = render(
+      <Chat state={withHistory()} dispatch={vi.fn()} onFork={vi.fn()} onAnswerAsk={vi.fn()} onScrollAnchorChange={onChange} />,
+    );
+    unmount();
+    expect(onChange).toHaveBeenCalledWith("b2");
+  });
+
+  it("无可见消息 → 上报 null", () => {
+    const onChange = vi.fn();
+    const { unmount } = render(
+      <Chat state={withHistory()} dispatch={vi.fn()} onFork={vi.fn()} onAnswerAsk={vi.fn()} onScrollAnchorChange={onChange} />,
+    );
+    unmount();
+    expect(onChange).toHaveBeenCalledWith(null);
+  });
+
+  it("挂载且消息就绪：按锚点恢复滚动（scrollToMessage 一次）", () => {
+    render(<Chat state={withHistory()} dispatch={vi.fn()} onFork={vi.fn()} onAnswerAsk={vi.fn()} scrollAnchor="b1" />);
+    expect(scrollerMocks.scrollToMessage).toHaveBeenCalledWith("b1", { behavior: "auto" });
+    expect(scrollerMocks.scrollToMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it("无锚点 → 不恢复", () => {
+    render(<Chat state={withHistory()} dispatch={vi.fn()} onFork={vi.fn()} onAnswerAsk={vi.fn()} />);
+    expect(scrollerMocks.scrollToMessage).not.toHaveBeenCalled();
+  });
+
+  it("气泡未就绪（空状态）→ 不恢复；就绪后恢复一次", () => {
+    const { rerender } = render(
+      <Chat state={initialState} dispatch={vi.fn()} onFork={vi.fn()} onAnswerAsk={vi.fn()} scrollAnchor="b1" />,
+    );
+    expect(scrollerMocks.scrollToMessage).not.toHaveBeenCalled();
+    rerender(<Chat state={withHistory()} dispatch={vi.fn()} onFork={vi.fn()} onAnswerAsk={vi.fn()} scrollAnchor="b1" />);
+    expect(scrollerMocks.scrollToMessage).toHaveBeenCalledTimes(1);
   });
 });

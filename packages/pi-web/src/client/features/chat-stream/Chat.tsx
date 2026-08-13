@@ -18,6 +18,8 @@ import {
   MessageScrollerItem,
   MessageScrollerProvider,
   MessageScrollerViewport,
+  useMessageScroller,
+  useMessageScrollerVisibility,
 } from "@/shared/ui";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui";
 import {
@@ -558,12 +560,18 @@ export function Chat({
   dispatch,
   onFork,
   onAnswerAsk,
+  scrollAnchor,
+  onScrollAnchorChange,
 }: {
   state: StreamState;
   dispatch: React.Dispatch<StreamAction>;
   onFork: (userIndex: number) => void;
   /** R25：web 提问工具回答提交（App 接 RPC web-ask:answer） */
   onAnswerAsk: (toolCallId: string, answer: unknown) => void;
+  /** R27 split-drag-ux：跨父重挂恢复滚动位置——上次可见消息锚点（null = 无，贴底） */
+  scrollAnchor?: string | null;
+  /** 卸载时上报当前可见消息锚点（split 重挂后恢复用） */
+  onScrollAnchorChange?: (anchor: string | null) => void;
 }) {
   const hasContent = state.bubbles.length > 0 || state.tools.length > 0;
   const compacting = state.compacting;
@@ -592,6 +600,11 @@ export function Chat({
   return (
     <main className="relative flex min-h-0 min-w-0 flex-1 flex-col">
       <MessageScrollerProvider autoScroll>
+        <ScrollAnchorManager
+          scrollAnchor={scrollAnchor}
+          onScrollAnchorChange={onScrollAnchorChange}
+          hasBubbles={state.bubbles.length > 0}
+        />
         <MessageScroller className="min-h-0 flex-1">
           <MessageScrollerViewport>
             <MessageScrollerContent className="mx-auto w-full max-w-3xl gap-3 px-4 pt-3 pb-[25vh]">
@@ -635,4 +648,36 @@ export function Chat({
       </MessageScrollerProvider>
     </main>
   );
+}
+
+/**
+ * R27 split-drag-ux：滚动锚点管理（须在 MessageScrollerProvider 内）——
+ * 卸载时上报当前可见首条消息 id（split 跨父重挂后恢复）；挂载且消息就绪后按锚点定位（仅一次；
+ * 锚点消息不存在 → 原语 no-op → 保持默认贴底）。
+ */
+function ScrollAnchorManager({
+  scrollAnchor,
+  onScrollAnchorChange,
+  hasBubbles,
+}: {
+  scrollAnchor?: string | null;
+  onScrollAnchorChange?: (anchor: string | null) => void;
+  hasBubbles: boolean;
+}) {
+  const { visibleMessageIds } = useMessageScrollerVisibility();
+  const { scrollToMessage } = useMessageScroller();
+  // ref 镜像最新可见列表——卸载 cleanup 只执行一次，闭包需读最新值
+  const visibleRef = useRef(visibleMessageIds);
+  visibleRef.current = visibleMessageIds;
+  useEffect(() => {
+    return () => onScrollAnchorChange?.(visibleRef.current[0] ?? null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const restoredRef = useRef(false);
+  useEffect(() => {
+    if (restoredRef.current || !scrollAnchor || !hasBubbles) return;
+    restoredRef.current = true;
+    scrollToMessage(scrollAnchor, { behavior: "auto" });
+  }, [scrollAnchor, hasBubbles, scrollToMessage]);
+  return null;
 }

@@ -182,6 +182,11 @@ export default function App() {
   const handleStateSave = useCallback((sessionId: string, state: StreamState) => {
     chatStatesRef.current[sessionId] = state;
   }, []);
+  // R27：滚动锚点（split 跨父重挂恢复滚动位置——卸载时由 Chat 上报可见消息首条 id）
+  const chatScrollAnchorsRef = useRef<Record<string, string | null>>({});
+  const handleScrollAnchorSave = useCallback((sessionId: string, anchor: string | null) => {
+    chatScrollAnchorsRef.current[sessionId] = anchor;
+  }, []);
   const handleDraftChange = useCallback((sessionId: string, text: string) => {
     chatDraftsRef.current[sessionId] = text;
   }, []);
@@ -743,6 +748,8 @@ export default function App() {
                     onDraftChange={(text) => handleDraftChange(t.sessionId, text)}
                     savedState={chatStatesRef.current[t.sessionId]}
                     onStateSave={handleStateSave}
+                    scrollAnchor={chatScrollAnchorsRef.current[t.sessionId] ?? null}
+                    onScrollAnchorSave={handleScrollAnchorSave}
                     onRegisterDispatch={registerDispatch}
                     onUnregisterDispatch={unregisterDispatch}
                     onStateChange={handleTabStateChange}

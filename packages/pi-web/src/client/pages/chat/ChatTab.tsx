@@ -44,6 +44,9 @@ export interface ChatTabProps {
   /** 状态快照恢复：重挂时用上次快照初始化 reducer（split 跨父重挂后消息内容不丢、不重拉历史） */
   savedState?: StreamState;
   onStateSave?: (sessionId: string, state: StreamState) => void;
+  /** R27：滚动锚点（split 重挂后恢复滚动位置）——上次可见消息 id；null = 无 */
+  scrollAnchor?: string | null;
+  onScrollAnchorSave?: (sessionId: string, anchor: string | null) => void;
   /** 挂载/卸载时注册/注销 dispatch（App 事件分发用；key = sessionId） */
   onRegisterDispatch: (sessionId: string, dispatch: (a: StreamAction) => void) => void;
   onUnregisterDispatch: (sessionId: string) => void;
@@ -72,6 +75,8 @@ export const ChatTab = memo(function ChatTab({
   onDraftChange,
   savedState,
   onStateSave,
+  scrollAnchor,
+  onScrollAnchorSave,
   onRegisterDispatch,
   onUnregisterDispatch,
   onStateChange,
@@ -168,7 +173,14 @@ export const ChatTab = memo(function ChatTab({
           </Button>
         </div>
       )}
-      <Chat state={state} dispatch={dispatch} onFork={onFork} onAnswerAsk={answerAsk} />
+      <Chat
+        state={state}
+        dispatch={dispatch}
+        onFork={onFork}
+        onAnswerAsk={answerAsk}
+        scrollAnchor={scrollAnchor}
+        onScrollAnchorChange={(anchor) => onScrollAnchorSave?.(sessionId, anchor)}
+      />
       <div className="flex items-start gap-2 border-t px-3">
         {/* 水杯进度条：per-tab 实例 context 占用；点击查看详情 */}
         <Popover>
