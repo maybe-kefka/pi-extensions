@@ -55,7 +55,7 @@ import {
   type LeafNode,
   type SplitSide,
 } from "@/entities/workspace";
-import type { EditorPaneHandle } from "@/features/files";
+import type { EditorPaneHandle, EditorSnapshot } from "@/features/files";
 import { clampPanelWidth, loadPanelWidth, savePanelWidth } from "@/entities/workspace";
 import { ActivityBar, type ActivityPanel } from "@/features/activity-bar";
 import { SplitView } from "@/features/workspace";
@@ -174,6 +174,11 @@ export default function App() {
     window.addEventListener("mouseup", onUp);
   }, [panelWidth]);
   const editorRefs = useRef<Record<string, EditorPaneHandle | null>>({});
+  // R28：编辑器快照（重挂恢复——split/移动文件 tab 后内容/光标/滚动零损失；持续上报防隔代）
+  const editorStatesRef = useRef<Record<string, EditorSnapshot>>({});
+  const handleEditorStateSave = useCallback((path: string, snapshot: EditorSnapshot) => {
+    editorStatesRef.current[path] = snapshot;
+  }, []);
   // 02：拖拽分区——拖拽中的 tab（TabsBar dragstart 上报）
   const [dragTabId, setDragTabId] = useState<string | null>(null);
   // chat input 草稿（ref 存储——split 重挂后恢复；ref 写入不触发渲染，打字不卡顿）
@@ -724,6 +729,9 @@ export default function App() {
               // chat 与 file 同级：直接关闭；spawn 实例同步杀进程（TUI 注册者保留注册）
               const sid = chatSessionOf(id) as string;
               delete chatDraftsRef.current[sid]; // review：关闭后清草稿（无界增长）
+              // R28：关闭清理——防陈旧快照污染重开（重开应重拉历史/恢复滚动）
+              delete chatStatesRef.current[sid];
+              delete chatScrollAnchorsRef.current[sid];
               const entry = agents.find((ag) => ag.sessionFile === sid);
               if (entry && entry.kind === "spawned") {
                 rpcRef.current?.request("pi:closeAgent", { processId: entry.processId }).catch(() => undefined);
@@ -734,6 +742,7 @@ export default function App() {
             if (tabDirty(leaf, id)) {
               setPendingClose({ groupId: leaf.groupId, id });
             } else {
+              delete editorStatesRef.current[id]; // R28：file 关闭清理
               dispatchWs({ kind: "close", groupId: leaf.groupId, id });
             }
           }}
@@ -792,6 +801,8 @@ export default function App() {
                     if (dirty) dispatchWs({ kind: "promote", groupId: leaf.groupId, path }); // 编辑自动转正式
                   }}
                   onSaved={() => setGitRefreshKey((k) => k + 1)}
+                  savedState={editorStatesRef.current[t.path]}
+                  onStateSave={handleEditorStateSave}
                 />
                 ) : (
                   <div className="flex h-full items-center justify-center text-xs text-muted-foreground">加载中…</div>
@@ -875,7 +886,10 @@ export default function App() {
             <Button
               variant="outline"
               onClick={() => {
-                if (pendingClose) dispatchWs({ kind: "close", groupId: pendingClose.groupId, id: pendingClose.id });
+                if (pendingClose) {
+                  delete editorStatesRef.current[pendingClose.id]; // R28：file 关闭清理
+                  dispatchWs({ kind: "close", groupId: pendingClose.groupId, id: pendingClose.id });
+                }
                 setPendingClose(null);
               }}
             >
@@ -889,6 +903,7 @@ export default function App() {
                 const ok = await editorRefs.current[pendingClose.id]?.save();
                 setPendingSaving(false);
                 if (ok) {
+                  delete editorStatesRef.current[pendingClose.id]; // R28：file 关闭清理（保存后）
                   dispatchWs({ kind: "close", groupId: pendingClose.groupId, id: pendingClose.id });
                   setPendingClose(null);
                 }
