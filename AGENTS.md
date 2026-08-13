@@ -9,6 +9,7 @@
 ├── workflows/publish.yml        # push main / tag v* 触发自动发布
 └── scripts/publish-changed.sh   # 版本对比：只发布有更新的包
 .agents/                          # 已沉淀知识（提交 git，长期保存）
+├── skills/                       # 项目内 skill 副本（to-spec/to-tickets/tdd，来自 mattpocock/skills）
 ├── specs/                        # 规格文档（长期）
 │   ├── <pkg>/SPEC.md             # 系统基线规格（历史/技术基线，不再增长）
 │   └── <slug>/SPEC.md            # 迭代规格（slug 命名，独立落盘）
@@ -26,9 +27,10 @@ packages/pi-web/
 
 ## 迭代流程（敏捷：迭代 = 可独立验收的增量；slug = 短横线小写英文标识）
 
-> **规范依据三个 skill（全局 `~/.agents/skills/`，来自 mattpocock/skills）**：
+> **规范依据三个 skill（项目内 `.agents/skills/`，提交 git，来自 mattpocock/skills）**：
 > `/skill:to-spec`（对话 → SPEC）、`/skill:to-tickets`（SPEC → 垂直切片 tickets）、`/skill:tdd`（red-green 循环）。
 > **每次迭代开始必须重新读取对应 skill 文件**（skill 可能更新，不依赖记忆、不保留本地模板）。
+> 安装/更新：`npx skills add https://github.com/mattpocock/skills --skill to-spec to-tickets tdd --copy -y`（同时同步 `.agents/skills/` 与 gitignored 的运行时副本 `.pi/skills/`）。
 
 1. **对齐**：用户提需求 → grilling 逐题对齐（设计树，直至 frontier 空）→ 达成共识
 2. **SPEC**：重新读取 `/skill:to-spec` 并按其流程执行 → 综合当前对话生成 SPEC 落盘 `.scratch/<slug>/SPEC.md`（模板见 skill 内 spec-template：Problem Statement / Solution / User Stories / Implementation Decisions / Testing Decisions / Out of Scope / Further Notes；**不写具体文件路径**；涉及既有系统规格引用基线 SPEC §X，不复述）。to-spec 要求：**先 sketch 测试 seams 并与用户确认**
@@ -74,3 +76,13 @@ npm version patch -w @kefka/<pkg>   # bump 版本（发版流程第一步）
 
 - 项目级：`.pi/settings.json` 的 `extensions` 指向扩展入口（绝对路径，指向 `src/index.ts` 源码，jiti 直载）
 - 在本仓库目录启动 `pi`，信任项目后命令可用；改代码后 `/reload` 生效
+
+## Agent skills
+
+### Issue tracker
+
+本地 markdown：issues/spec 落盘 `.scratch/<slug>/`，完成后归档 `.agents/`。See `docs/agents/issue-tracker.md`.
+
+### Domain docs
+
+单上下文（single-context）：根目录 `CONTEXT.md` + `docs/adr/`。See `docs/agents/domain.md`.
