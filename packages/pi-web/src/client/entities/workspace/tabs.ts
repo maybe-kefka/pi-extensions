@@ -227,3 +227,11 @@ export function moveTab(state: WorkspaceState, fromId: string, toId: string): Wo
   tabs.splice(to, 0, moved);
   return { ...state, tabs };
 }
+
+/** tab 栏按落点 x 解析插入序号（0..n，n = 末尾追加）：与各 tab 中点比较——左半（含中点）→ 该 tab 前；右半 → 其后 */
+export function resolveInsertIndex(bounds: { left: number; width: number }[], x: number): number {
+  for (let i = 0; i < bounds.length; i++) {
+    if (x <= bounds[i].left + bounds[i].width / 2) return i;
+  }
+  return bounds.length;
+}

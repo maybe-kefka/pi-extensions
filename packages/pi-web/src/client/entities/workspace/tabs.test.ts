@@ -18,6 +18,7 @@ import {
   openDiffTab,
   openFile,
   promotePreview,
+  resolveInsertIndex,
   setDirty,
   tabDirty,
   type WorkspaceState,
@@ -316,5 +317,32 @@ describe("moveTab（拖拽调序）", () => {
     const s: WorkspaceState = { tabs, active: "" };
     expect(moveTab(s, "/nope.ts", "/a.ts")).toBe(s);
     expect(moveTab(s, "/a.ts", "/nope.ts")).toBe(s);
+  });
+});
+
+describe("resolveInsertIndex（tab 栏按 x 插入位置）", () => {
+  const bounds = [
+    { left: 0, width: 100 }, // tab0
+    { left: 100, width: 100 }, // tab1
+    { left: 200, width: 100 }, // tab2
+  ];
+  it("空列表 → 0（追加末尾即开头）", () => {
+    expect(resolveInsertIndex([], 50)).toBe(0);
+  });
+  it("x 在 tab 左半 → 该 tab 前", () => {
+    expect(resolveInsertIndex(bounds, 10)).toBe(0);
+    expect(resolveInsertIndex(bounds, 140)).toBe(1);
+  });
+  it("x 在 tab 右半 → 下一个 tab 前（= 该 tab 后）", () => {
+    expect(resolveInsertIndex(bounds, 60)).toBe(1);
+    expect(resolveInsertIndex(bounds, 260)).toBe(3);
+  });
+  it("x 恰好在中点 → 左半（前插）", () => {
+    expect(resolveInsertIndex(bounds, 50)).toBe(0);
+    expect(resolveInsertIndex(bounds, 150)).toBe(1);
+  });
+  it("x 在末尾之后 → 末尾", () => {
+    expect(resolveInsertIndex(bounds, 999)).toBe(3);
+    expect(resolveInsertIndex(bounds, 300)).toBe(3);
   });
 });

@@ -5,7 +5,31 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { TabsBar } from "./TabsBar";
 import type { WorkspaceTab } from "@/entities/workspace";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
+
+/** jsdom 无布局——mock rect：tablist（role=tablist）= [0,300)；tab 按 title（聊天/a.ts/b.ts）= 每 100px 一个 */
+function mockTabRects() {
+  const byTitle: Record<string, { left: number; width: number }> = {
+    聊天: { left: 0, width: 100 },
+    "a.ts": { left: 100, width: 100 },
+    "b.ts": { left: 200, width: 100 },
+  };
+  vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function (this: Element) {
+    const base = { top: 0, right: 0, bottom: 0, x: 0, y: 0, height: 0, toJSON: () => ({}) } as DOMRect;
+    if (this.getAttribute?.("role") === "tablist") return { ...base, left: 0, width: 300, right: 300 } as DOMRect;
+    const r = byTitle[this.getAttribute?.("title") ?? ""];
+    if (r) return { ...base, left: r.left, width: r.width, right: r.left + r.width } as DOMRect;
+    return { ...base, left: 0, width: 0 } as DOMRect;
+  });
+}
+
+/** jsdom 的 DragEvent 构造丢弃 clientX——用 MouseEvent 派发（React 按事件名匹配，SplitView 测试同模式） */
+function dragOverAt(el: HTMLElement, x: number) {
+  fireEvent(el, new MouseEvent("dragover", { bubbles: true, cancelable: true, clientX: x }));
+}
 
 const tabs: WorkspaceTab[] = [
   { kind: "chat", sessionId: "/s/a.jsonl", name: "聊天" },
@@ -93,24 +117,46 @@ describe("TabsBar dirty 与保存", () => {
 });
 
 describe("TabsBar 拖拽调序", () => {
-  it("拖起 chat tab 放到 file tab → onMove(fromId, toId)", () => {
+  it("拖起 chat tab 放到 file tab 左半 → onMove(fromId, toId)", () => {
+    mockTabRects();
     const onMove = vi.fn();
     render(<TabsBar tabs={tabs} active="a.ts" onActivate={vi.fn()} onClose={vi.fn()} onMove={onMove} />);
     const from = screen.getByTitle("聊天");
     const to = screen.getByTitle("a.ts");
     fireEvent.dragStart(from, { dataTransfer: { effectAllowed: "" } });
-    fireEvent.dragOver(to, { dataTransfer: {} });
-    fireEvent.drop(to, { dataTransfer: {} });
+    dragOverAt(to, 110); // a.ts 左半
+    fireEvent.drop(to);
     expect(onMove).toHaveBeenCalledWith("chat:/s/a.jsonl", "a.ts");
   });
 
-  it("外部拖拽（dragId）：跨组 drop 到 tab → onMove(fromId, toId)", () => {
+  it("外部拖拽（dragId）：跨组 drop 到 tab 左半 → onMove(fromId, toId)", () => {
+    mockTabRects();
     const onMove = vi.fn();
     render(<TabsBar tabs={tabs} active="a.ts" onActivate={vi.fn()} onClose={vi.fn()} onMove={onMove} dragId="chat:/other.jsonl" />);
     const to = screen.getByTitle("a.ts");
-    fireEvent.dragOver(to, { dataTransfer: {} });
-    fireEvent.drop(to, { dataTransfer: {} });
+    dragOverAt(to, 110); // a.ts 左半
+    fireEvent.drop(to);
     expect(onMove).toHaveBeenCalledWith("chat:/other.jsonl", "a.ts");
+  });
+
+  it("drop 到 tab 右半 → 插到下一个 tab 前（onMove 到 next）", () => {
+    mockTabRects();
+    const onMove = vi.fn();
+    render(<TabsBar tabs={tabs} active="a.ts" onActivate={vi.fn()} onClose={vi.fn()} onMove={onMove} dragId="chat:/other.jsonl" />);
+    const to = screen.getByTitle("a.ts");
+    dragOverAt(to, 190); // a.ts 右半
+    fireEvent.drop(to);
+    expect(onMove).toHaveBeenCalledWith("chat:/other.jsonl", "b.ts");
+  });
+
+  it("drop 到末尾空白 → onDropTab(fromId)（追加末尾）", () => {
+    mockTabRects();
+    const onDropTab = vi.fn();
+    render(<TabsBar tabs={tabs} active="a.ts" onActivate={vi.fn()} onClose={vi.fn()} onMove={vi.fn()} onDropTab={onDropTab} dragId="chat:/other.jsonl" />);
+    const tablist = screen.getByRole("tablist");
+    dragOverAt(tablist, 320); // 最后 tab 右缘之后
+    fireEvent.drop(tablist);
+    expect(onDropTab).toHaveBeenCalledWith("chat:/other.jsonl");
   });
 
   it("外部拖拽（dragId）：drop 到空栏 → onDropTab(fromId)", () => {
@@ -119,5 +165,17 @@ describe("TabsBar 拖拽调序", () => {
     fireEvent.dragOver(screen.getByRole("tablist"), { dataTransfer: {} });
     fireEvent.drop(screen.getByRole("tablist"), { dataTransfer: {} });
     expect(onDropTab).toHaveBeenCalledWith("chat:/other.jsonl");
+  });
+
+  it("dragover 显示插入指示器（data-slot=tab-insert-indicator），drop 后清除", () => {
+    mockTabRects();
+    render(<TabsBar tabs={tabs} active="a.ts" onActivate={vi.fn()} onClose={vi.fn()} onMove={vi.fn()} dragId="chat:/other.jsonl" />);
+    const tablist = screen.getByRole("tablist");
+    dragOverAt(tablist, 160); // a.ts 右半
+    let indicator = tablist.querySelector('[data-slot="tab-insert-indicator"]');
+    expect(indicator).toBeTruthy();
+    fireEvent.drop(tablist);
+    indicator = tablist.querySelector('[data-slot="tab-insert-indicator"]');
+    expect(indicator).toBeNull();
   });
 });
