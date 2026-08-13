@@ -44,9 +44,9 @@ export interface ChatTabProps {
   /** 状态快照恢复：重挂时用上次快照初始化 reducer（split 跨父重挂后消息内容不丢、不重拉历史） */
   savedState?: StreamState;
   onStateSave?: (sessionId: string, state: StreamState) => void;
-  /** R27：滚动锚点（split 重挂后恢复滚动位置）——上次可见消息 id；null = 无 */
-  scrollAnchor?: string | null;
-  onScrollAnchorSave?: (sessionId: string, anchor: string | null) => void;
+  /** R27：滚动位置（split 重挂后恢复）——上次 scrollTop 比例 0-1；null = 无 */
+  scrollAnchor?: number | null;
+  onScrollAnchorSave?: (sessionId: string, anchor: number | null) => void;
   /** 挂载/卸载时注册/注销 dispatch（App 事件分发用；key = sessionId） */
   onRegisterDispatch: (sessionId: string, dispatch: (a: StreamAction) => void) => void;
   onUnregisterDispatch: (sessionId: string) => void;

@@ -5,27 +5,6 @@ import { render, screen, fireEvent, cleanup, within } from "@testing-library/rea
 import { Chat } from "./Chat";
 import { initialState, streamReducer, type StreamAction, type StreamState } from "@/entities/chat";
 
-// R27：滚动锚点契约测试——mock 原语 hooks（组件保留真实渲染）
-const scrollerMocks = vi.hoisted(() => ({
-  scrollToMessage: vi.fn(),
-  visibleMessageIds: [] as string[],
-}));
-vi.mock("@shadcn/react/message-scroller", async (importOriginal) => {
-  const mod = await importOriginal<typeof import("@shadcn/react/message-scroller")>();
-  return {
-    ...mod,
-    useMessageScroller: () => ({
-      scrollToEnd: vi.fn(),
-      scrollToMessage: scrollerMocks.scrollToMessage,
-      scrollToStart: vi.fn(),
-    }),
-    useMessageScrollerVisibility: () => ({
-      currentAnchorId: null,
-      visibleMessageIds: scrollerMocks.visibleMessageIds,
-    }),
-  };
-});
-
 function reduce(actions: StreamAction[]): StreamState {
   return actions.reduce((st, a) => streamReducer(st, a), initialState);
 }
@@ -52,6 +31,10 @@ beforeEach(() => {
     };
   }
   (globalThis as unknown as Record<string, unknown>).requestAnimationFrame ??= (cb: () => void) => setTimeout(cb, 0);
+  // jsdom 缺 Element.scrollTo——原语在需要真实滚动时（非短路路径）调用它；补 no-op polyfill
+  if (!Element.prototype.scrollTo) {
+    Element.prototype.scrollTo = (() => {}) as typeof Element.prototype.scrollTo;
+  }
 });
 
 function run(actions: StreamAction[]) {
@@ -678,69 +661,97 @@ describe("R25 web 提问工具渲染", () => {
   });
 });
 
-describe("滚动锚点（R27 split-drag-ux）", () => {
-  beforeEach(() => {
-    scrollerMocks.scrollToMessage.mockClear();
-    scrollerMocks.visibleMessageIds.length = 0;
-  });
 
+describe("滚动位置（R27 split-drag-ux，scrollTop 比例）", () => {
   const withHistory = (): StreamState =>
     run([{ type: "history", messages: [{ role: "user", text: "问题一", userIndex: 0 }] }]);
 
-  it("卸载时上报当前可见首条消息 id", () => {
-    scrollerMocks.visibleMessageIds.push("b2");
+  /** jsdom 无布局——渲染前 mock viewport 尺寸（Element.prototype getter，恢复 effect 在 render 时读取） */
+  function mockViewportSize(scrollHeight: number, clientHeight: number) {
+    vi.spyOn(Element.prototype, "scrollHeight", "get").mockReturnValue(scrollHeight);
+    vi.spyOn(Element.prototype, "clientHeight", "get").mockReturnValue(clientHeight);
+  }
+  /** 拿真实 viewport 元素 */
+  function viewportOf(container: HTMLElement): HTMLElement {
+    return container.querySelector('[data-slot="message-scroller-viewport"]') as HTMLElement;
+  }
+
+  it("挂载即上报当前比例（scrollTop/(scrollHeight-clientHeight)）", () => {
     const onChange = vi.fn();
-    const { unmount } = render(
+    mockViewportSize(1000, 500);
+    const { container } = render(
       <Chat state={withHistory()} dispatch={vi.fn()} onFork={vi.fn()} onAnswerAsk={vi.fn()} onScrollAnchorChange={onChange} />,
     );
+    const vp = viewportOf(container);
+    vp.scrollTop = 250;
+    fireEvent.scroll(vp);
+    expect(onChange).toHaveBeenLastCalledWith(0.5);
+  });
+
+  it("滚动事件即时上报（split 前 ref 恒为最新）", () => {
+    const onChange = vi.fn();
+    mockViewportSize(1000, 500);
+    const { container } = render(
+      <Chat state={withHistory()} dispatch={vi.fn()} onFork={vi.fn()} onAnswerAsk={vi.fn()} onScrollAnchorChange={onChange} />,
+    );
+    const vp = viewportOf(container);
+    vp.scrollTop = 100;
+    fireEvent.scroll(vp);
+    expect(onChange).toHaveBeenLastCalledWith(0.2);
+    vp.scrollTop = 400;
+    fireEvent.scroll(vp);
+    expect(onChange).toHaveBeenLastCalledWith(0.8);
+  });
+
+  it("贴底/无溢出 → 比例 1", () => {
+    const onChange = vi.fn();
+    mockViewportSize(500, 500);
+    const { container } = render(
+      <Chat state={withHistory()} dispatch={vi.fn()} onFork={vi.fn()} onAnswerAsk={vi.fn()} onScrollAnchorChange={onChange} />,
+    );
+    const vp = viewportOf(container); // 无溢出
+    vp.scrollTop = 0;
+    fireEvent.scroll(vp);
+    expect(onChange).toHaveBeenLastCalledWith(1);
+  });
+
+  it("卸载兜底上报最后一次比例", () => {
+    const onChange = vi.fn();
+    mockViewportSize(1000, 500);
+    const { container, unmount } = render(
+      <Chat state={withHistory()} dispatch={vi.fn()} onFork={vi.fn()} onAnswerAsk={vi.fn()} onScrollAnchorChange={onChange} />,
+    );
+    const vp = viewportOf(container);
+    vp.scrollTop = 300;
+    fireEvent.scroll(vp);
     unmount();
-    expect(onChange).toHaveBeenCalledWith("b2");
+    expect(onChange).toHaveBeenLastCalledWith(0.6);
   });
 
-  it("可见首条变化时持续上报（不依赖卸载时序——split 重挂前 ref 已是最新）", () => {
-    const onChange = vi.fn();
-    const { rerender } = render(
-      <Chat state={withHistory()} dispatch={vi.fn()} onFork={vi.fn()} onAnswerAsk={vi.fn()} onScrollAnchorChange={onChange} />,
+  it("挂载且消息就绪：按比例恢复 scrollTop（一次）", () => {
+    mockViewportSize(1000, 500);
+    const { container } = render(
+      <Chat state={withHistory()} dispatch={vi.fn()} onFork={vi.fn()} onAnswerAsk={vi.fn()} scrollAnchor={0.5} />,
     );
-    expect(onChange).not.toHaveBeenCalled(); // 首次挂载无可见消息 → 不上报
-    scrollerMocks.visibleMessageIds.push("b1");
-    rerender(
-      <Chat state={withHistory()} dispatch={vi.fn()} onFork={vi.fn()} onAnswerAsk={vi.fn()} onScrollAnchorChange={onChange} />,
-    );
-    expect(onChange).toHaveBeenCalledWith("b1");
-    scrollerMocks.visibleMessageIds[0] = "b2";
-    rerender(
-      <Chat state={withHistory()} dispatch={vi.fn()} onFork={vi.fn()} onAnswerAsk={vi.fn()} onScrollAnchorChange={onChange} />,
-    );
-    expect(onChange).toHaveBeenLastCalledWith("b2");
-  });
-
-  it("无可见消息 → 上报 null", () => {
-    const onChange = vi.fn();
-    const { unmount } = render(
-      <Chat state={withHistory()} dispatch={vi.fn()} onFork={vi.fn()} onAnswerAsk={vi.fn()} onScrollAnchorChange={onChange} />,
-    );
-    unmount();
-    expect(onChange).toHaveBeenCalledWith(null);
-  });
-
-  it("挂载且消息就绪：按锚点恢复滚动（scrollToMessage 一次）", () => {
-    render(<Chat state={withHistory()} dispatch={vi.fn()} onFork={vi.fn()} onAnswerAsk={vi.fn()} scrollAnchor="b1" />);
-    expect(scrollerMocks.scrollToMessage).toHaveBeenCalledWith("b1", { behavior: "auto" });
-    expect(scrollerMocks.scrollToMessage).toHaveBeenCalledTimes(1);
+    const vp = viewportOf(container);
+    expect(vp.scrollTop).toBe(250);
   });
 
   it("无锚点 → 不恢复", () => {
-    render(<Chat state={withHistory()} dispatch={vi.fn()} onFork={vi.fn()} onAnswerAsk={vi.fn()} />);
-    expect(scrollerMocks.scrollToMessage).not.toHaveBeenCalled();
+    mockViewportSize(1000, 500);
+    const { container } = render(<Chat state={withHistory()} dispatch={vi.fn()} onFork={vi.fn()} onAnswerAsk={vi.fn()} />);
+    const vp = viewportOf(container);
+    expect(vp.scrollTop).toBe(0);
   });
 
   it("气泡未就绪（空状态）→ 不恢复；就绪后恢复一次", () => {
-    const { rerender } = render(
-      <Chat state={initialState} dispatch={vi.fn()} onFork={vi.fn()} onAnswerAsk={vi.fn()} scrollAnchor="b1" />,
+    mockViewportSize(1000, 500);
+    const { container, rerender } = render(
+      <Chat state={initialState} dispatch={vi.fn()} onFork={vi.fn()} onAnswerAsk={vi.fn()} scrollAnchor={0.5} />,
     );
-    expect(scrollerMocks.scrollToMessage).not.toHaveBeenCalled();
-    rerender(<Chat state={withHistory()} dispatch={vi.fn()} onFork={vi.fn()} onAnswerAsk={vi.fn()} scrollAnchor="b1" />);
-    expect(scrollerMocks.scrollToMessage).toHaveBeenCalledTimes(1);
+    const vp = viewportOf(container);
+    expect(vp.scrollTop).toBe(0);
+    rerender(<Chat state={withHistory()} dispatch={vi.fn()} onFork={vi.fn()} onAnswerAsk={vi.fn()} scrollAnchor={0.5} />);
+    expect(vp.scrollTop).toBe(250);
   });
 });

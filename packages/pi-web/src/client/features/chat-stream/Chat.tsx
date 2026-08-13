@@ -18,8 +18,6 @@ import {
   MessageScrollerItem,
   MessageScrollerProvider,
   MessageScrollerViewport,
-  useMessageScroller,
-  useMessageScrollerVisibility,
 } from "@/shared/ui";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui";
 import {
@@ -568,10 +566,10 @@ export function Chat({
   onFork: (userIndex: number) => void;
   /** R25：web 提问工具回答提交（App 接 RPC web-ask:answer） */
   onAnswerAsk: (toolCallId: string, answer: unknown) => void;
-  /** R27 split-drag-ux：跨父重挂恢复滚动位置——上次可见消息锚点（null = 无，贴底） */
-  scrollAnchor?: string | null;
-  /** 卸载时上报当前可见消息锚点（split 重挂后恢复用） */
-  onScrollAnchorChange?: (anchor: string | null) => void;
+  /** R27 split-drag-ux：跨父重挂恢复滚动位置——上次 scrollTop 比例 0-1（null = 无，贴底） */
+  scrollAnchor?: number | null;
+  /** 滚动事件即时上报当前比例（split 重挂后恢复用） */
+  onScrollAnchorChange?: (ratio: number | null) => void;
 }) {
   const hasContent = state.bubbles.length > 0 || state.tools.length > 0;
   const compacting = state.compacting;
@@ -596,6 +594,8 @@ export function Chat({
     ) : null;
   // R23 F2：per-bubble 工具行引用稳定缓存（toolsForBubble）——工具流式时历史气泡不重渲染
   const rowsCacheRef = useRef(new Map<string, ToolRow[]>());
+  // R27：滚动视口元素（scrollTop 比例存取——split 重挂恢复）
+  const viewportRef = useRef<HTMLDivElement | null>(null);
 
   return (
     <main className="relative flex min-h-0 min-w-0 flex-1 flex-col">
@@ -604,9 +604,10 @@ export function Chat({
           scrollAnchor={scrollAnchor}
           onScrollAnchorChange={onScrollAnchorChange}
           hasBubbles={state.bubbles.length > 0}
+          viewportRef={viewportRef}
         />
         <MessageScroller className="min-h-0 flex-1">
-          <MessageScrollerViewport>
+          <MessageScrollerViewport ref={viewportRef}>
             <MessageScrollerContent className="mx-auto w-full max-w-3xl gap-3 px-4 pt-3 pb-[25vh]">
               {!hasContent ? (
                 <Empty className="mt-16">
@@ -651,43 +652,50 @@ export function Chat({
 }
 
 /**
- * R27 split-drag-ux：滚动锚点管理（须在 MessageScrollerProvider 内）——
- * 可见首条消息 id 变化时持续上报（App ref 写入无渲染；split 跨父重挂时新实例 render 读到的
- * 总是"重挂前最后一次可见状态"——不依赖卸载 cleanup 的时序）+ 卸载兜底上报；
- * 挂载且消息就绪后按锚点定位（仅一次；锚点消息不存在 → 原语 no-op → 保持默认贴底）。
+ * R27 split-drag-ux：滚动位置管理（scrollTop 比例存取——不依赖原语消息锚点/IO 时序）。
+ * - scroll 事件即时上报比例 ratio = scrollTop/(scrollHeight-clientHeight)（贴底=1；无溢出=1）；
+ *   App ref 写入无渲染——split 重挂时新实例 render 读到的总是"重挂前最后一次滚动状态"
+ * - 挂载且消息就绪后按比例恢复（仅一次）：viewport.scrollTop = ratio × 可滚距离
+ *   （原语挂载贴底在 layout effect，本恢复在 passive effect——覆盖贴底）
+ * - 卸载兜底上报最后一次比例
  */
 function ScrollAnchorManager({
   scrollAnchor,
   onScrollAnchorChange,
   hasBubbles,
+  viewportRef,
 }: {
-  scrollAnchor?: string | null;
-  onScrollAnchorChange?: (anchor: string | null) => void;
+  scrollAnchor?: number | null;
+  onScrollAnchorChange?: (ratio: number | null) => void;
   hasBubbles: boolean;
+  viewportRef: React.MutableRefObject<HTMLDivElement | null>;
 }) {
-  const { visibleMessageIds } = useMessageScrollerVisibility();
-  const { scrollToMessage } = useMessageScroller();
-  // ref 镜像最新可见列表——卸载 cleanup 闭包读最新值
-  const visibleRef = useRef(visibleMessageIds);
-  visibleRef.current = visibleMessageIds;
-  const firstVisible = visibleMessageIds[0] ?? null;
-  // 持续上报：可见首条变化即更新（锚点总是"最新可见状态"，split 重挂读 ref 无隔代错位）
-  // 初始值 null 表示"初始即无可见"——首次挂载不上报
-  const reportedRef = useRef<string | null>(null);
+  // 最新比例 ref（scroll 事件监听 + 卸载 cleanup 共用）
+  const ratioRef = useRef<number | null>(null);
   useEffect(() => {
-    if (reportedRef.current === firstVisible) return;
-    reportedRef.current = firstVisible;
-    onScrollAnchorChange?.(firstVisible);
-  }, [firstVisible, onScrollAnchorChange]);
-  // 卸载兜底上报（最后一次可见变化后到卸载之间无变化时也写一次；cleanup 闭包读 ref 最新可见值）
-  useEffect(() => {
-    return () => onScrollAnchorChange?.(visibleRef.current[0] ?? null);
-  }, [onScrollAnchorChange]);
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+    const report = (): void => {
+      const max = viewport.scrollHeight - viewport.clientHeight;
+      const ratio = max <= 0 ? 1 : Math.min(1, Math.max(0, viewport.scrollTop / max));
+      ratioRef.current = ratio;
+      onScrollAnchorChange?.(ratio);
+    };
+    viewport.addEventListener("scroll", report, { passive: true });
+    report(); // 挂载即上报一次（当前可见状态）
+    return () => {
+      viewport.removeEventListener("scroll", report);
+      onScrollAnchorChange?.(ratioRef.current); // 卸载兜底
+    };
+  }, [viewportRef, onScrollAnchorChange]);
   const restoredRef = useRef(false);
   useEffect(() => {
-    if (restoredRef.current || !scrollAnchor || !hasBubbles) return;
+    if (restoredRef.current || scrollAnchor == null || !hasBubbles) return;
+    const viewport = viewportRef.current;
+    if (!viewport) return;
     restoredRef.current = true;
-    scrollToMessage(scrollAnchor, { behavior: "auto" });
-  }, [scrollAnchor, hasBubbles, scrollToMessage]);
+    const max = viewport.scrollHeight - viewport.clientHeight;
+    viewport.scrollTop = scrollAnchor * Math.max(0, max);
+  }, [scrollAnchor, hasBubbles, viewportRef]);
   return null;
 }

@@ -34,10 +34,15 @@ function MessageScroller({
 
 function MessageScrollerViewport({
   className,
+  ref,
   ...props
-}: React.ComponentProps<typeof MessageScrollerPrimitive.Viewport>) {
+}: React.ComponentProps<typeof MessageScrollerPrimitive.Viewport> & {
+  /** R27：滚动位置存取（split 重挂恢复）——透传 DOM ref */
+  ref?: React.Ref<HTMLDivElement>;
+}) {
   return (
     <MessageScrollerPrimitive.Viewport
+      ref={ref}
       data-slot="message-scroller-viewport"
       className={cn(
         // R27 split-drag-ux：无 data-autoscrolling:scrollbar-none——autoscroll 期间隐藏滚动条 180ms
