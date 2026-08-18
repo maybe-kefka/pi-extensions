@@ -710,42 +710,42 @@
 .markdown-body .hljs-keyword,
 .markdown-body .hljs-selector-tag,
 .markdown-body .hljs-doctag {
-  color: var(--primary);
+  color: var(--syntax-keyword);
 }
 .markdown-body .hljs-string,
 .markdown-body .hljs-regexp,
 .markdown-body .hljs-addition {
-  color: var(--success);
+  color: var(--syntax-string);
 }
 .markdown-body .hljs-comment,
 .markdown-body .hljs-quote {
-  color: var(--muted-foreground);
+  color: var(--syntax-comment);
   font-style: italic;
 }
 .markdown-body .hljs-number,
 .markdown-body .hljs-literal,
 .markdown-body .hljs-symbol {
-  color: var(--warning);
+  color: var(--syntax-number);
 }
 .markdown-body .hljs-title,
 .markdown-body .hljs-title.function_,
 .markdown-body .hljs-function .hljs-title {
-  color: var(--accent);
+  color: var(--syntax-function);
 }
 .markdown-body .hljs-type,
 .markdown-body .hljs-built_in,
 .markdown-body .hljs-class .hljs-title {
-  color: var(--chart-5);
+  color: var(--syntax-type);
 }
 .markdown-body .hljs-variable,
 .markdown-body .hljs-attr,
 .markdown-body .hljs-attribute {
-  color: var(--foreground);
+  color: var(--syntax-property);
 }
 .markdown-body .hljs-operator,
 .markdown-body .hljs-punctuation,
 .markdown-body .hljs-meta {
-  color: var(--muted-foreground);
+  color: var(--syntax-operator);
 }
 .markdown-body .hljs-deletion {
   color: var(--destructive);

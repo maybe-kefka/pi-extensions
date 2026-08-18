@@ -11,14 +11,14 @@ import { tags as t } from "@lezer/highlight";
 
 /** 语法角色 → CSS 变量 映射（纯数据，供测试断言） */
 export const SYNTAX_TOKEN_MAP: Record<string, string> = {
-  keyword: "var(--primary)",
-  string: "var(--success)",
-  comment: "var(--muted-foreground)",
-  number: "var(--chart-2)",
-  function: "var(--chart-1)",
-  typeName: "var(--chart-3)",
-  operator: "var(--chart-4)",
-  property: "var(--chart-5)",
+  keyword: "var(--syntax-keyword)",
+  string: "var(--syntax-string)",
+  comment: "var(--syntax-comment)",
+  number: "var(--syntax-number)",
+  function: "var(--syntax-function)",
+  typeName: "var(--syntax-type)",
+  operator: "var(--syntax-operator)",
+  property: "var(--syntax-property)",
   default: "var(--foreground)",
 };
 

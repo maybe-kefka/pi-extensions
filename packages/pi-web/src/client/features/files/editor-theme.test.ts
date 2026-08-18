@@ -1,7 +1,21 @@
 import { describe, expect, it } from "vitest";
+import { generateThemeCss } from "@/entities/theme";
 import { SYNTAX_TOKEN_MAP, createEditorTheme } from "./editor-theme.js";
 
 describe("SYNTAX_TOKEN_MAP", () => {
+  it("编辑器语法角色使用主题契约的 syntax 变量", () => {
+    expect(SYNTAX_TOKEN_MAP).toMatchObject({
+      keyword: "var(--syntax-keyword)",
+      string: "var(--syntax-string)",
+      comment: "var(--syntax-comment)",
+      number: "var(--syntax-number)",
+      function: "var(--syntax-function)",
+      typeName: "var(--syntax-type)",
+      operator: "var(--syntax-operator)",
+      property: "var(--syntax-property)",
+    });
+  });
+
   it("语法角色齐全且全部引用语义 CSS 变量", () => {
     const required = ["keyword", "string", "comment", "number", "function", "typeName", "operator", "property", "default"];
     for (const role of required) {
@@ -10,14 +24,11 @@ describe("SYNTAX_TOKEN_MAP", () => {
   });
 
   it("引用变量均来自项目语义集（不引用不存在的变量）", () => {
-    const validVars = new Set([
-      "--background", "--foreground", "--primary", "--success", "--muted-foreground",
-      "--chart-1", "--chart-2", "--chart-3", "--chart-4", "--chart-5", "--destructive",
-    ]);
+    const generatedTheme = generateThemeCss("github", "light");
     for (const value of Object.values(SYNTAX_TOKEN_MAP)) {
       const m = value.match(/var\((--[a-z0-9-]+)/);
       expect(m, value).toBeTruthy();
-      expect(validVars.has(m![1]), `${m![1]} 不在语义变量集`).toBe(true);
+      expect(generatedTheme).toContain(`  ${m![1]}:`);
     }
   });
 
