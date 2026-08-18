@@ -52,7 +52,7 @@ export function SessionList({
       </div>
 
       {degraded && (
-        <div className="border-warning/40 bg-warning/10 text-warning mt-2 rounded-md border px-2 py-1.5 text-[11px] leading-snug">
+        <div className="border-warning/40 bg-warning/10 text-foreground mt-2 rounded-md border px-2 py-1.5 text-[11px] leading-snug">
           已切换到新会话：对话正常；切换/新建/树导航需在 TUI 输入 /web 恢复
         </div>
       )}

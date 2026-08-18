@@ -131,6 +131,12 @@ describe("THEMES 定义完整性", () => {
         }
         const mutedSurface = blend(tokens.muted, tokens.background, 0.5);
         if (contrast(tokens.mutedForeground, mutedSurface) < 4.5) failures.push(`${name}/${scheme}/mutedForeground/muted-alpha=${contrast(tokens.mutedForeground, mutedSurface).toFixed(2)}<4.5`);
+        const warningSurface = blend(tokens.warning, tokens.background, 0.1);
+        if (contrast(tokens.foreground, warningSurface) < 4.5) failures.push(`${name}/${scheme}/foreground/warning-alpha-10=${contrast(tokens.foreground, warningSurface).toFixed(2)}<4.5`);
+        const composerChipSurface = blend(tokens.accent, tokens.background, 0.2);
+        if (contrast(tokens.secondaryForeground, composerChipSurface) < 4.5) failures.push(`${name}/${scheme}/secondaryForeground/accent-on-background-alpha-20=${contrast(tokens.secondaryForeground, composerChipSurface).toFixed(2)}<4.5`);
+        const bubbleChipSurface = blend(tokens.accent, tokens.secondary, 0.2);
+        if (contrast(tokens.secondaryForeground, bubbleChipSurface) < 4.5) failures.push(`${name}/${scheme}/secondaryForeground/accent-on-secondary-alpha-20=${contrast(tokens.secondaryForeground, bubbleChipSurface).toFixed(2)}<4.5`);
       }
     }
     expect(failures).toEqual([]);

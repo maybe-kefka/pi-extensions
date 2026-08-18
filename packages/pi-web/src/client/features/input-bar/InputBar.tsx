@@ -10,7 +10,7 @@ import type { StreamState } from "@/entities/chat";
 
 /** chip 视觉：按插入类型区分（skill/file 为原子 chip，command 为纯文本不渲染 chip） */
 const CHIP_STYLES: Record<"skill" | "file", { icon: string; cls: string }> = {
-  skill: { icon: "✨", cls: "bg-accent/20 text-foreground" },
+  skill: { icon: "✨", cls: "bg-accent/20 text-secondary-foreground" },
   file: { icon: "📄", cls: "bg-secondary text-secondary-foreground" },
 };
 

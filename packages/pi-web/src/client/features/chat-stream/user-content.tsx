@@ -52,7 +52,7 @@ export function parseUserContent(text: string): UserSegment[] {
 }
 
 const CHIP_STYLES = {
-  skill: { icon: "✨", cls: "bg-accent/20 text-foreground" },
+  skill: { icon: "✨", cls: "bg-accent/20 text-secondary-foreground" },
   file: { icon: "📄", cls: "bg-secondary text-secondary-foreground" },
 } as const;
 

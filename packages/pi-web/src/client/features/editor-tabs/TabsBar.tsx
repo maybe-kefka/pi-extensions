@@ -135,10 +135,16 @@ export function TabsBar({ tabs, active, onActivate, onClose, onMove, onDragStart
               className={`min-w-0 flex-1 truncate text-left outline-none focus-visible:ring-2 focus-visible:ring-ring ${tab.kind === "file" && tab.preview ? "italic" : ""}`}
               onClick={() => onActivate(id)}
               onKeyDown={(e) => {
-                const move = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : e.key === "Home" ? -tabs.length : e.key === "End" ? tabs.length : 0;
+                const move = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
                 if (move !== 0) {
                   e.preventDefault();
                   const next = (i + move + tabs.length) % tabs.length;
+                  const nextId = tabKeyOf(tabs[next]!);
+                  tabButtonEls.current[next]?.focus();
+                  onActivate(nextId);
+                } else if (e.key === "Home" || e.key === "End") {
+                  e.preventDefault();
+                  const next = e.key === "Home" ? 0 : tabs.length - 1;
                   const nextId = tabKeyOf(tabs[next]!);
                   tabButtonEls.current[next]?.focus();
                   onActivate(nextId);

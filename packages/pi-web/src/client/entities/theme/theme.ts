@@ -324,15 +324,15 @@ const PALETTES: Record<ThemeName, { name: ThemeName; label: string; light: Legac
     label: "Tokyo Night",
     light: {
       background: "#e1e2e7",
-      foreground: "#3760bf",
+      foreground: "#1f3f85",
       card: "#e1e2e7",
-      cardForeground: "#3760bf",
+      cardForeground: "#1f3f85",
       popover: "#e1e2e7",
-      popoverForeground: "#3760bf",
+      popoverForeground: "#1f3f85",
       primary: "#1f5bb8",
       primaryForeground: "#ffffff",
       secondary: "#d7d8dd",
-      secondaryForeground: "#1f5bb8",
+      secondaryForeground: "#173f85",
       muted: "#d7d8dd",
       mutedForeground: "#42558f",
       accent: "#007197",
@@ -397,7 +397,7 @@ const SYNTAX_SOURCES: Record<ThemeName, { light: SyntaxTokenSource; dark: Syntax
     dark: { syntaxKeyword: "#8fbcbb", syntaxType: "#88c0d0", syntaxFunction: "#b48ead", syntaxString: "#a3be8c", syntaxNumber: "#ebcb8b", syntaxOperator: "#eceff4", syntaxProperty: "#88c0d0", syntaxComment: "#aab4c8" },
   },
   "tokyo-night": {
-    light: { syntaxKeyword: "#007197", syntaxType: "#1f5bb8", syntaxFunction: "#7847bd", syntaxString: "#587539", syntaxNumber: "#8c6c3e", syntaxOperator: "#3760bf", syntaxProperty: "#1f5bb8", syntaxComment: "#42558f" },
+    light: { syntaxKeyword: "#007197", syntaxType: "#1f5bb8", syntaxFunction: "#7847bd", syntaxString: "#587539", syntaxNumber: "#8c6c3e", syntaxOperator: "#1f3f85", syntaxProperty: "#1f5bb8", syntaxComment: "#42558f" },
     dark: { syntaxKeyword: "#7dcfff", syntaxType: "#7aa2f7", syntaxFunction: "#bb9af7", syntaxString: "#9ece6a", syntaxNumber: "#e0af68", syntaxOperator: "#c0caf5", syntaxProperty: "#7aa2f7", syntaxComment: "#9aa5ce" },
   },
 };

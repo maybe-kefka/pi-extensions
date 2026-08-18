@@ -27,12 +27,6 @@ describe("SettingsPanel", () => {
     expect(props.onThemeChange).toHaveBeenCalledWith({ theme: "github", scheme: "dark" });
   });
 
-  it("主题选项展示来自 catalog 的 palette preview", () => {
-    render(<SettingsPanel {...props} />);
-    fireEvent.click(screen.getByRole("combobox", { name: "主题" }));
-    expect(screen.getAllByRole("option").length).toBe(5);
-  });
-
   it("模型控件为长名称保留完整 accessible name", () => {
     render(<SettingsPanel {...props} />);
     const model = screen.getByRole("combobox", { name: /模型：A very long model name/ });

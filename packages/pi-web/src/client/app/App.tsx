@@ -822,7 +822,7 @@ export default function App() {
   };
 
   return (
-    <div className="flex h-dvh flex-col bg-background text-foreground">
+    <div className="flex h-dvh flex-col bg-canvas text-foreground">
       <div className="relative flex min-h-0 flex-1">
         <ActivityBar
           active={panel}
@@ -833,7 +833,7 @@ export default function App() {
         />
         {panel !== null && (
           <aside
-            className="app-panel-shell bg-sidebar relative shrink-0 border-r"
+            className="app-panel-shell bg-panel relative shrink-0 border-r"
             aria-label={`${panel === "files" ? "文件" : panel === "git" ? "Git" : panel === "sessions" ? "会话" : "设置"} 面板`}
             style={{ width: panelWidth }}
           >

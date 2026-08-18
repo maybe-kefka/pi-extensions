@@ -87,16 +87,33 @@ describe("TabsBar", () => {
     expect(onActivate).toHaveBeenCalledWith("b.ts");
   });
 
-  it("tab 使用 roving focus，方向键移动并激活相邻项", () => {
+  it("tab 键盘导航支持 Home/End 与左右循环，并激活目标", () => {
     const onActivate = vi.fn();
     render(<TabsBar tabs={tabs} active="a.ts" onActivate={onActivate} onClose={vi.fn()} onMove={vi.fn()} />);
     const current = screen.getByRole("tab", { name: "a.ts" });
+    const first = screen.getByRole("tab", { name: "聊天" });
     const next = screen.getByRole("tab", { name: "b.ts" });
     expect(current.getAttribute("tabIndex")).toBe("0");
     expect(next.getAttribute("tabIndex")).toBe("-1");
-    fireEvent.keyDown(current, { key: "ArrowRight" });
+
+    fireEvent.keyDown(current, { key: "Home" });
+    expect(onActivate).toHaveBeenCalledWith("chat:/s/a.jsonl");
+    expect(document.activeElement).toBe(first);
+
+    current.focus();
+    fireEvent.keyDown(current, { key: "End" });
     expect(onActivate).toHaveBeenCalledWith("b.ts");
     expect(document.activeElement).toBe(next);
+
+    fireEvent.keyDown(next, { key: "ArrowLeft" });
+    expect(onActivate).toHaveBeenLastCalledWith("a.ts");
+    expect(document.activeElement).toBe(current);
+    fireEvent.keyDown(current, { key: "ArrowRight" });
+    expect(onActivate).toHaveBeenLastCalledWith("b.ts");
+    expect(document.activeElement).toBe(next);
+    fireEvent.keyDown(next, { key: "ArrowRight" });
+    expect(onActivate).toHaveBeenLastCalledWith("chat:/s/a.jsonl");
+    expect(document.activeElement).toBe(first);
   });
 
   it("点击关闭按钮触发关闭（不触发激活）", () => {

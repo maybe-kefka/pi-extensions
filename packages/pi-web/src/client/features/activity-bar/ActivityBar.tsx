@@ -41,7 +41,7 @@ export function ActivityBar({ active, onSelect }: ActivityBarProps) {
     );
   };
   return (
-    <nav aria-label="工作区工具" className="border-border bg-muted/30 flex w-12 shrink-0 flex-col items-center gap-1 border-r py-2">
+    <nav aria-label="工作区工具" className="border-border bg-sidebar flex w-12 shrink-0 flex-col items-center gap-1 border-r py-2">
       {MAIN_ITEMS.map(renderItem)}
       <div className="mt-auto">{renderItem(BOTTOM_ITEM)}</div>
     </nav>

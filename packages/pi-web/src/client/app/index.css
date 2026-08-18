@@ -440,15 +440,15 @@
 
 [data-theme="tokyo-night"] {
   --background: #e1e2e7;
-  --foreground: #3760bf;
+  --foreground: #1f3f85;
   --card: #e1e2e7;
-  --card-foreground: #3760bf;
+  --card-foreground: #1f3f85;
   --popover: #e1e2e7;
-  --popover-foreground: #3760bf;
+  --popover-foreground: #1f3f85;
   --primary: #1f5bb8;
   --primary-foreground: #ffffff;
   --secondary: #d7d8dd;
-  --secondary-foreground: #1f5bb8;
+  --secondary-foreground: #173f85;
   --muted: #d7d8dd;
   --muted-foreground: #42558f;
   --accent: #007197;
@@ -480,7 +480,7 @@
   --syntax-function: #7847bd;
   --syntax-string: #587539;
   --syntax-number: #8c6c3e;
-  --syntax-operator: #3760bf;
+  --syntax-operator: #1f3f85;
   --syntax-property: #1f5bb8;
   --syntax-comment: #42558f;
 }
@@ -613,7 +613,6 @@
 /* Shell panel：宽屏保持 docked，极窄窗口覆盖主区而不改变 panel 选择状态。 */
 .app-panel-shell {
   min-width: 0;
-  background: var(--panel);
   transition: box-shadow 150ms ease;
 }
 
