@@ -10,8 +10,8 @@ import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import { tags as t } from "@lezer/highlight";
 
 /** CodeMirror contentDOM 的公开可访问属性。 */
-export const EDITOR_CONTENT_ATTRIBUTES = { "aria-label": "代码编辑器" } as const;
-export const EDITOR_SCROLLER_ATTRIBUTES = {
+const EDITOR_CONTENT_ATTRIBUTES = { "aria-label": "代码编辑器" } as const;
+const EDITOR_SCROLLER_ATTRIBUTES = {
   role: "region",
   "aria-label": "代码滚动区域",
   tabindex: "0",

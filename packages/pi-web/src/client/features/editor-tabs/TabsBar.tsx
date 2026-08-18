@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { FileDiff, MessageSquareText, X } from "lucide-react";
 import { resolveInsertIndex, tabKeyOf, type TabRect, type WorkspaceTab } from "@/entities/workspace";
 
@@ -31,6 +31,16 @@ export function TabsBar({ tabs, active, onActivate, onClose, onMove, onDragStart
   const [insert, setInsert] = useState<InsertPos | null>(null);
   /** 最近一次 dragover 的解析结果（drop 读 ref——drop 坐标可能不可靠，与 SplitView dropRef 同模式） */
   const insertRef = useRef<InsertPos | null>(null);
+  const pendingKeyboardClose = useRef<{ id: string; index: number } | null>(null);
+
+  useEffect(() => {
+    const pending = pendingKeyboardClose.current;
+    if (!pending || tabs.some((tab) => tabKeyOf(tab) === pending.id)) return;
+    const activeIndex = tabs.findIndex((tab) => tabKeyOf(tab) === active);
+    const nextIndex = activeIndex >= 0 ? activeIndex : Math.min(pending.index, tabs.length - 1);
+    tabButtonEls.current[nextIndex]?.focus();
+    pendingKeyboardClose.current = null;
+  }, [active, tabs]);
 
   const draggingId = (): string | null => dragRef.current ?? dragId ?? null;
 
@@ -143,6 +153,7 @@ export function TabsBar({ tabs, active, onActivate, onClose, onMove, onDragStart
                     onActivate(id);
                   } else if (e.key === "Delete") {
                     e.preventDefault();
+                    pendingKeyboardClose.current = { id, index: i };
                     onClose(id);
                   }
                 }}

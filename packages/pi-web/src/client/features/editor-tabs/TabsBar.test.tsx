@@ -2,6 +2,7 @@
 // TabsBar 渲染测试：文件/聊天 tab、激活高亮、关闭按钮
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { useState } from "react";
 import { TabsBar } from "./TabsBar";
 import type { WorkspaceTab } from "@/entities/workspace";
 
@@ -141,6 +142,34 @@ describe("TabsBar", () => {
     fireEvent.keyDown(current, { key: "Delete" });
 
     expect(onClose).toHaveBeenCalledWith("a.ts");
+  });
+
+  it("按 Delete 关闭 active tab 后聚焦状态提交后的新 active tab", () => {
+    function Harness() {
+      const [items, setItems] = useState(tabs);
+      const [activeId, setActiveId] = useState("a.ts");
+      return (
+        <TabsBar
+          tabs={items}
+          active={activeId}
+          onActivate={setActiveId}
+          onClose={(id) => {
+            setItems((current) => current.filter((tab) => (tab.kind === "chat" ? `chat:${tab.sessionId}` : tab.path) !== id));
+            if (id === activeId) setActiveId("b.ts");
+          }}
+          onMove={vi.fn()}
+        />
+      );
+    }
+    render(<Harness />);
+    const closing = screen.getByRole("tab", { name: "a.ts" });
+    closing.focus();
+
+    fireEvent.keyDown(closing, { key: "Delete" });
+
+    const nextActive = screen.getByRole("tab", { name: "b.ts" });
+    expect(nextActive.getAttribute("aria-selected")).toBe("true");
+    expect(document.activeElement).toBe(nextActive);
   });
 
   it("聊天 tab 有关闭按钮（与 file 同级）", () => {

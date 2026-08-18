@@ -169,7 +169,7 @@ const PALETTES: Record<ThemeName, { name: ThemeName; label: string; light: Legac
       accent: "#006d9c",
       accentForeground: "#ffffff",
       destructive: "#e45649",
-      success: "#50a14f",
+      success: "#4e9f4d",
       warning: "#986801",
       border: "#6e7781",
       input: "#6e7781",
@@ -226,7 +226,7 @@ const PALETTES: Record<ThemeName, { name: ThemeName; label: string; light: Legac
       mutedForeground: "#44475a",
       accent: "#087f9b",
       accentForeground: "#ffffff",
-      destructive: "#ff5555",
+      destructive: "#fa5252",
       success: "#287a4a",
       warning: "#7a5a00",
       border: "#6e7781",
@@ -394,7 +394,7 @@ const SYNTAX_SOURCES: Record<ThemeName, { light: SyntaxTokenSource; dark: Syntax
     dark: { syntaxKeyword: "#56b6c2", syntaxType: "#61afef", syntaxFunction: "#c678dd", syntaxString: "#98c379", syntaxNumber: "#e5c07b", syntaxOperator: "#abb2bf", syntaxProperty: "#61afef", syntaxComment: "#abb2bf" },
   },
   dracula: {
-    light: { syntaxKeyword: "#087f9b", syntaxType: "#6d28d9", syntaxFunction: "#9b246f", syntaxString: "#287a4a", syntaxNumber: "#7a5a00", syntaxOperator: "#44475a", syntaxProperty: "#6d28d9", syntaxComment: "#44475a" },
+    light: { syntaxKeyword: "#087e9a", syntaxType: "#6d28d9", syntaxFunction: "#9b246f", syntaxString: "#287a4a", syntaxNumber: "#7a5a00", syntaxOperator: "#44475a", syntaxProperty: "#6d28d9", syntaxComment: "#44475a" },
     dark: { syntaxKeyword: "#8be9fd", syntaxType: "#bd93f9", syntaxFunction: "#ff79c6", syntaxString: "#50fa7b", syntaxNumber: "#f1fa8c", syntaxOperator: "#f8f8f2", syntaxProperty: "#bd93f9", syntaxComment: "#abb2bf" },
   },
   nord: {

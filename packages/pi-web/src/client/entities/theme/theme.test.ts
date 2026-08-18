@@ -17,6 +17,7 @@ import {
   savePreference,
   type ThemeTokens,
 } from "./theme.js";
+import { blendHex, contrastRatio } from "./contrast-test-helpers.js";
 
 const TOKEN_KEYS: (keyof ThemeTokens)[] = [
   "background",
@@ -92,19 +93,6 @@ describe("THEMES 定义完整性", () => {
   });
 
   it("所有主题的文字与关键状态组合达到 WCAG AA", () => {
-    const contrast = (foreground: string, background: string) => {
-      const channel = (hex: string, offset: number) => {
-        const value = Number.parseInt(hex.slice(offset, offset + 2), 16) / 255;
-        return value <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
-      };
-      const luminance = (hex: string) => 0.2126 * channel(hex, 1) + 0.7152 * channel(hex, 3) + 0.0722 * channel(hex, 5);
-      const [light, dark] = [luminance(foreground), luminance(background)].sort((a, b) => b - a);
-      return (light + 0.05) / (dark + 0.05);
-    };
-    const blend = (foreground: string, background: string, alpha: number) => {
-      const channel = (hex: string, offset: number) => Number.parseInt(hex.slice(offset, offset + 2), 16);
-      return `#${[1, 3, 5].map((offset) => Math.round(channel(foreground, offset) * alpha + channel(background, offset) * (1 - alpha)).toString(16).padStart(2, "0")).join("")}`;
-    };
     const pairs: [keyof ThemeTokens, keyof ThemeTokens, number][] = [
       ["foreground", "background", 4.5],
       ["mutedForeground", "secondary", 4.5],
@@ -132,32 +120,22 @@ describe("THEMES 定义完整性", () => {
       for (const scheme of ["light", "dark"] as const) {
         const tokens = THEMES[name][scheme];
         for (const [foreground, background, threshold] of pairs) {
-          if (contrast(tokens[foreground], tokens[background]) < threshold) failures.push(`${name}/${scheme}/${foreground}/${background}=${contrast(tokens[foreground], tokens[background]).toFixed(2)}<${threshold}`);
+          if (contrastRatio(tokens[foreground], tokens[background]) < threshold) failures.push(`${name}/${scheme}/${foreground}/${background}=${contrastRatio(tokens[foreground], tokens[background]).toFixed(2)}<${threshold}`);
         }
-        const mutedSurface = blend(tokens.muted, tokens.background, 0.5);
-        if (contrast(tokens.mutedForeground, mutedSurface) < 4.5) failures.push(`${name}/${scheme}/mutedForeground/muted-alpha=${contrast(tokens.mutedForeground, mutedSurface).toFixed(2)}<4.5`);
-        const warningSurface = blend(tokens.warning, tokens.background, 0.1);
-        if (contrast(tokens.foreground, warningSurface) < 4.5) failures.push(`${name}/${scheme}/foreground/warning-alpha-10=${contrast(tokens.foreground, warningSurface).toFixed(2)}<4.5`);
-        const composerChipSurface = blend(tokens.accent, tokens.background, 0.2);
-        if (contrast(tokens.secondaryForeground, composerChipSurface) < 4.5) failures.push(`${name}/${scheme}/secondaryForeground/accent-on-background-alpha-20=${contrast(tokens.secondaryForeground, composerChipSurface).toFixed(2)}<4.5`);
-        const bubbleChipSurface = blend(tokens.accent, tokens.secondary, 0.2);
-        if (contrast(tokens.secondaryForeground, bubbleChipSurface) < 4.5) failures.push(`${name}/${scheme}/secondaryForeground/accent-on-secondary-alpha-20=${contrast(tokens.secondaryForeground, bubbleChipSurface).toFixed(2)}<4.5`);
+        const mutedSurface = blendHex(tokens.muted, tokens.background, 0.5);
+        if (contrastRatio(tokens.mutedForeground, mutedSurface) < 4.5) failures.push(`${name}/${scheme}/mutedForeground/muted-alpha=${contrastRatio(tokens.mutedForeground, mutedSurface).toFixed(2)}<4.5`);
+        const warningSurface = blendHex(tokens.warning, tokens.background, 0.1);
+        if (contrastRatio(tokens.foreground, warningSurface) < 4.5) failures.push(`${name}/${scheme}/foreground/warning-alpha-10=${contrastRatio(tokens.foreground, warningSurface).toFixed(2)}<4.5`);
+        const composerChipSurface = blendHex(tokens.accent, tokens.background, 0.2);
+        if (contrastRatio(tokens.secondaryForeground, composerChipSurface) < 4.5) failures.push(`${name}/${scheme}/secondaryForeground/accent-on-background-alpha-20=${contrastRatio(tokens.secondaryForeground, composerChipSurface).toFixed(2)}<4.5`);
+        const bubbleChipSurface = blendHex(tokens.accent, tokens.secondary, 0.2);
+        if (contrastRatio(tokens.secondaryForeground, bubbleChipSurface) < 4.5) failures.push(`${name}/${scheme}/secondaryForeground/accent-on-secondary-alpha-20=${contrastRatio(tokens.secondaryForeground, bubbleChipSurface).toFixed(2)}<4.5`);
       }
     }
     expect(failures).toEqual([]);
   });
 
   it("所有语法角色在编辑器画布上达到普通文字 4.5:1 对比度", () => {
-    const channel = (hex: string, offset: number) => {
-      const value = Number.parseInt(hex.slice(offset, offset + 2), 16) / 255;
-      return value <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
-    };
-    const luminance = (hex: string) =>
-      0.2126 * channel(hex, 1) + 0.7152 * channel(hex, 3) + 0.0722 * channel(hex, 5);
-    const contrast = (foreground: string, background: string) => {
-      const [light, dark] = [luminance(foreground), luminance(background)].sort((a, b) => b - a);
-      return (light + 0.05) / (dark + 0.05);
-    };
     const syntaxTokens: (keyof ThemeTokens)[] = [
       "syntaxKeyword",
       "syntaxType",
@@ -174,8 +152,40 @@ describe("THEMES 定义完整性", () => {
       for (const scheme of ["light", "dark"] as const) {
         const tokens = THEMES[name][scheme];
         for (const token of syntaxTokens) {
-          const ratio = contrast(tokens[token], tokens.editor);
+          const ratio = contrastRatio(tokens[token], tokens.editor);
           if (ratio < 4.5) failures.push(`${name}/${scheme}/${token}/editor=${ratio.toFixed(2)}<4.5`);
+        }
+      }
+    }
+
+    expect(failures).toEqual([]);
+  });
+
+  it("状态进度与 Markdown 语法在实际承载面上保持可辨识", () => {
+    const stateTokens: (keyof ThemeTokens)[] = ["success", "warning", "destructive"];
+    const syntaxTokens: (keyof ThemeTokens)[] = [
+      "syntaxKeyword",
+      "syntaxType",
+      "syntaxFunction",
+      "syntaxString",
+      "syntaxNumber",
+      "syntaxOperator",
+      "syntaxProperty",
+      "syntaxComment",
+    ];
+    const failures: string[] = [];
+
+    for (const name of THEME_NAMES) {
+      for (const scheme of ["light", "dark"] as const) {
+        const tokens = THEMES[name][scheme];
+        for (const token of stateTokens) {
+          const ratio = contrastRatio(tokens[token], tokens.sunken);
+          if (ratio < 3) failures.push(`${name}/${scheme}/${token}/context-meter-sunken=${ratio.toFixed(2)}<3`);
+        }
+        const markdownCodeSurface = blendHex(tokens.muted, tokens.canvas, 0.5);
+        for (const token of syntaxTokens) {
+          const ratio = contrastRatio(tokens[token], markdownCodeSurface);
+          if (ratio < 4.5) failures.push(`${name}/${scheme}/${token}/markdown-muted-alpha-50=${ratio.toFixed(2)}<4.5`);
         }
       }
     }

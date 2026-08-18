@@ -136,9 +136,9 @@ function WebAskCard({
 
   if (answered) {
     return (
-      <div data-slot="web-ask" data-answered="true" className="bg-sunken flex flex-col gap-1.5 rounded-xl p-3 text-xs">
+      <div data-slot="web-ask" data-answered="true" className="border-muted flex flex-col gap-1.5 border-l-2 px-3 py-1 text-xs">
         <div className="text-foreground font-medium">❓ {question}</div>
-        <div className="bg-canvas text-muted-foreground rounded-lg p-2 whitespace-pre-wrap">
+        <div className="text-muted-foreground whitespace-pre-wrap">
           已回答：{row.output}
         </div>
       </div>
@@ -146,7 +146,7 @@ function WebAskCard({
   }
 
   return (
-    <div data-slot="web-ask" className="bg-sunken flex flex-col gap-2 rounded-xl p-3 text-xs">
+    <div data-slot="web-ask" className="border-muted flex flex-col gap-2 border-l-2 px-3 py-1 text-xs">
       <div className="text-foreground font-medium">❓ {question}</div>
       {row.toolName === "web_ask_text" ? (
         <textarea
@@ -158,7 +158,7 @@ function WebAskCard({
           className="border-input bg-background focus-visible:ring-ring min-h-10 w-full resize-none rounded-md border px-2 py-1.5 text-xs focus-visible:ring-[3px] focus-visible:outline-none"
         />
       ) : (
-        <div className="flex flex-col gap-1">
+        <div className="flex flex-col gap-0.5">
           {options.map((opt) => (
             <button
               key={opt}
@@ -166,14 +166,16 @@ function WebAskCard({
               data-slot="web-ask-option"
               data-selected={selected.includes(opt) ? "true" : "false"}
               onClick={() => toggle(opt)}
-              className="border-border hover:bg-background/60 flex w-full cursor-pointer items-center gap-2 rounded-md border px-2 py-1.5 text-left"
+              className={`focus-visible:ring-ring hover:bg-hover flex w-full cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-left focus-visible:ring-2 focus-visible:outline-none ${
+                selected.includes(opt) ? "bg-active" : ""
+              }`}
             >
               <span
                 className={`flex size-3.5 shrink-0 items-center justify-center rounded-sm border ${
                   selected.includes(opt) ? "bg-primary border-primary" : "border-border bg-background"
                 }`}
               >
-                {selected.includes(opt) && <span className="text-background text-[11px] leading-none">✓</span>}
+                {selected.includes(opt) && <span className="text-primary-foreground text-[11px] leading-none">✓</span>}
               </span>
               <span className="min-w-0">{opt}</span>
             </button>
@@ -212,7 +214,7 @@ function ThinkingBlock({ text, active }: { text: string; active: boolean }) {
     <div
       ref={ref}
       data-slot="step-thinking"
-      role="region"
+      role="group"
       aria-label="思考过程"
       tabIndex={0}
       className="border-muted text-muted-foreground scrollbar-thin max-h-24 overflow-y-auto border-l-2 px-3 py-1 text-sm leading-6"

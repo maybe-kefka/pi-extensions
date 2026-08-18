@@ -1,8 +1,10 @@
+// @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
+import { getByRole } from "@testing-library/dom";
+import { EditorState } from "@codemirror/state";
+import { EditorView } from "@codemirror/view";
 import { generateThemeCss } from "@/entities/theme";
 import {
-  EDITOR_CONTENT_ATTRIBUTES,
-  EDITOR_SCROLLER_ATTRIBUTES,
   SYNTAX_TOKEN_MAP,
   createEditorTheme,
 } from "./editor-theme.js";
@@ -44,22 +46,20 @@ describe("SYNTAX_TOKEN_MAP", () => {
 });
 
 describe("createEditorTheme", () => {
-  it("为可编辑内容提供明确的 textbox 名称", () => {
-    expect(EDITOR_CONTENT_ATTRIBUTES).toEqual({ "aria-label": "代码编辑器" });
-  });
-
-  it("为滚动视口提供键盘可达的 region 契约", () => {
-    expect(EDITOR_SCROLLER_ATTRIBUTES).toEqual({
-      role: "region",
-      "aria-label": "代码滚动区域",
-      tabindex: "0",
+  it("真实编辑器暴露有名称的 textbox 与键盘可达滚动区", () => {
+    const parent = document.createElement("div");
+    document.body.append(parent);
+    const view = new EditorView({
+      state: EditorState.create({ doc: "const answer = 42;", extensions: createEditorTheme() }),
+      parent,
     });
-  });
 
-  it("返回可组装扩展（数组含高亮与视图主题）", () => {
-    const ext = createEditorTheme() as unknown[];
-    expect(Array.isArray(ext)).toBe(true);
-    // 冒烟：不抛错（CodeMirror 扩展是惰性结构）
-    expect(String(ext[0]).length).toBeGreaterThan(0);
+    expect(getByRole(parent, "textbox", { name: "代码编辑器" })).toBe(view.contentDOM);
+    const scroller = getByRole(parent, "region", { name: "代码滚动区域" });
+    expect(scroller).toBe(view.scrollDOM);
+    expect(scroller.tabIndex).toBe(0);
+
+    view.destroy();
+    parent.remove();
   });
 });

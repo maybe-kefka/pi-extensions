@@ -509,16 +509,26 @@ describe("R23 F3 ToolCard 惰性序列化", () => {
 });
 
 describe("R24 think 窗口", () => {
-  it("thinking 滚动区可按名称找到并能由键盘聚焦", () => {
+  it("多个 thinking 滚动区有局部名称、可聚焦且不重复页面 landmark", () => {
     const s = run([
       { type: "message_start", message: { role: "user", content: "q" } },
-      { type: "message_start", message: { role: "assistant", content: [{ type: "thinking", thinking: "" }] } },
-      { type: "message_update", event: { type: "thinking_delta", contentIndex: 0, delta: "x".repeat(200), partial: { thinking: "x".repeat(200) } } },
+      {
+        type: "message_start",
+        message: {
+          role: "assistant",
+          content: [
+            { type: "thinking", thinking: "第一段思考" },
+            { type: "thinking", thinking: "第二段思考" },
+          ],
+        },
+      },
     ]);
     render(<Chat state={s} dispatch={vi.fn()} onFork={vi.fn()} onAnswerAsk={vi.fn()} />);
-    const region = screen.getByRole("region", { name: "思考过程" });
-    region.focus();
-    expect(document.activeElement).toBe(region);
+    const groups = screen.getAllByRole("group", { name: "思考过程" });
+    expect(groups).toHaveLength(2);
+    expect(screen.queryByRole("region", { name: "思考过程" })).toBeNull();
+    groups[0]!.focus();
+    expect(document.activeElement).toBe(groups[0]);
   });
 });
 
