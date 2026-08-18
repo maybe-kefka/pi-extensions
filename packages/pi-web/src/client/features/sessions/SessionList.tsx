@@ -66,16 +66,21 @@ export function SessionList({
             return (
               <li
                 key={s.path}
-                className={`group flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1.5 text-xs transition-colors ${
-                  active ? "bg-accent" : "hover:bg-muted/60"
-                }`}
-                onClick={() => actions.onSelect(s.path, label)}
+                className={`group flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs ${active ? "bg-accent" : ""}`}
               >
-                <span className={`min-w-0 flex-1 truncate ${active ? "text-foreground font-medium" : "text-muted-foreground"}`}>
-                  {opened ? "● " : ""}
-                  {label}
-                </span>
-                <span className="text-muted-foreground shrink-0 tabular-nums">{s.messageCount}条</span>
+                <button
+                  type="button"
+                  aria-label={label}
+                  title={label}
+                  className="focus-visible:ring-ring/70 hover:bg-muted/60 flex min-w-0 flex-1 items-center gap-1.5 rounded-sm text-left focus-visible:ring-2"
+                  onClick={() => actions.onSelect(s.path, label)}
+                >
+                  <span className={`min-w-0 flex-1 truncate ${active ? "text-foreground font-medium" : "text-muted-foreground"}`}>
+                    {opened ? "● " : ""}
+                    {label}
+                  </span>
+                  <span className="text-muted-foreground shrink-0 tabular-nums">{s.messageCount}条</span>
+                </button>
                 <span
                   className="flex max-w-0 shrink-0 items-center gap-0.5 overflow-hidden opacity-0 transition-[max-width,opacity] duration-150 group-hover:max-w-[4rem] group-hover:opacity-100"
                   onClick={(e) => e.stopPropagation()}

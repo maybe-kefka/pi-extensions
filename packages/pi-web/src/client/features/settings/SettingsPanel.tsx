@@ -1,4 +1,3 @@
-import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui";
 import {
   Select,
   SelectContent,
@@ -7,6 +6,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/shared/ui";
+import { ToggleGroup } from "radix-ui";
 import type { ModelInfo } from "@/entities/chat";
 import { THEMES, THEME_NAMES, type ThemePreference } from "@/entities/theme";
 
@@ -24,15 +24,14 @@ export interface SettingsPanelProps {
 /** 设置面板（activity bar）：模型/思考级别/主题 */
 export function SettingsPanel(props: SettingsPanelProps) {
   const { models, currentModel, thinkingLevel, thinkingLevels, onSetModel, onSetThinking, themePreference, onThemeChange } = props;
+  const currentModelLabel = models.find((model) => `${model.provider}/${model.id}` === currentModel)?.name ?? currentModel ?? "未选择";
   return (
-    <div className="scrollbar-thin scrollbar-gutter-stable flex h-full flex-col gap-3 overflow-y-auto p-3">
-      <Card className="gap-2 py-3">
-        <CardHeader className="px-4 py-0">
-          <CardTitle className="text-xs font-semibold tracking-wide uppercase">模型</CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-2 px-4">
+    <div className="scrollbar-thin scrollbar-gutter-stable flex h-full flex-col gap-4 overflow-y-auto p-3">
+      <section className="flex flex-col gap-2 border-b pb-4" aria-labelledby="settings-model-heading">
+        <h2 id="settings-model-heading" className="text-muted-foreground text-[11px] font-semibold tracking-wide uppercase">模型</h2>
+        <div className="flex flex-col gap-2">
           <div className="flex items-center gap-2">
-            <span className="text-muted-foreground w-8 shrink-0 text-xs">模型</span>
+            <label htmlFor="settings-model" className="text-muted-foreground w-8 shrink-0 text-xs">模型</label>
             <div className="min-w-0 flex-1">
               <Select
                 value={currentModel ?? undefined}
@@ -41,7 +40,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
                   onSetModel(v.slice(0, idx), v.slice(idx + 1));
                 }}
               >
-                <SelectTrigger className="w-full">
+                <SelectTrigger id="settings-model" aria-label={`模型：${currentModelLabel}`} title={currentModelLabel} className="w-full min-w-0">
                   <SelectValue placeholder="模型…" />
                 </SelectTrigger>
                 <SelectContent>
@@ -57,10 +56,10 @@ export function SettingsPanel(props: SettingsPanelProps) {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-muted-foreground w-8 shrink-0 text-xs">思考</span>
+            <label htmlFor="settings-thinking" className="text-muted-foreground w-8 shrink-0 text-xs">思考</label>
             <div className="min-w-0 flex-1">
               <Select value={thinkingLevel ?? undefined} onValueChange={onSetThinking}>
-                <SelectTrigger className="w-full">
+                <SelectTrigger id="settings-thinking" aria-label="思考等级" className="w-full min-w-0">
                   <SelectValue placeholder="思考等级…" />
                 </SelectTrigger>
                 <SelectContent>
@@ -76,29 +75,33 @@ export function SettingsPanel(props: SettingsPanelProps) {
               </Select>
             </div>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </section>
 
-      <Card className="gap-2 py-3">
-        <CardHeader className="px-4 py-0">
-          <CardTitle className="text-xs font-semibold tracking-wide uppercase">外观</CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-2 px-4">
+      <section className="flex flex-col gap-2" aria-labelledby="settings-appearance-heading">
+        <h2 id="settings-appearance-heading" className="text-muted-foreground text-[11px] font-semibold tracking-wide uppercase">外观</h2>
+        <div className="flex flex-col gap-3">
           <div className="flex items-center gap-2">
-            <span className="text-muted-foreground w-8 shrink-0 text-xs">主题</span>
+            <label htmlFor="settings-theme" className="text-muted-foreground w-8 shrink-0 text-xs">主题</label>
             <div className="min-w-0 flex-1">
               <Select
                 value={themePreference.theme}
                 onValueChange={(v) => onThemeChange({ ...themePreference, theme: v as ThemePreference["theme"] })}
               >
-                <SelectTrigger className="w-full">
+                <SelectTrigger id="settings-theme" aria-label="主题" className="w-full min-w-0">
                   <SelectValue placeholder="主题…" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectGroup>
                     {THEME_NAMES.map((name) => (
                       <SelectItem key={name} value={name}>
-                        {THEMES[name].label}
+                        <span className="flex min-w-0 items-center gap-2">
+                          <span className="flex shrink-0 gap-0.5" data-theme-preview={name} aria-hidden="true">
+                            <span className="size-3 rounded-sm border" style={{ backgroundColor: THEMES[name].light.canvas }} />
+                            <span className="size-3 rounded-sm border" style={{ backgroundColor: THEMES[name].dark.canvas }} />
+                          </span>
+                          <span className="truncate">{THEMES[name].label}</span>
+                        </span>
                       </SelectItem>
                     ))}
                   </SelectGroup>
@@ -107,27 +110,30 @@ export function SettingsPanel(props: SettingsPanelProps) {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-muted-foreground w-8 shrink-0 text-xs">深浅</span>
-            <div className="min-w-0 flex-1">
-              <Select
-                value={themePreference.scheme}
-                onValueChange={(v) => onThemeChange({ ...themePreference, scheme: v as ThemePreference["scheme"] })}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="深浅…" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectGroup>
-                    <SelectItem value="system">跟随系统</SelectItem>
-                    <SelectItem value="light">浅色</SelectItem>
-                    <SelectItem value="dark">深色</SelectItem>
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
-            </div>
+            <span className="text-muted-foreground w-8 shrink-0 text-xs" id="settings-scheme-label">深浅</span>
+            <ToggleGroup.Root
+              type="single"
+              value={themePreference.scheme}
+              aria-label="色彩模式"
+              className="bg-muted flex min-w-0 flex-1 rounded-md p-0.5"
+              onValueChange={(value) => {
+                if (value) onThemeChange({ ...themePreference, scheme: value as ThemePreference["scheme"] });
+              }}
+            >
+              {(["system", "light", "dark"] as const).map((scheme) => (
+                <ToggleGroup.Item
+                  key={scheme}
+                  value={scheme}
+                  aria-label={scheme === "system" ? "System" : scheme === "light" ? "Light" : "Dark"}
+                  className="focus-visible:ring-ring/70 data-[state=on]:bg-background data-[state=on]:text-foreground text-muted-foreground min-w-0 flex-1 rounded px-2 py-1 text-xs transition-[background-color,color,box-shadow] focus-visible:ring-2"
+                >
+                  {scheme === "system" ? "System" : scheme === "light" ? "Light" : "Dark"}
+                </ToggleGroup.Item>
+              ))}
+            </ToggleGroup.Root>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </section>
     </div>
   );
 }

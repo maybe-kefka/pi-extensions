@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { Info, ListOrdered, RefreshCw } from "lucide-react";
 import { Button } from "@/shared/ui";
-import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui";
 import { Separator } from "@/shared/ui";
 import { SessionList, type SessionActions } from "@/features/sessions";
 import type { SessionInfo } from "@/entities/chat";
@@ -26,21 +25,22 @@ export function SessionPanel(props: SessionPanelProps) {
   }, [refreshKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <div className="scrollbar-thin scrollbar-gutter-stable flex h-full flex-col gap-3 overflow-y-auto p-3">
-      <Card className="gap-2 py-3">
-        <div className="flex items-center justify-between px-4">
-          <span className="text-xs font-semibold tracking-wide uppercase">会话</span>
+    <div className="scrollbar-thin scrollbar-gutter-stable flex h-full flex-col gap-4 overflow-y-auto p-3">
+      <section className="flex flex-col gap-2 border-b pb-4" aria-labelledby="sessions-heading">
+        <div className="flex items-center justify-between">
+          <h2 id="sessions-heading" className="text-muted-foreground text-[11px] font-semibold tracking-wide uppercase">会话</h2>
           <Button
             variant="ghost"
             size="icon"
             className="size-6"
+            aria-label="刷新会话"
             title="刷新"
             onClick={() => setRefreshKey((k) => k + 1)}
           >
             <RefreshCw />
           </Button>
         </div>
-        <CardContent className="px-4">
+        <div>
           <SessionList
             sessions={sessions}
             currentSessionFile={currentSessionFile}
@@ -48,14 +48,12 @@ export function SessionPanel(props: SessionPanelProps) {
             degraded={sessionDegraded}
             actions={sessionActions}
           />
-        </CardContent>
-      </Card>
+        </div>
+      </section>
 
-      <Card className="gap-2 py-3">
-        <CardHeader className="px-4 py-0">
-          <CardTitle className="text-xs font-semibold tracking-wide uppercase">状态桥接</CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-2 text-xs">
+      <section className="flex flex-col gap-2" aria-labelledby="bridge-heading">
+        <h2 id="bridge-heading" className="text-muted-foreground text-[11px] font-semibold tracking-wide uppercase">状态桥接</h2>
+        <div className="flex flex-col gap-2 text-xs">
           {bridge.widget && (
             <pre className="border-border bg-muted/50 rounded border p-2 whitespace-pre-wrap font-mono text-[11px]">
               {bridge.widget.lines.join("\n")}
@@ -91,8 +89,8 @@ export function SessionPanel(props: SessionPanelProps) {
                 <ListOrdered className="size-3" /> 暂无
               </div>
             )}
-        </CardContent>
-      </Card>
+        </div>
+      </section>
     </div>
   );
 }
