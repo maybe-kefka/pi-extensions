@@ -51,7 +51,9 @@ export function TabsBar({ tabs, active, onActivate, onClose, onMove, onDragStart
 
   return (
     <div
-      role="tablist"
+      role={tabs.length > 0 ? "tablist" : undefined}
+      aria-label={tabs.length > 0 ? "工作区标签" : undefined}
+      data-slot="tab-drop-target"
       className="relative scrollbar-none flex h-9 shrink-0 items-stretch overflow-x-auto border-b"
       onDragOver={(e) => {
         // 整条可落（含 tab 间隙与末尾空白）：阻止冒泡到 SplitView 的 leaf 容器（tab 栏上的拖拽不触发分区）
@@ -98,6 +100,8 @@ export function TabsBar({ tabs, active, onActivate, onClose, onMove, onDragStart
           <div
             key={id}
             role="tab"
+            tabIndex={0}
+            aria-label={label}
             draggable
             ref={(el) => {
               tabEls.current[i] = el;
@@ -117,10 +121,16 @@ export function TabsBar({ tabs, active, onActivate, onClose, onMove, onDragStart
               setInsert(null);
               onDragStartTab?.(null);
             }}
-            className={`flex max-w-48 shrink-0 cursor-pointer items-center gap-1.5 border-r px-3 text-xs ${
+            className={`focus-visible:ring-ring/70 focus-visible:z-10 focus-visible:ring-2 flex max-w-48 shrink-0 cursor-pointer items-center gap-1.5 border-r px-3 text-xs ${
               isActive ? "bg-background text-foreground shadow-[inset_0_2px_0_0_var(--primary)]" : "bg-muted/40 text-muted-foreground hover:bg-muted/60"
             }`}
             onClick={() => onActivate(id)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onActivate(id);
+              }
+            }}
             title={tab.kind === "chat" ? "聊天" : id}
           >
             {tab.kind === "chat" && <MessageSquareText className="size-3.5 shrink-0" />}
@@ -128,14 +138,15 @@ export function TabsBar({ tabs, active, onActivate, onClose, onMove, onDragStart
             {tab.kind === "file" && tab.dirty && <span className="bg-primary size-1.5 shrink-0 rounded-full" title="未保存" />}
             <span className={`truncate ${tab.kind === "file" && tab.preview ? "italic" : ""}`}>{label}</span>
             <button
-              className="hover:bg-muted text-muted-foreground hover:text-foreground ml-0.5 flex size-4 shrink-0 items-center justify-center rounded"
+              className="focus-visible:ring-ring/70 hover:bg-muted text-muted-foreground hover:text-foreground ml-0.5 flex size-4 shrink-0 items-center justify-center rounded focus-visible:ring-2"
+              aria-label={`关闭 ${label}`}
               title="关闭 tab"
               onClick={(e) => {
                 e.stopPropagation();
                 onClose(id);
               }}
             >
-              <X className="size-3" />
+              <X aria-hidden="true" className="size-3" />
             </button>
           </div>
         );

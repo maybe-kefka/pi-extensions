@@ -599,6 +599,30 @@
   mask-image: linear-gradient(to bottom, black calc(100% - var(--scroll-fade-y)), transparent 100%);
 }
 
+/* Shell panel：宽屏保持 docked，极窄窗口覆盖主区而不改变 panel 选择状态。 */
+.app-panel-shell {
+  min-width: 0;
+  background: var(--panel);
+  transition: box-shadow 150ms ease;
+}
+
+@media (max-width: 700px) {
+  .app-panel-shell {
+    position: absolute;
+    inset-block: 0;
+    left: 3rem;
+    z-index: 20;
+    max-width: calc(100vw - 3rem);
+    box-shadow: 8px 0 24px color-mix(in oklab, var(--foreground) 16%, transparent);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-panel-shell {
+    transition: none;
+  }
+}
+
 /* markdown 正文排版（assistant 气泡内） */
 @layer components {
   .markdown-body {

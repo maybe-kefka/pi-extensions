@@ -22,7 +22,7 @@ export function WaterCup({ percent }: { percent: number | null | undefined }) {
     >
       <div
         data-water
-        className={`${TIER_COLOR[tier]} absolute bottom-0 left-0 right-0 rounded-t-sm transition-all duration-500`}
+        className={`${TIER_COLOR[tier]} absolute bottom-0 left-0 right-0 rounded-t-sm transition-[height,background-color] duration-150`}
         style={{ height: `${Math.max(2, p * 100)}%` }}
       />
     </div>

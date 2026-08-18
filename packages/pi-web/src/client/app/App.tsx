@@ -823,7 +823,7 @@ export default function App() {
 
   return (
     <div className="flex h-dvh flex-col bg-background text-foreground">
-      <div className="flex min-h-0 flex-1">
+      <div className="relative flex min-h-0 flex-1">
         <ActivityBar
           active={panel}
           onSelect={(p) => {
@@ -832,7 +832,11 @@ export default function App() {
           }}
         />
         {panel !== null && (
-          <aside className="relative shrink-0 border-r" style={{ width: panelWidth }}>
+          <aside
+            className="app-panel-shell relative shrink-0 border-r"
+            aria-label={`${panel === "files" ? "文件" : panel === "git" ? "Git" : panel === "sessions" ? "会话" : "设置"} 面板`}
+            style={{ width: panelWidth }}
+          >
             <div
               className="hover:bg-primary/30 absolute top-0 right-0 z-10 h-full w-1 cursor-col-resize"
               title="拖拽调整宽度"
@@ -853,7 +857,7 @@ export default function App() {
             {panel === "settings" && <SettingsPanel {...settingsPanelProps} />}
           </aside>
         )}
-        <main className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <main id="workspace-main" className="flex min-h-0 min-w-0 flex-1 flex-col">
           <DisconnectBannerMemo conn={conn} />
           <SplitView
             tree={workspaceTree}

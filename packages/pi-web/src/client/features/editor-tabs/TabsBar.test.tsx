@@ -38,6 +38,12 @@ const tabs: WorkspaceTab[] = [
 ];
 
 describe("TabsBar", () => {
+  it("空 workspace 不渲染无子项的 tablist", () => {
+    const { container } = render(<TabsBar tabs={[]} active="" onActivate={vi.fn()} onClose={vi.fn()} onMove={vi.fn()} />);
+    expect(screen.queryByRole("tablist")).toBeNull();
+    expect(container.querySelector('[data-slot="tab-drop-target"]')).toBeTruthy();
+  });
+
   it("渲染聊天 tab（tab.name 标签）与文件 tab", () => {
     render(<TabsBar tabs={tabs} active="chat:host" onActivate={vi.fn()} onClose={vi.fn()} onMove={vi.fn()}  />);
     expect(screen.getByText("聊天")).toBeTruthy();
@@ -161,9 +167,10 @@ describe("TabsBar 拖拽调序", () => {
 
   it("外部拖拽（dragId）：drop 到空栏 → onDropTab(fromId)", () => {
     const onDropTab = vi.fn();
-    render(<TabsBar tabs={[]} active="" onActivate={vi.fn()} onClose={vi.fn()} onMove={vi.fn()} onDropTab={onDropTab} dragId="chat:/other.jsonl" />);
-    fireEvent.dragOver(screen.getByRole("tablist"), { dataTransfer: {} });
-    fireEvent.drop(screen.getByRole("tablist"), { dataTransfer: {} });
+    const { container } = render(<TabsBar tabs={[]} active="" onActivate={vi.fn()} onClose={vi.fn()} onMove={vi.fn()} onDropTab={onDropTab} dragId="chat:/other.jsonl" />);
+    const dropTarget = container.querySelector('[data-slot="tab-drop-target"]') as HTMLElement;
+    fireEvent.dragOver(dropTarget, { dataTransfer: {} });
+    fireEvent.drop(dropTarget, { dataTransfer: {} });
     expect(onDropTab).toHaveBeenCalledWith("chat:/other.jsonl");
   });
 
