@@ -9,7 +9,7 @@
 ├── workflows/publish.yml        # push main / tag v* 触发自动发布
 └── scripts/publish-changed.sh   # 版本对比：只发布有更新的包
 .agents/                          # 已沉淀知识（提交 git，长期保存）
-├── skills/                       # 项目内 skill 副本（to-spec/to-tickets/tdd，来自 mattpocock/skills）
+├── skills/                       # 项目内 skill 副本（to-spec/to-tickets/tdd/code-review，来自 mattpocock/skills）
 ├── specs/                        # 规格文档（长期）
 │   ├── <pkg>/SPEC.md             # 系统基线规格（历史/技术基线，不再增长）
 │   └── <slug>/SPEC.md            # 迭代规格（slug 命名，独立落盘）
@@ -27,17 +27,18 @@ packages/pi-web/
 
 ## 迭代流程（敏捷：迭代 = 可独立验收的增量；slug = 短横线小写英文标识）
 
-> **规范依据三个 skill（项目内 `.agents/skills/`，提交 git，来自 mattpocock/skills）**：
-> `/skill:to-spec`（对话 → SPEC）、`/skill:to-tickets`（SPEC → 垂直切片 tickets）、`/skill:tdd`（red-green 循环）。
-> **每次迭代开始必须重新读取对应 skill 文件**（skill 可能更新，不依赖记忆、不保留本地模板）。
-> 安装/更新：`npx skills add https://github.com/mattpocock/skills --skill to-spec to-tickets tdd --copy -y`（同时同步 `.agents/skills/` 与 gitignored 的运行时副本 `.pi/skills/`）。
+> **规范依据四个 skill（来自 mattpocock/skills；项目副本 `.agents/skills/` 提交 git，运行时副本 `.pi/skills/` gitignored）**：
+> `/skill:to-spec`（对话 → SPEC）→ `/skill:to-tickets`（SPEC → 垂直切片 tickets）→ `/skill:tdd`（red-green 循环）→ `/skill:code-review`（Standards / Spec 双轴审查）→ 修复全部问题。
+> **进入每个阶段前必须重新读取对应 skill 文件**（skill 可能更新，不依赖记忆、不保留本地模板）。
+> 安装/更新：`npx skills add https://github.com/mattpocock/skills --skill to-spec to-tickets tdd code-review --copy -y`（同时同步 `.agents/skills/` 与 gitignored 的运行时副本 `.pi/skills/`）。
 
-1. **对齐**：用户提需求 → grilling 逐题对齐（设计树，直至 frontier 空）→ 达成共识
+1. **对齐**：用户提需求 → grilling 逐题对齐（设计树，直至 frontier 空）→ 达成共识 → 确认 slug 与审查 fixed point（通常为迭代开始前的 `HEAD`）
 2. **SPEC**：重新读取 `/skill:to-spec` 并按其流程执行 → 综合当前对话生成 SPEC 落盘 `.scratch/<slug>/SPEC.md`（模板见 skill 内 spec-template：Problem Statement / Solution / User Stories / Implementation Decisions / Testing Decisions / Out of Scope / Further Notes；**不写具体文件路径**；涉及既有系统规格引用基线 SPEC §X，不复述）。to-spec 要求：**先 sketch 测试 seams 并与用户确认**
 3. **Tickets**：重新读取 `/skill:to-tickets` 并按其流程执行 → 垂直切片（tracer-bullet，每片窄而完整、可独立验收、单 context 窗口可完成）落盘 `.scratch/<slug>/issues/NN-slug.md`（**blockers 在前编号**，依赖顺序；模板见 skill 内 local-ticket-template：What to build / Blocked by / Acceptance criteria；**不写具体文件路径**）→ **与用户核对粒度与 blocking edges**
 4. **TDD**：重新读取 `/skill:tdd` 并按其流程执行 → 按 SPEC 阶段确认的 seams 写测试（红）→ 实现（绿）→ `npm test` + `npm run typecheck` 全绿 → 提交（小步，一个 ticket 一个 commit）。tdd 要求：seams 先行（测试只写在自己确认过的 seam 上）、垂直切片推进（禁"先写全部测试再实现"的 horizontal slicing）、anti-patterns 自查（implementation-coupled / tautological）
-5. **归档**：迭代完成 → SPEC 落盘 `.agents/specs/<slug>/SPEC.md`、tickets 移入 `.agents/tickets/<slug>/`、`.scratch/<slug>/` 删除
+5. **Code review**：重新读取 `/skill:code-review` 并按其流程执行 → 以步骤 1 确认的 fixed point 审查 `HEAD`，并行检查 Standards（项目规范 + smell baseline）与 Spec（迭代 SPEC / tickets）→ 汇总双轴 findings → 修复全部问题 → 重复审查直至双轴均无 findings → `npm test` + `npm run typecheck` 全绿
 6. **验收**：浏览器/冒烟实测（前端改动）；E2E 只做冒烟，不做自动化
+7. **归档**：验收通过 → SPEC 落盘 `.agents/specs/<slug>/SPEC.md`、tickets 移入 `.agents/tickets/<slug>/`、`.scratch/<slug>/` 删除
 
 ## 开发约定（硬约束）
 
