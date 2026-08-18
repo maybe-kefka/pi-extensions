@@ -127,7 +127,7 @@ export default function App() {
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
   /** 注册进程表（agent_list 驱动 chat tab 生命周期） */
   const [agents, setAgents] = useState<AgentInfo[]>([]);
-  /** 各会话实例的 context usage（usage_update 上行——水杯数据） */
+  /** 各会话实例的 context usage（usage_update 上行——meter 数据） */
   const [usageBySession, setUsageBySession] = useState<Record<string, { percent: number | null; tokens: number | null; contextWindow: number | null }>>({});
   /** agents 最新引用（事件回调闭包读取——避免 stale） */
   const agentsRef = useRef<AgentInfo[]>([]);
@@ -370,7 +370,7 @@ export default function App() {
         if (evt.type === "agent-event") {
           const pid = typeof evt.processId === "string" ? evt.processId : "";
           if (!pid) return;
-          // usage 上报：按进程 → 会话 → 水杯数据（非流式 action——单独处理）
+          // usage 上报：按进程 → 会话 → meter 数据（非流式 action——单独处理）
           const inner = evt.event as PiEvent;
           if (inner.type === "usage_update") {
             const entry = agentsRef.current.find((ag) => ag.processId === pid);

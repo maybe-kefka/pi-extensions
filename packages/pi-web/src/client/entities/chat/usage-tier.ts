@@ -1,4 +1,4 @@
-/** 水杯水位分级（纯函数）：percent 0-1（服务端 0-100 兼容归一） */
+/** context meter 分级（纯函数）：percent 0-1（服务端 0-100 兼容归一） */
 export type UsageTier = "ok" | "warn" | "danger";
 
 export function usagePercent(value: number | null | undefined): number {

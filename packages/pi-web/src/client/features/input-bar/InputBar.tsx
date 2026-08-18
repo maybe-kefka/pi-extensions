@@ -10,8 +10,8 @@ import type { StreamState } from "@/entities/chat";
 
 /** chip 视觉：按插入类型区分（skill/file 为原子 chip，command 为纯文本不渲染 chip） */
 const CHIP_STYLES: Record<"skill" | "file", { icon: string; cls: string }> = {
-  skill: { icon: "✨", cls: "bg-purple-500/15 text-purple-400" },
-  file: { icon: "📄", cls: "bg-sky-500/15 text-sky-400" },
+  skill: { icon: "✨", cls: "bg-accent/20 text-foreground" },
+  file: { icon: "📄", cls: "bg-secondary text-secondary-foreground" },
 };
 
 export function InputBar(props: {
@@ -391,7 +391,7 @@ export function InputBar(props: {
           suppressContentEditableWarning
           role="textbox"
           aria-multiline="true"
-          className="border-input bg-background focus-visible:ring-ring/50 scrollbar-thin scrollbar-gutter-stable min-h-10 max-h-40 flex-1 resize-none overflow-y-auto rounded-md border px-3 py-2 text-sm focus-visible:ring-[3px] focus-visible:outline-none"
+          className="border-input bg-card shadow-sm focus-visible:ring-ring/50 scrollbar-thin scrollbar-gutter-stable min-h-10 max-h-40 flex-1 resize-none overflow-y-auto rounded-md border px-3 py-2 text-sm focus-visible:ring-[3px] focus-visible:outline-none"
           onInput={handleInput}
           onKeyDown={handleKeyDown}
           onPaste={handlePaste}

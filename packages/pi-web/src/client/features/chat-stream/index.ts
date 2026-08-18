@@ -4,6 +4,6 @@
 
 export * from "./Chat";
 export * from "./ChatEmptyGuide";
-export * from "./WaterCup";
+export * from "./ContextMeter";
 export * from "./tools-for-bubble";
 export * from "./user-content";

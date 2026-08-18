@@ -52,8 +52,8 @@ export function parseUserContent(text: string): UserSegment[] {
 }
 
 const CHIP_STYLES = {
-  skill: { icon: "✨", cls: "bg-purple-500/15 text-purple-400" },
-  file: { icon: "📄", cls: "bg-sky-500/15 text-sky-400" },
+  skill: { icon: "✨", cls: "bg-accent/20 text-foreground" },
+  file: { icon: "📄", cls: "bg-secondary text-secondary-foreground" },
 } as const;
 
 /** 用户气泡内容组件：chip 段渲染为与输入框同款 chip */

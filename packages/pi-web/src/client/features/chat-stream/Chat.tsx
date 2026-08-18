@@ -234,7 +234,7 @@ function ThinkingBlock({ text, active }: { text: string; active: boolean }) {
     <div
       ref={ref}
       data-slot="step-thinking"
-      className="text-muted-foreground scrollbar-thin max-h-16 overflow-y-auto text-xs"
+      className="bg-muted/40 text-muted-foreground scrollbar-thin max-h-16 overflow-y-auto rounded-md px-2 py-1 text-xs"
     >
       {text}
     </div>
@@ -440,7 +440,7 @@ function TurnBubbleView({
             <UserAvatar />
           </MessageAvatar>
           <MessageContent>
-            <Bubble variant="default" align="end">
+            <Bubble variant="tinted" align="end">
               <BubbleContent>
                 {bubble.userFinal && bubble.userText.trim() ? (
                   <UserContentChip text={bubble.userText} />
@@ -461,12 +461,12 @@ function TurnBubbleView({
             <BotAvatar />
           </MessageAvatar>
           <MessageContent>
-            <Bubble variant="outline" className="w-full">
+            <Bubble variant="ghost" className="w-full">
               {/* R24：工具结果窗口期指示器（LLM 处理工具结果中）——气泡内容区第一行，与头像齐平 */}
               {processing !== null && (
                 <div
                   data-slot="tool-processing"
-                  className="text-muted-foreground flex items-center gap-1.5 text-xs"
+                  className="bg-muted/40 text-muted-foreground flex items-center gap-1.5 rounded-md px-2 py-1 text-xs"
                 >
                   <Loader2 className="size-3 shrink-0 animate-spin" />
                   <span className="min-w-0 truncate">{processing || "thinking......"}</span>
@@ -614,7 +614,7 @@ export function Chat({
                   <EmptyHeader>
                     <EmptyTitle className="text-sm font-medium">暂无消息</EmptyTitle>
                     <EmptyDescription>
-                      {state.conn === "open" ? "发送第一条消息开始" : "等待连接…"}
+                      {state.conn === "open" ? "在下方输入消息，开始一次对话" : "正在连接工作区…"}
                     </EmptyDescription>
                   </EmptyHeader>
                 </Empty>

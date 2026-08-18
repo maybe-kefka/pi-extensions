@@ -11,7 +11,7 @@ import { Chat } from "@/features/chat-stream";
 import { Button } from "@/shared/ui";
 import { Popover, PopoverContent, PopoverTrigger } from "@/shared/ui";
 import { ContextPanel } from "@/features/context";
-import { WaterCup } from "@/features/chat-stream";
+import { ContextMeter } from "@/features/chat-stream";
 import { InputBar } from "@/features/input-bar";
 import type { CommandInfo, SkillInfo, FileGroup, HistoryMessage } from "@/entities/chat";
 
@@ -24,7 +24,7 @@ export interface ChatTabProps {
   processId: string;
   /** 断线（实例已退出）——显示提示 + 重新拉起 */
   dead: boolean;
-  /** 该会话实例的 context usage（水杯水位 + 详情） */
+  /** 该会话实例的 context usage（meter + 详情） */
   usage: { percent: number | null; tokens: number | null; contextWindow: number | null } | null;
   /** 重新拉起（respawn 同会话实例） */
   onRevive: (sessionId: string) => void;
@@ -187,11 +187,11 @@ export const ChatTab = memo(function ChatTab({
         onScrollAnchorChange={(anchor) => onScrollAnchorSave?.(sessionId, anchor)}
       />
       <div className="flex items-start gap-2 border-t px-3">
-        {/* 水杯进度条：per-tab 实例 context 占用；点击查看详情 */}
+        {/* context meter：per-tab 实例占用；点击查看详情 */}
         <Popover>
           <PopoverTrigger asChild>
-            <button className="mt-3 cursor-pointer" title="上下文占用（点击查看详情）">
-              <WaterCup percent={usage?.percent ?? null} />
+            <button type="button" className="mt-3 cursor-pointer" title="上下文占用（点击查看详情）" aria-label="查看上下文占用详情">
+              <ContextMeter percent={usage?.percent ?? null} />
             </button>
           </PopoverTrigger>
           <PopoverContent align="start" side="top" className="mb-2">
