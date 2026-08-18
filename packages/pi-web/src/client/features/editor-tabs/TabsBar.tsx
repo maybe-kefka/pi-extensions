@@ -26,7 +26,8 @@ interface InsertPos {
 
 export function TabsBar({ tabs, active, onActivate, onClose, onMove, onDragStartTab, onDropTab, dragId }: TabsBarProps) {
   const dragRef = useRef<string | null>(null);
-  const tabEls = useRef<(HTMLDivElement | null)[]>([]);
+  const tabWrapperEls = useRef<(HTMLDivElement | null)[]>([]);
+  const tabButtonEls = useRef<(HTMLButtonElement | null)[]>([]);
   /** 插入指示器（dragover 高频 setState；{index, x}——index 供 drop 复用，x 供渲染） */
   const [insert, setInsert] = useState<InsertPos | null>(null);
   /** 最近一次 dragover 的解析结果（drop 读 ref——drop 坐标可能不可靠，与 SplitView dropRef 同模式） */
@@ -39,7 +40,7 @@ export function TabsBar({ tabs, active, onActivate, onClose, onMove, onDragStart
     const rect = e.currentTarget.getBoundingClientRect();
     if (rect.width === 0) return null; // 未布局（jsdom 等）——drop 走默认末尾
     const x = e.clientX - rect.left;
-    const bounds: TabRect[] = tabEls.current.slice(0, tabs.length).map((el) => {
+    const bounds: TabRect[] = tabWrapperEls.current.slice(0, tabs.length).map((el) => {
       const r = el?.getBoundingClientRect();
       return { left: (r?.left ?? rect.left) - rect.left, width: r?.width ?? 0 };
     });
@@ -99,18 +100,11 @@ export function TabsBar({ tabs, active, onActivate, onClose, onMove, onDragStart
         return (
           <div
             key={id}
-            role="tab"
-            tabIndex={0}
-            aria-label={label}
             draggable
             ref={(el) => {
-              tabEls.current[i] = el;
-              // React 19 cleanup ref：索引槽随卸载/重排清空，避免错位
-              return () => {
-                tabEls.current[i] = null;
-              };
+              tabWrapperEls.current[i] = el;
+              return () => { tabWrapperEls.current[i] = null; };
             }}
-            aria-selected={isActive}
             onDragStart={(e) => {
               dragRef.current = id;
               e.dataTransfer.effectAllowed = "move";
@@ -121,24 +115,45 @@ export function TabsBar({ tabs, active, onActivate, onClose, onMove, onDragStart
               setInsert(null);
               onDragStartTab?.(null);
             }}
-            className={`focus-visible:ring-ring/70 focus-visible:z-10 focus-visible:ring-2 flex max-w-48 shrink-0 cursor-pointer items-center gap-1.5 border-r px-3 text-xs ${
+            className={`flex max-w-48 shrink-0 items-center gap-1.5 border-r px-3 text-xs ${
               isActive ? "bg-background text-foreground shadow-[inset_0_2px_0_0_var(--primary)]" : "bg-muted/40 text-muted-foreground hover:bg-muted/60"
             }`}
-            onClick={() => onActivate(id)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault();
-                onActivate(id);
-              }
-            }}
-            title={tab.kind === "chat" ? "聊天" : id}
           >
             {tab.kind === "chat" && <MessageSquareText className="size-3.5 shrink-0" />}
             {tab.kind === "diff" && <FileDiff className="text-muted-foreground size-3.5 shrink-0" />}
             {tab.kind === "file" && tab.dirty && <span className="bg-primary size-1.5 shrink-0 rounded-full" title="未保存" />}
-            <span className={`truncate ${tab.kind === "file" && tab.preview ? "italic" : ""}`}>{label}</span>
             <button
-              className="focus-visible:ring-ring/70 hover:bg-muted text-muted-foreground hover:text-foreground ml-0.5 flex size-4 shrink-0 items-center justify-center rounded focus-visible:ring-2"
+              type="button"
+              role="tab"
+              aria-selected={isActive}
+              aria-label={label}
+              tabIndex={isActive || (!tabs.some((item) => tabKeyOf(item) === active) && i === 0) ? 0 : -1}
+              ref={(el) => {
+                tabButtonEls.current[i] = el;
+                return () => { tabButtonEls.current[i] = null; };
+              }}
+              className={`min-w-0 flex-1 truncate text-left outline-none focus-visible:ring-2 focus-visible:ring-ring ${tab.kind === "file" && tab.preview ? "italic" : ""}`}
+              onClick={() => onActivate(id)}
+              onKeyDown={(e) => {
+                const move = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : e.key === "Home" ? -tabs.length : e.key === "End" ? tabs.length : 0;
+                if (move !== 0) {
+                  e.preventDefault();
+                  const next = (i + move + tabs.length) % tabs.length;
+                  const nextId = tabKeyOf(tabs[next]!);
+                  tabButtonEls.current[next]?.focus();
+                  onActivate(nextId);
+                } else if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  onActivate(id);
+                }
+              }}
+              title={tab.kind === "chat" ? "聊天" : id}
+            >
+              {label}
+            </button>
+            <button
+              type="button"
+              className="focus-visible:ring-ring hover:bg-muted text-muted-foreground hover:text-foreground ml-0.5 flex size-4 shrink-0 items-center justify-center rounded focus-visible:ring-2"
               aria-label={`关闭 ${label}`}
               title="关闭 tab"
               onClick={(e) => {

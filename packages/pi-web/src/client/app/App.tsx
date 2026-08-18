@@ -833,7 +833,7 @@ export default function App() {
         />
         {panel !== null && (
           <aside
-            className="app-panel-shell relative shrink-0 border-r"
+            className="app-panel-shell bg-sidebar relative shrink-0 border-r"
             aria-label={`${panel === "files" ? "文件" : panel === "git" ? "Git" : panel === "sessions" ? "会话" : "设置"} 面板`}
             style={{ width: panelWidth }}
           >

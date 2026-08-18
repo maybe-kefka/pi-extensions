@@ -391,7 +391,7 @@ export function InputBar(props: {
           suppressContentEditableWarning
           role="textbox"
           aria-multiline="true"
-          className="border-input bg-card shadow-sm focus-visible:ring-ring/50 scrollbar-thin scrollbar-gutter-stable min-h-10 max-h-40 flex-1 resize-none overflow-y-auto rounded-md border px-3 py-2 text-sm focus-visible:ring-[3px] focus-visible:outline-none"
+          className="border-input bg-raised shadow-sm focus-visible:ring-ring scrollbar-thin scrollbar-gutter-stable min-h-10 max-h-40 flex-1 resize-none overflow-y-auto rounded-md border px-3 py-2 text-sm focus-visible:ring-[3px] focus-visible:outline-none"
           onInput={handleInput}
           onKeyDown={handleKeyDown}
           onPaste={handlePaste}

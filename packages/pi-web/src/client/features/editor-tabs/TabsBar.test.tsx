@@ -20,7 +20,8 @@ function mockTabRects() {
   vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function (this: Element) {
     const base = { top: 0, right: 0, bottom: 0, x: 0, y: 0, height: 0, toJSON: () => ({}) } as DOMRect;
     if (this.getAttribute?.("role") === "tablist") return { ...base, left: 0, width: 300, right: 300 } as DOMRect;
-    const r = byTitle[this.getAttribute?.("title") ?? ""];
+    const label = this.getAttribute?.("title") ?? this.querySelector?.('[role="tab"]')?.getAttribute("aria-label") ?? "";
+    const r = byTitle[label];
     if (r) return { ...base, left: r.left, width: r.width, right: r.left + r.width } as DOMRect;
     return { ...base, left: 0, width: 0 } as DOMRect;
   });
@@ -39,9 +40,8 @@ const tabs: WorkspaceTab[] = [
 
 describe("TabsBar", () => {
   it("空 workspace 不渲染无子项的 tablist", () => {
-    const { container } = render(<TabsBar tabs={[]} active="" onActivate={vi.fn()} onClose={vi.fn()} onMove={vi.fn()} />);
+    render(<TabsBar tabs={[]} active="" onActivate={vi.fn()} onClose={vi.fn()} onMove={vi.fn()} />);
     expect(screen.queryByRole("tablist")).toBeNull();
-    expect(container.querySelector('[data-slot="tab-drop-target"]')).toBeTruthy();
   });
 
   it("渲染聊天 tab（tab.name 标签）与文件 tab", () => {
@@ -85,6 +85,18 @@ describe("TabsBar", () => {
     render(<TabsBar tabs={tabs} active="chat" onActivate={onActivate} onClose={vi.fn()} onMove={vi.fn()}  />);
     fireEvent.click(screen.getByText("b.ts"));
     expect(onActivate).toHaveBeenCalledWith("b.ts");
+  });
+
+  it("tab 使用 roving focus，方向键移动并激活相邻项", () => {
+    const onActivate = vi.fn();
+    render(<TabsBar tabs={tabs} active="a.ts" onActivate={onActivate} onClose={vi.fn()} onMove={vi.fn()} />);
+    const current = screen.getByRole("tab", { name: "a.ts" });
+    const next = screen.getByRole("tab", { name: "b.ts" });
+    expect(current.getAttribute("tabIndex")).toBe("0");
+    expect(next.getAttribute("tabIndex")).toBe("-1");
+    fireEvent.keyDown(current, { key: "ArrowRight" });
+    expect(onActivate).toHaveBeenCalledWith("b.ts");
+    expect(document.activeElement).toBe(next);
   });
 
   it("点击关闭按钮触发关闭（不触发激活）", () => {

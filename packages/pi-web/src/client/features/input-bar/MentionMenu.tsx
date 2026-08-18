@@ -95,7 +95,7 @@ export function MentionMenu({
                 >
                   <Icon className="text-muted-foreground size-3 shrink-0" />
                   <span className="min-w-0 flex-1 truncate font-mono">{it.label}</span>
-                  {it.chip && <span className="text-muted-foreground/60 shrink-0 text-[11px]">chip</span>}
+                  {it.chip && <span className="text-muted-foreground shrink-0 text-[11px]">chip</span>}
                 </button>
               );
             })}

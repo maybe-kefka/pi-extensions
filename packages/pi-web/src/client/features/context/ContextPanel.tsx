@@ -122,7 +122,7 @@ export function ContextPanel({
                   <span className="text-muted-foreground shrink-0 text-right text-xs tabular-nums">
                     {fmt(tokens)}
                   </span>
-                  <span className="text-muted-foreground/70 w-10 shrink-0 text-right text-xs tabular-nums">
+                  <span className="text-muted-foreground w-10 shrink-0 text-right text-xs tabular-nums">
                     {pct(ratio)}
                   </span>
                 </div>

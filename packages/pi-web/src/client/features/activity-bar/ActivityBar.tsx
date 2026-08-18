@@ -31,8 +31,8 @@ export function ActivityBar({ active, onSelect }: ActivityBarProps) {
         aria-label={item.title}
         aria-pressed={isActive}
         title={item.title}
-        className={`focus-visible:ring-ring/70 focus-visible:ring-2 flex size-9 cursor-pointer items-center justify-center rounded-md transition-[background-color,color,box-shadow] duration-150 ${
-          isActive ? "bg-accent text-accent-foreground before:bg-primary relative before:absolute before:inset-y-1 before:left-0 before:w-0.5 before:rounded-full" : "text-muted-foreground hover:bg-muted hover:text-foreground"
+        className={`focus-visible:ring-ring focus-visible:ring-2 flex size-9 cursor-pointer items-center justify-center rounded-md transition-[background-color,color,box-shadow] duration-150 ${
+          isActive ? "bg-active text-accent-foreground before:bg-primary relative before:absolute before:inset-y-1 before:left-0 before:w-0.5 before:rounded-full" : "text-muted-foreground hover:bg-hover hover:text-foreground"
         }`}
         onClick={() => onSelect(isActive ? null : item.id)}
       >

@@ -13,8 +13,7 @@ describe("ChatEmptyGuide（无注册会话空态）", () => {
   });
 
   it("提供 command-center 空态层级与现有入口", () => {
-    const { container } = render(<ChatEmptyGuide />);
-    expect(container.querySelector('[data-slot="empty"]')).toBeTruthy();
+    render(<ChatEmptyGuide />);
     expect(screen.getByText("工作区已就绪")).toBeTruthy();
     expect(screen.getByText(/侧边栏打开文件/)).toBeTruthy();
   });

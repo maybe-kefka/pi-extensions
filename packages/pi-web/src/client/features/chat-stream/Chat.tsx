@@ -177,7 +177,7 @@ function WebAskCard({
           onChange={(e) => setText(e.target.value)}
           placeholder={args?.placeholder ?? "输入回答…"}
           rows={2}
-          className="border-input bg-background focus-visible:ring-ring/50 min-h-10 w-full resize-none rounded-md border px-2 py-1.5 text-xs focus-visible:ring-[3px] focus-visible:outline-none"
+          className="border-input bg-background focus-visible:ring-ring min-h-10 w-full resize-none rounded-md border px-2 py-1.5 text-xs focus-visible:ring-[3px] focus-visible:outline-none"
         />
       ) : (
         <div className="flex flex-col gap-1">

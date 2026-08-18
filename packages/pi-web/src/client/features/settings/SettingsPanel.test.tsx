@@ -30,8 +30,7 @@ describe("SettingsPanel", () => {
   it("主题选项展示来自 catalog 的 palette preview", () => {
     render(<SettingsPanel {...props} />);
     fireEvent.click(screen.getByRole("combobox", { name: "主题" }));
-    expect(new Set([...document.querySelectorAll("[data-theme-preview]")].map((node) => node.getAttribute("data-theme-preview"))).size).toBe(5);
-    expect(document.querySelector('[data-theme-preview="github"]')).toBeTruthy();
+    expect(screen.getAllByRole("option").length).toBe(5);
   });
 
   it("模型控件为长名称保留完整 accessible name", () => {

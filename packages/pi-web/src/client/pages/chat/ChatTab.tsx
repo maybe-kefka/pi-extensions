@@ -5,6 +5,7 @@
  * - 挂载时拉取该进程会话历史（pi:chatHistory——按 processId 读注册者会话文件）
  */
 import { memo, useCallback, useEffect, useReducer, useRef } from "react";
+import { Info } from "lucide-react";
 import { initialState, pickStreamMeta, streamReducer, type StreamAction, type StreamState, type StreamStateMeta } from "@/entities/chat";
 import type { ConnState, RpcClient } from "@/shared/api";
 import { Chat } from "@/features/chat-stream";
@@ -187,12 +188,15 @@ export const ChatTab = memo(function ChatTab({
         onScrollAnchorChange={(anchor) => onScrollAnchorSave?.(sessionId, anchor)}
       />
       <div className="flex items-start gap-2 border-t px-3">
-        {/* context meter：per-tab 实例占用；点击查看详情 */}
+        {/* context meter 与相邻详情按钮：per-tab 实例占用；详情入口打开 ContextPanel */}
+        <div className="mt-3">
+          <ContextMeter percent={usage?.percent ?? null} />
+        </div>
         <Popover>
           <PopoverTrigger asChild>
-            <button type="button" className="mt-3 cursor-pointer" title="上下文占用（点击查看详情）" aria-label="查看上下文占用详情">
-              <ContextMeter percent={usage?.percent ?? null} />
-            </button>
+            <Button type="button" variant="ghost" size="icon" className="mt-3 size-7 shrink-0" title="上下文占用详情" aria-label="查看上下文占用详情">
+              <Info aria-hidden="true" className="size-3.5" />
+            </Button>
           </PopoverTrigger>
           <PopoverContent align="start" side="top" className="mb-2">
             <ContextPanel getRequest={getRequestStable} onCompact={compact} processId={processId} />

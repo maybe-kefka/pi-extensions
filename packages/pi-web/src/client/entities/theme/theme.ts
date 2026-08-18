@@ -68,6 +68,17 @@ export interface ThemeTokens extends LegacyThemeTokens {
   syntaxComment: string;
 }
 
+interface SyntaxTokenSource {
+  syntaxKeyword: string;
+  syntaxType: string;
+  syntaxFunction: string;
+  syntaxString: string;
+  syntaxNumber: string;
+  syntaxOperator: string;
+  syntaxProperty: string;
+  syntaxComment: string;
+}
+
 export interface ThemeDefinition {
   name: ThemeName;
   label: string;
@@ -97,8 +108,8 @@ const PALETTES: Record<ThemeName, { name: ThemeName; label: string; light: Legac
       destructive: "#d1242f",
       success: "#1a7f37",
       warning: "#9a6700",
-      border: "#d1d9e0",
-      input: "#d1d9e0",
+      border: "#6e7781",
+      input: "#6e7781",
       ring: "#0969da",
       chart1: "#0969da",
       chart2: "#1a7f37",
@@ -124,8 +135,8 @@ const PALETTES: Record<ThemeName, { name: ThemeName; label: string; light: Legac
       destructive: "#f85149",
       success: "#3fb950",
       warning: "#d29922",
-      border: "#3d444d",
-      input: "#3d444d",
+      border: "#8b949e",
+      input: "#8b949e",
       ring: "#4493f8",
       chart1: "#4493f8",
       chart2: "#3fb950",
@@ -155,8 +166,8 @@ const PALETTES: Record<ThemeName, { name: ThemeName; label: string; light: Legac
       destructive: "#e45649",
       success: "#50a14f",
       warning: "#986801",
-      border: "#e5e5e6",
-      input: "#e5e5e6",
+      border: "#6e7781",
+      input: "#6e7781",
       ring: "#4078f2",
       chart1: "#4078f2",
       chart2: "#50a14f",
@@ -182,8 +193,8 @@ const PALETTES: Record<ThemeName, { name: ThemeName; label: string; light: Legac
       destructive: "#e06c75",
       success: "#98c379",
       warning: "#e5c07b",
-      border: "#3e4451",
-      input: "#3e4451",
+      border: "#8b949e",
+      input: "#8b949e",
       ring: "#61afef",
       chart1: "#61afef",
       chart2: "#98c379",
@@ -213,8 +224,8 @@ const PALETTES: Record<ThemeName, { name: ThemeName; label: string; light: Legac
       destructive: "#ff5555",
       success: "#287a4a",
       warning: "#7a5a00",
-      border: "#e2e2ee",
-      input: "#e2e2ee",
+      border: "#6e7781",
+      input: "#6e7781",
       ring: "#8b5cf6",
       chart1: "#8b5cf6",
       chart2: "#3dbd6e",
@@ -240,8 +251,8 @@ const PALETTES: Record<ThemeName, { name: ThemeName; label: string; light: Legac
       destructive: "#ff5555",
       success: "#50fa7b",
       warning: "#f1fa8c",
-      border: "#44475a",
-      input: "#44475a",
+      border: "#8b949e",
+      input: "#8b949e",
       ring: "#bd93f9",
       chart1: "#bd93f9",
       chart2: "#50fa7b",
@@ -271,8 +282,8 @@ const PALETTES: Record<ThemeName, { name: ThemeName; label: string; light: Legac
       destructive: "#bf616a",
       success: "#4b6b3c",
       warning: "#7a5f20",
-      border: "#d8dee9",
-      input: "#d8dee9",
+      border: "#6e7781",
+      input: "#6e7781",
       ring: "#5e81ac",
       chart1: "#5e81ac",
       chart2: "#a3be8c",
@@ -298,8 +309,8 @@ const PALETTES: Record<ThemeName, { name: ThemeName; label: string; light: Legac
       destructive: "#bf616a",
       success: "#a3be8c",
       warning: "#ebcb8b",
-      border: "#3b4252",
-      input: "#3b4252",
+      border: "#8b949e",
+      input: "#8b949e",
       ring: "#88c0d0",
       chart1: "#88c0d0",
       chart2: "#a3be8c",
@@ -321,7 +332,7 @@ const PALETTES: Record<ThemeName, { name: ThemeName; label: string; light: Legac
       primary: "#1f5bb8",
       primaryForeground: "#ffffff",
       secondary: "#d7d8dd",
-      secondaryForeground: "#3760bf",
+      secondaryForeground: "#1f5bb8",
       muted: "#d7d8dd",
       mutedForeground: "#42558f",
       accent: "#007197",
@@ -329,8 +340,8 @@ const PALETTES: Record<ThemeName, { name: ThemeName; label: string; light: Legac
       destructive: "#f52a65",
       success: "#587539",
       warning: "#8c6c3e",
-      border: "#b6b8c6",
-      input: "#b6b8c6",
+      border: "#6e7781",
+      input: "#6e7781",
       ring: "#2e7de9",
       chart1: "#2e7de9",
       chart2: "#587539",
@@ -348,7 +359,7 @@ const PALETTES: Record<ThemeName, { name: ThemeName; label: string; light: Legac
       primary: "#7aa2f7",
       primaryForeground: "#1a1b26",
       secondary: "#16161e",
-      secondaryForeground: "#c0caf5",
+      secondaryForeground: "#d5defc",
       muted: "#16161e",
       mutedForeground: "#9aa5ce",
       accent: "#7dcfff",
@@ -356,8 +367,8 @@ const PALETTES: Record<ThemeName, { name: ThemeName; label: string; light: Legac
       destructive: "#f7768e",
       success: "#9ece6a",
       warning: "#e0af68",
-      border: "#414868",
-      input: "#414868",
+      border: "#8b949e",
+      input: "#8b949e",
       ring: "#7aa2f7",
       chart1: "#7aa2f7",
       chart2: "#9ece6a",
@@ -368,7 +379,30 @@ const PALETTES: Record<ThemeName, { name: ThemeName; label: string; light: Legac
   },
 };
 
-function enrichTokens(tokens: LegacyThemeTokens): ThemeTokens {
+const SYNTAX_SOURCES: Record<ThemeName, { light: SyntaxTokenSource; dark: SyntaxTokenSource }> = {
+  github: {
+    light: { syntaxKeyword: "#0969da", syntaxType: "#0969da", syntaxFunction: "#8250df", syntaxString: "#1a7f37", syntaxNumber: "#9a6700", syntaxOperator: "#1f2328", syntaxProperty: "#0969da", syntaxComment: "#59636e" },
+    dark: { syntaxKeyword: "#4493f8", syntaxType: "#4493f8", syntaxFunction: "#a371f7", syntaxString: "#3fb950", syntaxNumber: "#d29922", syntaxOperator: "#f0f6fc", syntaxProperty: "#4493f8", syntaxComment: "#9198a1" },
+  },
+  "one-dark": {
+    light: { syntaxKeyword: "#006d9c", syntaxType: "#2f65d0", syntaxFunction: "#a626a4", syntaxString: "#50a14f", syntaxNumber: "#986801", syntaxOperator: "#383a42", syntaxProperty: "#2f65d0", syntaxComment: "#545862" },
+    dark: { syntaxKeyword: "#56b6c2", syntaxType: "#61afef", syntaxFunction: "#c678dd", syntaxString: "#98c379", syntaxNumber: "#e5c07b", syntaxOperator: "#abb2bf", syntaxProperty: "#61afef", syntaxComment: "#abb2bf" },
+  },
+  dracula: {
+    light: { syntaxKeyword: "#087f9b", syntaxType: "#6d28d9", syntaxFunction: "#ff79c6", syntaxString: "#287a4a", syntaxNumber: "#7a5a00", syntaxOperator: "#44475a", syntaxProperty: "#6d28d9", syntaxComment: "#44475a" },
+    dark: { syntaxKeyword: "#8be9fd", syntaxType: "#bd93f9", syntaxFunction: "#ff79c6", syntaxString: "#50fa7b", syntaxNumber: "#f1fa8c", syntaxOperator: "#f8f8f2", syntaxProperty: "#bd93f9", syntaxComment: "#abb2bf" },
+  },
+  nord: {
+    light: { syntaxKeyword: "#81a1c1", syntaxType: "#3f628f", syntaxFunction: "#b48ead", syntaxString: "#4b6b3c", syntaxNumber: "#7a5f20", syntaxOperator: "#2e3440", syntaxProperty: "#3f628f", syntaxComment: "#4c566a" },
+    dark: { syntaxKeyword: "#8fbcbb", syntaxType: "#88c0d0", syntaxFunction: "#b48ead", syntaxString: "#a3be8c", syntaxNumber: "#ebcb8b", syntaxOperator: "#eceff4", syntaxProperty: "#88c0d0", syntaxComment: "#aab4c8" },
+  },
+  "tokyo-night": {
+    light: { syntaxKeyword: "#007197", syntaxType: "#1f5bb8", syntaxFunction: "#7847bd", syntaxString: "#587539", syntaxNumber: "#8c6c3e", syntaxOperator: "#3760bf", syntaxProperty: "#1f5bb8", syntaxComment: "#42558f" },
+    dark: { syntaxKeyword: "#7dcfff", syntaxType: "#7aa2f7", syntaxFunction: "#bb9af7", syntaxString: "#9ece6a", syntaxNumber: "#e0af68", syntaxOperator: "#c0caf5", syntaxProperty: "#7aa2f7", syntaxComment: "#9aa5ce" },
+  },
+};
+
+function enrichTokens(tokens: LegacyThemeTokens, syntax: SyntaxTokenSource): ThemeTokens {
   return {
     ...tokens,
     canvas: tokens.background,
@@ -378,23 +412,16 @@ function enrichTokens(tokens: LegacyThemeTokens): ThemeTokens {
     overlay: tokens.popover,
     sidebar: tokens.card,
     editor: tokens.background,
-    hover: tokens.accent,
+    hover: tokens.muted,
     active: tokens.accent,
     focus: tokens.ring,
     danger: tokens.destructive,
-    syntaxKeyword: tokens.accent,
-    syntaxType: tokens.primary,
-    syntaxFunction: tokens.chart5,
-    syntaxString: tokens.success,
-    syntaxNumber: tokens.warning,
-    syntaxOperator: tokens.foreground,
-    syntaxProperty: tokens.primary,
-    syntaxComment: tokens.mutedForeground,
+    ...syntax,
   };
 }
 
 export const THEMES: Record<ThemeName, ThemeDefinition> = Object.fromEntries(
-  THEME_NAMES.map((name) => [name, { ...PALETTES[name], light: enrichTokens(PALETTES[name].light), dark: enrichTokens(PALETTES[name].dark) }]),
+  THEME_NAMES.map((name) => [name, { ...PALETTES[name], light: enrichTokens(PALETTES[name].light, SYNTAX_SOURCES[name].light), dark: enrichTokens(PALETTES[name].dark, SYNTAX_SOURCES[name].dark) }]),
 ) as Record<ThemeName, ThemeDefinition>;
 
 const kebab = (key: string): string => key.replace(/[A-Z]/g, (character) => `-${character.toLowerCase()}`).replace(/([a-z])(\d)/g, "$1-$2");

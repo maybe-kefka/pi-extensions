@@ -100,7 +100,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
                     {THEME_NAMES.map((name) => (
                       <SelectItem key={name} value={name}>
                         <span className="flex min-w-0 items-center gap-2">
-                          <span className="flex shrink-0 gap-0.5" data-theme-preview={name} aria-hidden="true">
+                          <span className="flex shrink-0 gap-0.5" aria-hidden="true">
                             <span className="size-3 rounded-sm border" style={{ backgroundColor: THEMES[name].light.canvas }} />
                             <span className="size-3 rounded-sm border" style={{ backgroundColor: THEMES[name].dark.canvas }} />
                           </span>
@@ -129,7 +129,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
                   key={scheme}
                   value={scheme}
                   aria-label={scheme === "system" ? "System" : scheme === "light" ? "Light" : "Dark"}
-                  className="focus-visible:ring-ring/70 data-[state=on]:bg-background data-[state=on]:text-foreground text-muted-foreground min-w-0 flex-1 rounded px-2 py-1 text-xs transition-[background-color,color,box-shadow] focus-visible:ring-2"
+                  className="focus-visible:ring-ring data-[state=on]:bg-background data-[state=on]:text-foreground text-muted-foreground min-w-0 flex-1 rounded px-2 py-1 text-xs transition-[background-color,color,box-shadow] focus-visible:ring-2"
                 >
                   {scheme === "system" ? "System" : scheme === "light" ? "Light" : "Dark"}
                 </ToggleGroup.Item>

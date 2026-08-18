@@ -44,6 +44,25 @@ const TOKEN_KEYS: (keyof ThemeTokens)[] = [
   "chart3",
   "chart4",
   "chart5",
+  "canvas",
+  "panel",
+  "raised",
+  "sunken",
+  "overlay",
+  "sidebar",
+  "editor",
+  "hover",
+  "active",
+  "focus",
+  "danger",
+  "syntaxKeyword",
+  "syntaxType",
+  "syntaxFunction",
+  "syntaxString",
+  "syntaxNumber",
+  "syntaxOperator",
+  "syntaxProperty",
+  "syntaxComment",
 ];
 
 function makeStorage(init: Record<string, string> = {}) {
@@ -82,6 +101,10 @@ describe("THEMES 定义完整性", () => {
       const [light, dark] = [luminance(foreground), luminance(background)].sort((a, b) => b - a);
       return (light + 0.05) / (dark + 0.05);
     };
+    const blend = (foreground: string, background: string, alpha: number) => {
+      const channel = (hex: string, offset: number) => Number.parseInt(hex.slice(offset, offset + 2), 16);
+      return `#${[1, 3, 5].map((offset) => Math.round(channel(foreground, offset) * alpha + channel(background, offset) * (1 - alpha)).toString(16).padStart(2, "0")).join("")}`;
+    };
     const pairs: [keyof ThemeTokens, keyof ThemeTokens, number][] = [
       ["foreground", "background", 4.5],
       ["mutedForeground", "secondary", 4.5],
@@ -90,6 +113,14 @@ describe("THEMES 定义完整性", () => {
       ["destructive", "background", 3],
       ["success", "background", 3],
       ["warning", "background", 3],
+      ["foreground", "card", 4.5],
+      ["foreground", "popover", 4.5],
+      ["foreground", "panel", 4.5],
+      ["mutedForeground", "muted", 4.5],
+      ["secondaryForeground", "secondary", 4.5],
+      ["border", "background", 3],
+      ["input", "background", 3],
+      ["ring", "background", 3],
     ];
     const failures: string[] = [];
     for (const name of THEME_NAMES) {
@@ -98,6 +129,8 @@ describe("THEMES 定义完整性", () => {
         for (const [foreground, background, threshold] of pairs) {
           if (contrast(tokens[foreground], tokens[background]) < threshold) failures.push(`${name}/${scheme}/${foreground}/${background}=${contrast(tokens[foreground], tokens[background]).toFixed(2)}<${threshold}`);
         }
+        const mutedSurface = blend(tokens.muted, tokens.background, 0.5);
+        if (contrast(tokens.mutedForeground, mutedSurface) < 4.5) failures.push(`${name}/${scheme}/mutedForeground/muted-alpha=${contrast(tokens.mutedForeground, mutedSurface).toFixed(2)}<4.5`);
       }
     }
     expect(failures).toEqual([]);

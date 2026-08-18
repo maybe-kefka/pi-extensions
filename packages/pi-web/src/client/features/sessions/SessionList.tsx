@@ -72,7 +72,7 @@ export function SessionList({
                   type="button"
                   aria-label={label}
                   title={label}
-                  className="focus-visible:ring-ring/70 hover:bg-muted/60 flex min-w-0 flex-1 items-center gap-1.5 rounded-sm text-left focus-visible:ring-2"
+                  className="focus-visible:ring-ring hover:bg-muted/60 flex min-w-0 flex-1 items-center gap-1.5 rounded-sm text-left focus-visible:ring-2"
                   onClick={() => actions.onSelect(s.path, label)}
                 >
                   <span className={`min-w-0 flex-1 truncate ${active ? "text-foreground font-medium" : "text-muted-foreground"}`}>

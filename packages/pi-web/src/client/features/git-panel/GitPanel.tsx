@@ -331,7 +331,7 @@ export function RepoItem({
         <button
           type="button"
           aria-label={expanded ? "折叠仓库" : "展开仓库"}
-          className="hover:bg-muted cursor-pointer rounded p-0.5"
+          className="hover:bg-muted focus-visible:ring-ring cursor-pointer rounded p-0.5 outline-none focus-visible:ring-2"
           title={expanded ? "折叠" : "展开"}
           onClick={() => setExpanded((e) => !e)}
         >
@@ -351,7 +351,7 @@ export function RepoItem({
             {repo.branch}
           </button>
         )}
-        <button type="button" aria-label="刷新仓库" className="hover:bg-muted cursor-pointer rounded p-0.5" title="刷新" onClick={() => void refreshBrief()}>
+        <button type="button" aria-label="刷新仓库" className="hover:bg-muted focus-visible:ring-ring cursor-pointer rounded p-0.5 outline-none focus-visible:ring-2" title="刷新" onClick={() => void refreshBrief()}>
           <RefreshCw className={`size-3 ${refreshing ? "animate-spin" : ""}`} />
         </button>
         {repo.behind > 0 && (
@@ -372,7 +372,7 @@ export function RepoItem({
           }}
         >
           <PopoverTrigger asChild>
-            <button type="button" className="hover:bg-muted cursor-pointer rounded p-0.5" title="更多操作" aria-label="更多操作">
+            <button type="button" className="hover:bg-muted focus-visible:ring-ring cursor-pointer rounded p-0.5 outline-none focus-visible:ring-2" title="更多操作" aria-label="更多操作">
               <MoreHorizontal />
             </button>
           </PopoverTrigger>
@@ -388,7 +388,7 @@ export function RepoItem({
                       {branch}
                     </button>
                     {!isCurrent && (
-                      <span className="hidden shrink-0 items-center gap-0.5 group-hover:flex">
+                      <span className="hidden shrink-0 items-center gap-0.5 group-hover:flex group-focus-within:flex">
                         <button type="button" title="合并到当前分支" aria-label={`合并 ${branch}`} className="cursor-pointer p-0.5 outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={() => setConfirmOp({ kind: "merge", branch })}>
                           <GitMerge className="size-3" />
                         </button>
@@ -470,7 +470,7 @@ export function RepoItem({
                 }}
                 placeholder="提交信息（Ctrl/Shift+Enter 提交）"
                 rows={1}
-                className="border-input bg-background text-foreground placeholder:text-muted-foreground max-h-32 min-h-0 flex-1 resize-none overflow-y-auto rounded border px-2 py-1 text-[11px] leading-4 outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+                className="border-input bg-background text-foreground placeholder:text-muted-foreground max-h-32 min-h-0 flex-1 resize-none overflow-y-auto rounded border px-2 py-1 text-[11px] leading-4 outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 onKeyDown={(e) => {
                   // Enter 天然换行；Shift+Enter 与 Ctrl/Meta+Enter 提交（vscode 语义）
                   if (e.key === "Enter" && (e.ctrlKey || e.metaKey || e.shiftKey)) {
@@ -499,7 +499,7 @@ export function RepoItem({
             <div>
                 <div className="text-muted-foreground flex items-center gap-1 py-0.5 text-[11px] font-semibold tracking-wide uppercase">
                 已暂存（{staged.length}）
-                <button className="hover:text-foreground ml-auto cursor-pointer" title="全部取消暂存" onClick={() => void unstagePath(".")}>
+                <button type="button" className="hover:text-foreground focus-visible:ring-ring ml-auto cursor-pointer outline-none focus-visible:ring-2" title="全部取消暂存" onClick={() => void unstagePath(".")}>
                   <ArrowDownToLine className="size-3" />
                 </button>
               </div>
@@ -513,7 +513,7 @@ export function RepoItem({
                   >
                     {e.path}
                   </button>
-                  <button title="取消暂存" className="hover:text-foreground text-muted-foreground shrink-0 cursor-pointer p-0.5" onClick={() => void unstagePath(e.path)}>
+                  <button type="button" title="取消暂存" className="hover:text-foreground focus-visible:ring-ring text-muted-foreground shrink-0 cursor-pointer p-0.5 outline-none focus-visible:ring-2" onClick={() => void unstagePath(e.path)}>
                     <ArrowDownToLine className="size-3" />
                   </button>
                 </div>
@@ -524,7 +524,7 @@ export function RepoItem({
             <div className="mb-1">
                 <div className="text-muted-foreground flex items-center gap-1 py-0.5 text-[11px] font-semibold tracking-wide uppercase">
                 未暂存（{unstaged.length}）
-                <button className="hover:text-foreground ml-auto cursor-pointer" title="全部暂存" onClick={() => void stagePath(null)}>
+                <button type="button" className="hover:text-foreground focus-visible:ring-ring ml-auto cursor-pointer outline-none focus-visible:ring-2" title="全部暂存" onClick={() => void stagePath(null)}>
                   <CirclePlus className="size-3" />
                 </button>
               </div>
@@ -538,7 +538,7 @@ export function RepoItem({
                   >
                     {e.path}
                   </button>
-                  <button title="暂存" className="hover:text-foreground text-muted-foreground shrink-0 cursor-pointer p-0.5" onClick={() => void stagePath(e.path)}>
+                  <button type="button" title="暂存" className="hover:text-foreground focus-visible:ring-ring text-muted-foreground shrink-0 cursor-pointer p-0.5 outline-none focus-visible:ring-2" onClick={() => void stagePath(e.path)}>
                     <ArrowUpFromLine className="size-3" />
                   </button>
                 </div>

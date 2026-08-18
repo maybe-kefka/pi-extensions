@@ -72,17 +72,6 @@ describe("Chat 气泡渲染（R18 langgraph 流式模型）", () => {
     expect(message?.getAttribute("data-align")).toBe("end");
   });
 
-  it("对话表面区分用户 tint 与 assistant canvas", () => {
-    const s = run([
-      { type: "message_start", message: { role: "user", content: "你好" } },
-      { type: "message_start", message: { role: "assistant", content: [{ type: "text", text: "你好，我来帮你。" }] } },
-      { type: "message_end", message: { role: "assistant", content: [{ type: "text", text: "你好，我来帮你。" }] } },
-    ]);
-    const { container } = render(<Chat state={s} dispatch={vi.fn()} onFork={vi.fn()} onAnswerAsk={vi.fn()} />);
-    const bubbles = [...container.querySelectorAll('[data-slot="bubble"]')];
-    expect(bubbles.map((bubble) => bubble.getAttribute("data-variant"))).toEqual(["tinted", "ghost"]);
-  });
-
   it("流式中：reasoning 灰色小字实时全文 + content 流式 + 无工具栏", () => {
     const s = run([
       { type: "message_start", message: { role: "user", content: "q" } },

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 // ChatTab 状态快照恢复测试：savedState 注入初始化 reducer（split 跨父重挂后消息不丢）、卸载时 onStateSave 上报快照
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
-import { render, cleanup } from "@testing-library/react";
+import { render, cleanup, fireEvent, screen } from "@testing-library/react";
 import { ChatTab, type ChatTabProps } from "./ChatTab";
 import { initialState, streamReducer, type StreamAction, type StreamState } from "@/entities/chat";
 
@@ -57,6 +57,14 @@ function stateWithHistory(): StreamState {
 }
 
 describe("ChatTab 状态快照", () => {
+  it("上下文 meter 与详情入口分别保持可访问语义", () => {
+    render(<ChatTab {...base({ usage: { percent: 0.42, tokens: 42, contextWindow: 100 } })} />);
+    expect(screen.getByRole("progressbar", { name: "上下文" })).toBeTruthy();
+    const details = screen.getByRole("button", { name: "查看上下文占用详情" });
+    fireEvent.click(details);
+    expect(screen.getByText("计算中…")).toBeTruthy();
+  });
+
   it("savedState 注入：重挂后消息内容直接显示（不重拉历史）", () => {
     const saved = stateWithHistory();
     render(<ChatTab {...base({ savedState: saved })} />);

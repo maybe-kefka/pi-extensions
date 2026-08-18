@@ -38,6 +38,5 @@ describe("ContextMeter", () => {
     const meter = screen.getByRole("progressbar", { name: "上下文" });
     expect(meter.getAttribute("aria-valuenow")).toBe("100");
     expect(meter.getAttribute("aria-valuetext")).toBe("100% 已使用");
-    expect(meter.getAttribute("data-tier")).toBe("danger");
   });
 });

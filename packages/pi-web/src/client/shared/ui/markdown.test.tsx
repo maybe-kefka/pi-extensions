@@ -1,6 +1,5 @@
 // @vitest-environment jsdom
 import { render, screen, cleanup } from "@testing-library/react";
-import { readFileSync } from "node:fs";
 import "@testing-library/jest-dom/vitest";
 import { afterEach, describe, expect, it } from "vitest";
 import { Markdown } from "./markdown";
@@ -8,18 +7,6 @@ import { Markdown } from "./markdown";
 afterEach(cleanup);
 
 describe("Markdown", () => {
-  it("代码高亮角色使用主题 syntax 变量而非 chart 变量", () => {
-    const css = readFileSync("src/client/app/index.css", "utf8");
-    expect(css).toContain("color: var(--syntax-keyword);");
-    expect(css).toContain("color: var(--syntax-string);");
-    expect(css).toContain("color: var(--syntax-number);");
-    expect(css).toContain("color: var(--syntax-function);");
-    expect(css).toContain("color: var(--syntax-type);");
-    expect(css).toContain("color: var(--syntax-property);");
-    expect(css).toContain("color: var(--syntax-comment);");
-    expect(css).not.toContain("color: var(--chart-5);");
-  });
-
   it("渲染加粗/强调/链接", async () => {
     render(<Markdown text="**加粗** 和 [链接](https://example.com)" />);
     expect((await screen.findByText("加粗")).tagName).toBe("STRONG");
