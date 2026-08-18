@@ -8,16 +8,6 @@
  * 为何存在：theme.ts 的 token 是唯一数据源；index.css 中对应变量块由此脚本生成，
  * 新增主题/改色板只改 theme.ts，再跑本脚本同步 CSS，避免双份手写漂移。
  */
-import { THEMES, THEME_NAMES } from "../src/client/entities/theme/theme.ts";
+import { generateAllThemesCss } from "../src/client/entities/theme/theme.ts";
 
-const kebab = (k) => k.replace(/[A-Z]/g, (c) => "-" + c.toLowerCase());
-
-let out = "";
-for (const name of THEME_NAMES) {
-  for (const scheme of ["light", "dark"]) {
-    const sel = scheme === "light" ? `[data-theme="${name}"]` : `[data-theme="${name}"].dark`;
-    const tokens = THEMES[name][scheme];
-    out += `${sel} {\n` + Object.entries(tokens).map(([k, v]) => `  --${kebab(k)}: ${v};`).join("\n") + `\n}\n\n`;
-  }
-}
-console.log(out);
+console.log(generateAllThemesCss());

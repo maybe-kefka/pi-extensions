@@ -18,7 +18,7 @@ export const THEME_NAMES: ThemeName[] = ["github", "one-dark", "dracula", "nord"
 export const DEFAULT_PREFERENCE: ThemePreference = { theme: "github", scheme: "system" };
 export const PREFERENCE_KEY = "pi-web:theme-preference";
 
-export interface ThemeTokens {
+interface LegacyThemeTokens {
   background: string;
   foreground: string;
   card: string;
@@ -46,6 +46,28 @@ export interface ThemeTokens {
   chart5: string;
 }
 
+export interface ThemeTokens extends LegacyThemeTokens {
+  canvas: string;
+  panel: string;
+  raised: string;
+  sunken: string;
+  overlay: string;
+  sidebar: string;
+  editor: string;
+  hover: string;
+  active: string;
+  focus: string;
+  danger: string;
+  syntaxKeyword: string;
+  syntaxType: string;
+  syntaxFunction: string;
+  syntaxString: string;
+  syntaxNumber: string;
+  syntaxOperator: string;
+  syntaxProperty: string;
+  syntaxComment: string;
+}
+
 export interface ThemeDefinition {
   name: ThemeName;
   label: string;
@@ -53,7 +75,7 @@ export interface ThemeDefinition {
   dark: ThemeTokens;
 }
 
-export const THEMES: Record<ThemeName, ThemeDefinition> = {
+const PALETTES: Record<ThemeName, { name: ThemeName; label: string; light: LegacyThemeTokens; dark: LegacyThemeTokens }> = {
   github: {
     name: "github",
     label: "GitHub",
@@ -122,13 +144,13 @@ export const THEMES: Record<ThemeName, ThemeDefinition> = {
       cardForeground: "#383a42",
       popover: "#fafafa",
       popoverForeground: "#383a42",
-      primary: "#4078f2",
+      primary: "#2f65d0",
       primaryForeground: "#ffffff",
       secondary: "#f0f0f1",
       secondaryForeground: "#383a42",
       muted: "#f0f0f1",
-      mutedForeground: "#a0a1a7",
-      accent: "#0184bc",
+      mutedForeground: "#545862",
+      accent: "#006d9c",
       accentForeground: "#ffffff",
       destructive: "#e45649",
       success: "#50a14f",
@@ -154,7 +176,7 @@ export const THEMES: Record<ThemeName, ThemeDefinition> = {
       secondary: "#21252b",
       secondaryForeground: "#abb2bf",
       muted: "#21252b",
-      mutedForeground: "#5c6370",
+      mutedForeground: "#abb2bf",
       accent: "#56b6c2",
       accentForeground: "#282c34",
       destructive: "#e06c75",
@@ -180,17 +202,17 @@ export const THEMES: Record<ThemeName, ThemeDefinition> = {
       cardForeground: "#44475a",
       popover: "#ffffff",
       popoverForeground: "#44475a",
-      primary: "#8b5cf6",
+      primary: "#6d28d9",
       primaryForeground: "#ffffff",
       secondary: "#f4f4fa",
       secondaryForeground: "#44475a",
       muted: "#f4f4fa",
-      mutedForeground: "#6272a4",
-      accent: "#22b8cf",
+      mutedForeground: "#44475a",
+      accent: "#087f9b",
       accentForeground: "#ffffff",
       destructive: "#ff5555",
-      success: "#3dbd6e",
-      warning: "#e6c84f",
+      success: "#287a4a",
+      warning: "#7a5a00",
       border: "#e2e2ee",
       input: "#e2e2ee",
       ring: "#8b5cf6",
@@ -212,7 +234,7 @@ export const THEMES: Record<ThemeName, ThemeDefinition> = {
       secondary: "#21222c",
       secondaryForeground: "#f8f8f2",
       muted: "#21222c",
-      mutedForeground: "#6272a4",
+      mutedForeground: "#abb2bf",
       accent: "#8be9fd",
       accentForeground: "#282a36",
       destructive: "#ff5555",
@@ -238,7 +260,7 @@ export const THEMES: Record<ThemeName, ThemeDefinition> = {
       cardForeground: "#2e3440",
       popover: "#eceff4",
       popoverForeground: "#2e3440",
-      primary: "#5e81ac",
+      primary: "#3f628f",
       primaryForeground: "#ffffff",
       secondary: "#e5e9f0",
       secondaryForeground: "#2e3440",
@@ -247,8 +269,8 @@ export const THEMES: Record<ThemeName, ThemeDefinition> = {
       accent: "#81a1c1",
       accentForeground: "#2e3440",
       destructive: "#bf616a",
-      success: "#a3be8c",
-      warning: "#ebcb8b",
+      success: "#4b6b3c",
+      warning: "#7a5f20",
       border: "#d8dee9",
       input: "#d8dee9",
       ring: "#5e81ac",
@@ -270,7 +292,7 @@ export const THEMES: Record<ThemeName, ThemeDefinition> = {
       secondary: "#3b4252",
       secondaryForeground: "#eceff4",
       muted: "#3b4252",
-      mutedForeground: "#4c566a",
+      mutedForeground: "#aab4c8",
       accent: "#8fbcbb",
       accentForeground: "#2e3440",
       destructive: "#bf616a",
@@ -296,12 +318,12 @@ export const THEMES: Record<ThemeName, ThemeDefinition> = {
       cardForeground: "#3760bf",
       popover: "#e1e2e7",
       popoverForeground: "#3760bf",
-      primary: "#2e7de9",
+      primary: "#1f5bb8",
       primaryForeground: "#ffffff",
       secondary: "#d7d8dd",
       secondaryForeground: "#3760bf",
       muted: "#d7d8dd",
-      mutedForeground: "#6172b0",
+      mutedForeground: "#42558f",
       accent: "#007197",
       accentForeground: "#ffffff",
       destructive: "#f52a65",
@@ -328,7 +350,7 @@ export const THEMES: Record<ThemeName, ThemeDefinition> = {
       secondary: "#16161e",
       secondaryForeground: "#c0caf5",
       muted: "#16161e",
-      mutedForeground: "#565f89",
+      mutedForeground: "#9aa5ce",
       accent: "#7dcfff",
       accentForeground: "#1a1b26",
       destructive: "#f7768e",
@@ -345,6 +367,50 @@ export const THEMES: Record<ThemeName, ThemeDefinition> = {
     },
   },
 };
+
+function enrichTokens(tokens: LegacyThemeTokens): ThemeTokens {
+  return {
+    ...tokens,
+    canvas: tokens.background,
+    panel: tokens.card,
+    raised: tokens.popover,
+    sunken: tokens.secondary,
+    overlay: tokens.popover,
+    sidebar: tokens.card,
+    editor: tokens.background,
+    hover: tokens.accent,
+    active: tokens.accent,
+    focus: tokens.ring,
+    danger: tokens.destructive,
+    syntaxKeyword: tokens.accent,
+    syntaxType: tokens.primary,
+    syntaxFunction: tokens.chart5,
+    syntaxString: tokens.success,
+    syntaxNumber: tokens.warning,
+    syntaxOperator: tokens.foreground,
+    syntaxProperty: tokens.primary,
+    syntaxComment: tokens.mutedForeground,
+  };
+}
+
+export const THEMES: Record<ThemeName, ThemeDefinition> = Object.fromEntries(
+  THEME_NAMES.map((name) => [name, { ...PALETTES[name], light: enrichTokens(PALETTES[name].light), dark: enrichTokens(PALETTES[name].dark) }]),
+) as Record<ThemeName, ThemeDefinition>;
+
+const kebab = (key: string): string => key.replace(/[A-Z]/g, (character) => `-${character.toLowerCase()}`).replace(/([a-z])(\d)/g, "$1-$2");
+
+/** Generate the complete theme block consumed by CSS. This is the theme entity's pure CSS seam. */
+export function generateThemeCss(theme: ThemeName, scheme: Scheme): string {
+  const selector = scheme === "light" ? `[data-theme="${theme}"]` : `[data-theme="${theme}"].dark`;
+  const tokens = THEMES[theme][scheme];
+  const variables = Object.entries(tokens).map(([key, value]) => `  --${kebab(key)}: ${value};`).join("\n");
+  return `${selector} {\n${variables}\n}`;
+}
+
+/** Generate all theme blocks in stable theme/scheme order for drift checks. */
+export function generateAllThemesCss(): string {
+  return THEME_NAMES.flatMap((theme) => [generateThemeCss(theme, "light"), generateThemeCss(theme, "dark")]).join("\n\n") + "\n";
+}
 
 export interface ResolvedTheme {
   theme: ThemeName;

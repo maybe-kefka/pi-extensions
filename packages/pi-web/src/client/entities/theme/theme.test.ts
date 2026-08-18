@@ -4,8 +4,11 @@
  * 先例：stream.ts reducer、web-ask.ts registry 纯逻辑测试。
  */
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
 import {
   DEFAULT_PREFERENCE,
+  generateThemeCss,
+  generateAllThemesCss,
   THEMES,
   THEME_NAMES,
   loadPreference,
@@ -53,6 +56,52 @@ function makeStorage(init: Record<string, string> = {}) {
 }
 
 describe("THEMES 定义完整性", () => {
+  it("公开确定性的 CSS 生成契约", () => {
+    expect(generateThemeCss("github", "light")).toContain(
+      '[data-theme="github"] {\n  --background: #ffffff;\n',
+    );
+    expect(generateThemeCss("github", "light")).toContain("--chart-1: #0969da;");
+  });
+
+  it("提交的主题 CSS 与生成结果无漂移", () => {
+    const css = readFileSync(new URL("../../app/index.css", import.meta.url), "utf8");
+    const start = css.indexOf('[data-theme="github"]');
+    const end = css.indexOf("@theme inline", start);
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(end).toBeGreaterThan(start);
+    expect(css.slice(start, end).trim()).toBe(generateAllThemesCss().trim());
+  });
+
+  it("所有主题的文字与关键状态组合达到 WCAG AA", () => {
+    const contrast = (foreground: string, background: string) => {
+      const channel = (hex: string, offset: number) => {
+        const value = Number.parseInt(hex.slice(offset, offset + 2), 16) / 255;
+        return value <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+      };
+      const luminance = (hex: string) => 0.2126 * channel(hex, 1) + 0.7152 * channel(hex, 3) + 0.0722 * channel(hex, 5);
+      const [light, dark] = [luminance(foreground), luminance(background)].sort((a, b) => b - a);
+      return (light + 0.05) / (dark + 0.05);
+    };
+    const pairs: [keyof ThemeTokens, keyof ThemeTokens, number][] = [
+      ["foreground", "background", 4.5],
+      ["mutedForeground", "secondary", 4.5],
+      ["primaryForeground", "primary", 4.5],
+      ["accentForeground", "accent", 4.5],
+      ["destructive", "background", 3],
+      ["success", "background", 3],
+      ["warning", "background", 3],
+    ];
+    const failures: string[] = [];
+    for (const name of THEME_NAMES) {
+      for (const scheme of ["light", "dark"] as const) {
+        const tokens = THEMES[name][scheme];
+        for (const [foreground, background, threshold] of pairs) {
+          if (contrast(tokens[foreground], tokens[background]) < threshold) failures.push(`${name}/${scheme}/${foreground}/${background}=${contrast(tokens[foreground], tokens[background]).toFixed(2)}<${threshold}`);
+        }
+      }
+    }
+    expect(failures).toEqual([]);
+  });
   it("包含 5 个主题：github/one-dark/dracula/nord/tokyo-night", () => {
     expect(THEME_NAMES).toEqual(["github", "one-dark", "dracula", "nord", "tokyo-night"]);
   });
