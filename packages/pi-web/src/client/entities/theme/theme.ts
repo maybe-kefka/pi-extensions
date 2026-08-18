@@ -79,6 +79,11 @@ interface SyntaxTokenSource {
   syntaxComment: string;
 }
 
+type SurfaceTokenSource = Pick<
+  ThemeTokens,
+  "canvas" | "panel" | "raised" | "sunken" | "overlay" | "sidebar" | "editor" | "hover" | "active"
+>;
+
 export interface ThemeDefinition {
   name: ThemeName;
   label: string;
@@ -385,35 +390,52 @@ const SYNTAX_SOURCES: Record<ThemeName, { light: SyntaxTokenSource; dark: Syntax
     dark: { syntaxKeyword: "#4493f8", syntaxType: "#4493f8", syntaxFunction: "#a371f7", syntaxString: "#3fb950", syntaxNumber: "#d29922", syntaxOperator: "#f0f6fc", syntaxProperty: "#4493f8", syntaxComment: "#9198a1" },
   },
   "one-dark": {
-    light: { syntaxKeyword: "#006d9c", syntaxType: "#2f65d0", syntaxFunction: "#a626a4", syntaxString: "#50a14f", syntaxNumber: "#986801", syntaxOperator: "#383a42", syntaxProperty: "#2f65d0", syntaxComment: "#545862" },
+    light: { syntaxKeyword: "#006d9c", syntaxType: "#2f65d0", syntaxFunction: "#a626a4", syntaxString: "#2f6f31", syntaxNumber: "#986801", syntaxOperator: "#383a42", syntaxProperty: "#2f65d0", syntaxComment: "#545862" },
     dark: { syntaxKeyword: "#56b6c2", syntaxType: "#61afef", syntaxFunction: "#c678dd", syntaxString: "#98c379", syntaxNumber: "#e5c07b", syntaxOperator: "#abb2bf", syntaxProperty: "#61afef", syntaxComment: "#abb2bf" },
   },
   dracula: {
-    light: { syntaxKeyword: "#087f9b", syntaxType: "#6d28d9", syntaxFunction: "#ff79c6", syntaxString: "#287a4a", syntaxNumber: "#7a5a00", syntaxOperator: "#44475a", syntaxProperty: "#6d28d9", syntaxComment: "#44475a" },
+    light: { syntaxKeyword: "#087f9b", syntaxType: "#6d28d9", syntaxFunction: "#9b246f", syntaxString: "#287a4a", syntaxNumber: "#7a5a00", syntaxOperator: "#44475a", syntaxProperty: "#6d28d9", syntaxComment: "#44475a" },
     dark: { syntaxKeyword: "#8be9fd", syntaxType: "#bd93f9", syntaxFunction: "#ff79c6", syntaxString: "#50fa7b", syntaxNumber: "#f1fa8c", syntaxOperator: "#f8f8f2", syntaxProperty: "#bd93f9", syntaxComment: "#abb2bf" },
   },
   nord: {
-    light: { syntaxKeyword: "#81a1c1", syntaxType: "#3f628f", syntaxFunction: "#b48ead", syntaxString: "#4b6b3c", syntaxNumber: "#7a5f20", syntaxOperator: "#2e3440", syntaxProperty: "#3f628f", syntaxComment: "#4c566a" },
-    dark: { syntaxKeyword: "#8fbcbb", syntaxType: "#88c0d0", syntaxFunction: "#b48ead", syntaxString: "#a3be8c", syntaxNumber: "#ebcb8b", syntaxOperator: "#eceff4", syntaxProperty: "#88c0d0", syntaxComment: "#aab4c8" },
+    light: { syntaxKeyword: "#355d84", syntaxType: "#3f628f", syntaxFunction: "#70486c", syntaxString: "#4b6b3c", syntaxNumber: "#7a5f20", syntaxOperator: "#2e3440", syntaxProperty: "#3f628f", syntaxComment: "#4c566a" },
+    dark: { syntaxKeyword: "#8fbcbb", syntaxType: "#88c0d0", syntaxFunction: "#c49ac0", syntaxString: "#a3be8c", syntaxNumber: "#ebcb8b", syntaxOperator: "#eceff4", syntaxProperty: "#88c0d0", syntaxComment: "#aab4c8" },
   },
   "tokyo-night": {
-    light: { syntaxKeyword: "#007197", syntaxType: "#1f5bb8", syntaxFunction: "#7847bd", syntaxString: "#587539", syntaxNumber: "#8c6c3e", syntaxOperator: "#1f3f85", syntaxProperty: "#1f5bb8", syntaxComment: "#42558f" },
+    light: { syntaxKeyword: "#005f82", syntaxType: "#1f5bb8", syntaxFunction: "#7847bd", syntaxString: "#456522", syntaxNumber: "#6c4d22", syntaxOperator: "#1f3f85", syntaxProperty: "#1f5bb8", syntaxComment: "#42558f" },
     dark: { syntaxKeyword: "#7dcfff", syntaxType: "#7aa2f7", syntaxFunction: "#bb9af7", syntaxString: "#9ece6a", syntaxNumber: "#e0af68", syntaxOperator: "#c0caf5", syntaxProperty: "#7aa2f7", syntaxComment: "#9aa5ce" },
   },
 };
 
-function enrichTokens(tokens: LegacyThemeTokens, syntax: SyntaxTokenSource): ThemeTokens {
+const NEUTRAL_SURFACES: Record<Scheme, SurfaceTokenSource> = {
+  light: {
+    canvas: "#ffffff",
+    panel: "#f9fafb",
+    raised: "#ffffff",
+    sunken: "#f4f5f7",
+    overlay: "#ffffff",
+    sidebar: "#f9fafb",
+    editor: "#ffffff",
+    hover: "#f1f2f4",
+    active: "#eaebee",
+  },
+  dark: {
+    canvas: "#111214",
+    panel: "#191919",
+    raised: "#2b2b2e",
+    sunken: "#1f2023",
+    overlay: "#242426",
+    sidebar: "#191919",
+    editor: "#111214",
+    hover: "#242426",
+    active: "#2a2a2d",
+  },
+};
+
+function enrichTokens(tokens: LegacyThemeTokens, syntax: SyntaxTokenSource, surfaces: SurfaceTokenSource): ThemeTokens {
   return {
     ...tokens,
-    canvas: tokens.background,
-    panel: tokens.card,
-    raised: tokens.popover,
-    sunken: tokens.secondary,
-    overlay: tokens.popover,
-    sidebar: tokens.card,
-    editor: tokens.background,
-    hover: tokens.muted,
-    active: tokens.accent,
+    ...surfaces,
     focus: tokens.ring,
     danger: tokens.destructive,
     ...syntax,
@@ -421,7 +443,11 @@ function enrichTokens(tokens: LegacyThemeTokens, syntax: SyntaxTokenSource): The
 }
 
 export const THEMES: Record<ThemeName, ThemeDefinition> = Object.fromEntries(
-  THEME_NAMES.map((name) => [name, { ...PALETTES[name], light: enrichTokens(PALETTES[name].light, SYNTAX_SOURCES[name].light), dark: enrichTokens(PALETTES[name].dark, SYNTAX_SOURCES[name].dark) }]),
+  THEME_NAMES.map((name) => [name, {
+    ...PALETTES[name],
+    light: enrichTokens(PALETTES[name].light, SYNTAX_SOURCES[name].light, NEUTRAL_SURFACES.light),
+    dark: enrichTokens(PALETTES[name].dark, SYNTAX_SOURCES[name].dark, NEUTRAL_SURFACES.dark),
+  }]),
 ) as Record<ThemeName, ThemeDefinition>;
 
 const kebab = (key: string): string => key.replace(/[A-Z]/g, (character) => `-${character.toLowerCase()}`).replace(/([a-z])(\d)/g, "$1-$2");

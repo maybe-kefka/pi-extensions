@@ -22,6 +22,11 @@ describe("Markdown", () => {
     expect(screen.getByText("1")).toBeTruthy();
   });
 
+  it("空表头为辅助技术提供列名", async () => {
+    render(<Markdown text={"| | b |\n|---|---|\n| 1 | 2 |"} />);
+    expect(await screen.findByRole("columnheader", { name: "未命名列" })).toBeTruthy();
+  });
+
   it("渲染任务列表", async () => {
     render(<Markdown text={"- [x] 完成\n- [ ] 待办"} />);
     expect((await screen.findAllByRole("checkbox")).length).toBe(2);

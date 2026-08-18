@@ -66,13 +66,13 @@ export function SessionList({
             return (
               <li
                 key={s.path}
-                className={`group flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs ${active ? "bg-accent" : ""}`}
+                className={`group flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs ${active ? "bg-active" : "hover:bg-hover"}`}
               >
                 <button
                   type="button"
                   aria-label={label}
                   title={label}
-                  className="focus-visible:ring-ring hover:bg-muted/60 flex min-w-0 flex-1 items-center gap-1.5 rounded-sm text-left focus-visible:ring-2"
+                  className="focus-visible:ring-ring flex min-w-0 flex-1 items-center gap-1.5 rounded-md text-left focus-visible:ring-2"
                   onClick={() => actions.onSelect(s.path, label)}
                 >
                   <span className={`min-w-0 flex-1 truncate ${active ? "text-foreground font-medium" : "text-muted-foreground"}`}>

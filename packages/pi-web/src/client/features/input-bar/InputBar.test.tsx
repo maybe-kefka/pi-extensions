@@ -23,6 +23,11 @@ const base = {
 };
 
 describe("InputBar 发送/abort 融合", () => {
+  it("消息输入框具有明确的可访问名称", () => {
+    render(<InputBar {...base} />);
+    expect(screen.getByRole("textbox", { name: "消息输入" })).toBeTruthy();
+  });
+
   it("空闲：显示发送按钮（↑），不显示 abort", () => {
     render(<InputBar {...base} />);
     expect(screen.getByRole("button", { name: "发送" })).toBeTruthy();

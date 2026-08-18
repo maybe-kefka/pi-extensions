@@ -3,6 +3,7 @@ import {
   SelectContent,
   SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/shared/ui";
@@ -27,11 +28,11 @@ export function SettingsPanel(props: SettingsPanelProps) {
   const currentModelLabel = models.find((model) => `${model.provider}/${model.id}` === currentModel)?.name ?? currentModel ?? "未选择";
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <header className="flex h-9 shrink-0 items-center gap-2 border-b px-3">
+      <header className="flex h-9 shrink-0 items-center gap-2 px-3">
         <span className="text-sm font-semibold">设置</span>
       </header>
-      <div className="scrollbar-thin scrollbar-gutter-stable min-h-0 flex-1 overflow-y-auto p-3">
-      <section className="flex flex-col gap-2 border-b pb-4" aria-labelledby="settings-model-heading">
+      <div className="scrollbar-thin scrollbar-gutter-stable flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-2">
+      <section className="bg-sunken flex flex-col gap-2 rounded-xl p-3" aria-labelledby="settings-model-heading">
         <h2 id="settings-model-heading" className="text-muted-foreground text-[11px] font-semibold tracking-wide uppercase">模型</h2>
         <div className="flex flex-col gap-2">
           <div className="flex items-center gap-2">
@@ -49,6 +50,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectGroup>
+                    <SelectLabel className="sr-only">模型</SelectLabel>
                     {models.map((m) => (
                       <SelectItem key={`${m.provider}/${m.id}`} value={`${m.provider}/${m.id}`}>
                         {m.name} ({m.provider})
@@ -68,6 +70,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectGroup>
+                    <SelectLabel className="sr-only">思考</SelectLabel>
                     {thinkingLevels.length === 0 && <SelectItem value="off">off</SelectItem>}
                     {thinkingLevels.map((lvl) => (
                       <SelectItem key={lvl} value={lvl}>
@@ -82,7 +85,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
         </div>
       </section>
 
-      <section className="flex flex-col gap-2" aria-labelledby="settings-appearance-heading">
+      <section className="bg-sunken flex flex-col gap-2 rounded-xl p-3" aria-labelledby="settings-appearance-heading">
         <h2 id="settings-appearance-heading" className="text-muted-foreground text-[11px] font-semibold tracking-wide uppercase">外观</h2>
         <div className="flex flex-col gap-3">
           <div className="flex items-center gap-2">
@@ -97,6 +100,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectGroup>
+                    <SelectLabel className="sr-only">主题</SelectLabel>
                     {THEME_NAMES.map((name) => (
                       <SelectItem key={name} value={name}>
                         <span className="flex min-w-0 items-center gap-2">

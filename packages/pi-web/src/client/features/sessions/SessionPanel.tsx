@@ -26,14 +26,14 @@ export function SessionPanel(props: SessionPanelProps) {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <header className="flex h-9 shrink-0 items-center gap-2 border-b px-3">
+      <header className="flex h-9 shrink-0 items-center gap-2 px-3">
         <span className="text-sm font-semibold">会话</span>
         <Button variant="ghost" size="icon" className="ml-auto size-7" aria-label="刷新会话" title="刷新" onClick={() => setRefreshKey((k) => k + 1)}>
           <RefreshCw />
         </Button>
       </header>
-      <div className="scrollbar-thin scrollbar-gutter-stable min-h-0 flex-1 overflow-y-auto p-3">
-      <section className="flex flex-col gap-2 border-b pb-4" aria-labelledby="sessions-heading">
+      <div className="scrollbar-thin scrollbar-gutter-stable flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-2">
+      <section className="bg-sunken flex flex-col gap-2 rounded-xl p-3" aria-labelledby="sessions-heading">
         <div className="flex items-center justify-between">
           <h2 id="sessions-heading" className="text-muted-foreground text-[11px] font-semibold tracking-wide uppercase">会话列表</h2>
         </div>
@@ -48,11 +48,11 @@ export function SessionPanel(props: SessionPanelProps) {
         </div>
       </section>
 
-      <section className="flex flex-col gap-2" aria-labelledby="bridge-heading">
+      <section className="bg-sunken flex flex-col gap-2 rounded-xl p-3" aria-labelledby="bridge-heading">
         <h2 id="bridge-heading" className="text-muted-foreground text-[11px] font-semibold tracking-wide uppercase">状态桥接</h2>
         <div className="flex flex-col gap-2 text-xs">
           {bridge.widget && (
-            <pre className="border-border bg-muted/50 rounded border p-2 whitespace-pre-wrap font-mono text-[11px]">
+            <pre className="bg-canvas rounded-lg p-2 whitespace-pre-wrap font-mono text-[11px]">
               {bridge.widget.lines.join("\n")}
             </pre>
           )}

@@ -5,9 +5,33 @@
  */
 
 import type { Extension } from "@codemirror/state";
-import { EditorView } from "@codemirror/view";
+import { EditorView, ViewPlugin } from "@codemirror/view";
 import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import { tags as t } from "@lezer/highlight";
+
+/** CodeMirror contentDOM 的公开可访问属性。 */
+export const EDITOR_CONTENT_ATTRIBUTES = { "aria-label": "代码编辑器" } as const;
+export const EDITOR_SCROLLER_ATTRIBUTES = {
+  role: "region",
+  "aria-label": "代码滚动区域",
+  tabindex: "0",
+} as const;
+
+const accessibleScroller = ViewPlugin.define((view) => {
+  const original = new Map<string, string | null>();
+  for (const [name, value] of Object.entries(EDITOR_SCROLLER_ATTRIBUTES)) {
+    original.set(name, view.scrollDOM.getAttribute(name));
+    view.scrollDOM.setAttribute(name, value);
+  }
+  return {
+    destroy() {
+      for (const [name, value] of original) {
+        if (value === null) view.scrollDOM.removeAttribute(name);
+        else view.scrollDOM.setAttribute(name, value);
+      }
+    },
+  };
+});
 
 /** 语法角色 → CSS 变量 映射（纯数据，供测试断言） */
 export const SYNTAX_TOKEN_MAP: Record<string, string> = {
@@ -86,5 +110,10 @@ const viewTheme = EditorView.theme({
 
 /** 组装扩展（纯函数；颜色映射见 SYNTAX_TOKEN_MAP） */
 export function createEditorTheme(): Extension {
-  return [viewTheme, syntaxHighlighting(highlight)];
+  return [
+    viewTheme,
+    EditorView.contentAttributes.of(EDITOR_CONTENT_ATTRIBUTES),
+    accessibleScroller,
+    syntaxHighlighting(highlight),
+  ];
 }

@@ -116,6 +116,11 @@ describe("THEMES 定义完整性", () => {
       ["foreground", "card", 4.5],
       ["foreground", "popover", 4.5],
       ["foreground", "panel", 4.5],
+      ["foreground", "canvas", 4.5],
+      ["foreground", "raised", 4.5],
+      ["foreground", "overlay", 4.5],
+      ["foreground", "editor", 4.5],
+      ["mutedForeground", "panel", 4.5],
       ["mutedForeground", "muted", 4.5],
       ["secondaryForeground", "secondary", 4.5],
       ["border", "background", 3],
@@ -139,6 +144,42 @@ describe("THEMES 定义完整性", () => {
         if (contrast(tokens.secondaryForeground, bubbleChipSurface) < 4.5) failures.push(`${name}/${scheme}/secondaryForeground/accent-on-secondary-alpha-20=${contrast(tokens.secondaryForeground, bubbleChipSurface).toFixed(2)}<4.5`);
       }
     }
+    expect(failures).toEqual([]);
+  });
+
+  it("所有语法角色在编辑器画布上达到普通文字 4.5:1 对比度", () => {
+    const channel = (hex: string, offset: number) => {
+      const value = Number.parseInt(hex.slice(offset, offset + 2), 16) / 255;
+      return value <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+    };
+    const luminance = (hex: string) =>
+      0.2126 * channel(hex, 1) + 0.7152 * channel(hex, 3) + 0.0722 * channel(hex, 5);
+    const contrast = (foreground: string, background: string) => {
+      const [light, dark] = [luminance(foreground), luminance(background)].sort((a, b) => b - a);
+      return (light + 0.05) / (dark + 0.05);
+    };
+    const syntaxTokens: (keyof ThemeTokens)[] = [
+      "syntaxKeyword",
+      "syntaxType",
+      "syntaxFunction",
+      "syntaxString",
+      "syntaxNumber",
+      "syntaxOperator",
+      "syntaxProperty",
+      "syntaxComment",
+    ];
+    const failures: string[] = [];
+
+    for (const name of THEME_NAMES) {
+      for (const scheme of ["light", "dark"] as const) {
+        const tokens = THEMES[name][scheme];
+        for (const token of syntaxTokens) {
+          const ratio = contrast(tokens[token], tokens.editor);
+          if (ratio < 4.5) failures.push(`${name}/${scheme}/${token}/editor=${ratio.toFixed(2)}<4.5`);
+        }
+      }
+    }
+
     expect(failures).toEqual([]);
   });
   it("包含 5 个主题：github/one-dark/dracula/nord/tokyo-night", () => {

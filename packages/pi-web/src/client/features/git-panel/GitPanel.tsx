@@ -331,7 +331,7 @@ export function RepoItem({
         <button
           type="button"
           aria-label={expanded ? "折叠仓库" : "展开仓库"}
-          className="hover:bg-muted focus-visible:ring-ring cursor-pointer rounded p-0.5 outline-none focus-visible:ring-2"
+          className="hover:bg-hover focus-visible:ring-ring cursor-pointer rounded-md p-0.5 outline-none focus-visible:ring-2"
           title={expanded ? "折叠" : "展开"}
           onClick={() => setExpanded((e) => !e)}
         >
@@ -341,7 +341,7 @@ export function RepoItem({
         <span className="min-w-0 flex-1 truncate font-medium">{repo.name}</span>
         {repo.branch && (
           <button
-            className="bg-muted text-muted-foreground hover:bg-primary/20 hover:text-primary cursor-pointer rounded px-1 py-0.5 font-mono text-[11px] outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="bg-active text-foreground hover:bg-hover cursor-pointer rounded-md px-1.5 py-0.5 font-mono text-[11px] outline-none focus-visible:ring-2 focus-visible:ring-ring"
             title={`当前分支 ${repo.branch}（点击选择）`}
             onClick={() => {
               setPickerOpen(true);
@@ -382,7 +382,7 @@ export function RepoItem({
               {branches.map((branch) => {
                 const isCurrent = branch === currentBranch;
                 return (
-                  <div key={branch} className={`group flex items-center gap-1.5 rounded px-1.5 py-1 text-[11px] ${isCurrent ? "bg-primary/10 text-primary" : "hover:bg-muted"}`}>
+                  <div key={branch} className={`group flex items-center gap-1.5 rounded-lg px-1.5 py-1 text-[11px] ${isCurrent ? "bg-active text-foreground" : "hover:bg-hover"}`}>
                     {isCurrent ? <Check className="size-3 shrink-0" /> : <GitBranch className="text-muted-foreground size-3 shrink-0" />}
                     <button type="button" className="min-w-0 flex-1 truncate text-left outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={() => !isCurrent && void switchBranch(branch)} disabled={isCurrent} aria-label={isCurrent ? `当前分支 ${branch}` : `切换到 ${branch}`} title={isCurrent ? "当前分支" : `切换到 ${branch}`}>
                       {branch}
@@ -584,7 +584,7 @@ export function RepoItem({
                 {pickBases.map((b) => (
                   <button
                     key={b}
-                    className={`flex w-full cursor-pointer items-center gap-1.5 rounded px-1.5 py-1 text-left text-[11px] ${selectedBase === b ? "bg-primary/10 text-primary" : "hover:bg-muted"}`}
+                    className={`flex w-full cursor-pointer items-center gap-1.5 rounded-lg px-1.5 py-1 text-left text-[11px] ${selectedBase === b ? "bg-active text-foreground" : "hover:bg-hover"}`}
                     onClick={() => setSelectedBase(b)}
                   >
                     <GitBranch className="text-muted-foreground size-3 shrink-0" />
@@ -614,7 +614,7 @@ export function RepoItem({
                       key={b}
                       disabled={isCurrent}
                       title={isCurrent ? "当前分支" : `切换到 ${b}`}
-                      className={`flex w-full cursor-pointer items-center gap-1.5 rounded px-1.5 py-1 text-left text-[11px] ${isCurrent ? "text-muted-foreground cursor-default opacity-60" : isExact ? "bg-primary/15 text-primary" : "hover:bg-muted"}`}
+                      className={`flex w-full cursor-pointer items-center gap-1.5 rounded-lg px-1.5 py-1 text-left text-[11px] ${isCurrent ? "text-muted-foreground cursor-default opacity-60" : isExact ? "bg-active text-foreground" : "hover:bg-hover"}`}
                       onClick={() => void pickerSwitch(b, false)}
                     >
                       {isCurrent ? <Check className="size-3 shrink-0" /> : <GitBranch className="text-muted-foreground size-3 shrink-0" />}
@@ -714,7 +714,7 @@ export function GitPanel({ request, onOpenFile, gitRefreshKey = 0 }: GitPanelPro
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex h-9 shrink-0 items-center gap-2 border-b px-3">
+      <div className="flex h-9 shrink-0 items-center gap-2 px-3">
         <GitBranch className="text-muted-foreground size-4" />
         <span className="text-sm font-semibold">源代码管理</span>
         <span className="text-muted-foreground text-[11px]">{repos.length} 仓库</span>

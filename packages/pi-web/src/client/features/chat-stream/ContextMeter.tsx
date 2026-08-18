@@ -17,7 +17,7 @@ export function ContextMeter({ percent }: { percent: number | null | undefined }
   return (
     <div
       title={`上下文占用 ${label}`}
-      className="bg-sunken flex h-10 min-w-32 shrink-0 items-center gap-2 rounded-md px-2"
+      className="flex h-7 min-w-36 shrink-0 items-center gap-2 rounded-lg px-1"
       role="progressbar"
       aria-label="上下文"
       aria-valuenow={hasValue ? Math.round(normalizedPercent * 100) : undefined}
@@ -27,7 +27,7 @@ export function ContextMeter({ percent }: { percent: number | null | undefined }
     >
       <span className="text-muted-foreground text-xs">上下文</span>
       <TierIcon aria-hidden="true" className="text-muted-foreground size-3.5 shrink-0" />
-      <span className="bg-background h-1.5 min-w-8 flex-1 overflow-hidden rounded-full">
+      <span className="bg-sunken h-1.5 min-w-8 flex-1 overflow-hidden rounded-full">
         <span
           data-slot="context-meter-fill"
           className={`${TIER_COLOR[tier]} block h-full rounded-full transition-[width,background-color] duration-150`}

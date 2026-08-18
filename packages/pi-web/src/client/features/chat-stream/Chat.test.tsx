@@ -42,6 +42,12 @@ function run(actions: StreamAction[]) {
 }
 
 describe("Chat 气泡渲染（R18 langgraph 流式模型）", () => {
+  it("会话内容使用有名称的 section 而不是嵌套 main", () => {
+    render(<Chat state={initialState} dispatch={vi.fn()} onFork={vi.fn()} onAnswerAsk={vi.fn()} />);
+    expect(screen.getByRole("region", { name: "会话内容" })).toBeTruthy();
+    expect(screen.queryByRole("main")).toBeNull();
+  });
+
   it("history 回填：终态多 turn 只显示最后一个 turn 的文本", () => {
     const s = run([
       {
@@ -502,41 +508,17 @@ describe("R23 F3 ToolCard 惰性序列化", () => {
   });
 });
 
-describe("R24 UI 细节", () => {
-  it("头像上对齐（message-avatar self-start）", () => {
-    const s = run([
-      { type: "message_start", message: { role: "user", content: "q" } },
-      { type: "message_start", message: { role: "assistant", content: [{ type: "text", text: "回复" }] } },
-    ]);
-    const { container } = render(<Chat state={s} dispatch={vi.fn()} onFork={vi.fn()} onAnswerAsk={vi.fn()} />);
-    const avatars = container.querySelectorAll("[data-slot=message-avatar]");
-    expect(avatars.length).toBeGreaterThan(0);
-    for (const a of avatars) {
-      expect(a.className).toContain("self-start");
-      expect(a.className).not.toContain("self-end");
-    }
-  });
-
-  it("聊天流底部空间 25vh（pb-[25vh]）", () => {
-    const s = run([{ type: "message_start", message: { role: "user", content: "q" } }]);
-    const { container } = render(<Chat state={s} dispatch={vi.fn()} onFork={vi.fn()} onAnswerAsk={vi.fn()} />);
-    const content = container.querySelector("[data-slot=message-scroller-content]");
-    expect(content?.className).toContain("pb-[25vh]");
-  });
-});
-
 describe("R24 think 窗口", () => {
-  it("thinking 块限 4 行滚动（max-h-16 overflow-y-auto）", () => {
+  it("thinking 滚动区可按名称找到并能由键盘聚焦", () => {
     const s = run([
       { type: "message_start", message: { role: "user", content: "q" } },
       { type: "message_start", message: { role: "assistant", content: [{ type: "thinking", thinking: "" }] } },
       { type: "message_update", event: { type: "thinking_delta", contentIndex: 0, delta: "x".repeat(200), partial: { thinking: "x".repeat(200) } } },
     ]);
-    const { container } = render(<Chat state={s} dispatch={vi.fn()} onFork={vi.fn()} onAnswerAsk={vi.fn()} />);
-    const th = container.querySelector("[data-slot=step-thinking]");
-    expect(th).toBeTruthy();
-    expect(th?.className).toContain("max-h-16");
-    expect(th?.className).toContain("overflow-y-auto");
+    render(<Chat state={s} dispatch={vi.fn()} onFork={vi.fn()} onAnswerAsk={vi.fn()} />);
+    const region = screen.getByRole("region", { name: "思考过程" });
+    region.focus();
+    expect(document.activeElement).toBe(region);
   });
 });
 

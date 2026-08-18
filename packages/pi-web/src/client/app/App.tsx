@@ -858,6 +858,7 @@ export default function App() {
           </aside>
         )}
         <main id="workspace-main" className="flex min-h-0 min-w-0 flex-1 flex-col">
+          <h1 className="sr-only">pi-web 工作区</h1>
           <DisconnectBannerMemo conn={conn} />
           <SplitView
             tree={workspaceTree}

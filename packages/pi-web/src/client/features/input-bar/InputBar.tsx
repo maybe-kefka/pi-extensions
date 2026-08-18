@@ -22,8 +22,8 @@ export function InputBar(props: {
   commands: CommandInfo[];
   files: FileGroup[];
   pickerLoading: boolean;
-  /** 顶部 border（ChatTab 全宽 border 盖过进度条时传 false） */
-  bordered?: boolean;
+  /** composer metadata 区域，由上层注入上下文状态等领域控件。 */
+  composerMeta?: React.ReactNode;
   onSend: (text: string) => void;
   /** 07：草稿恢复/上报（重挂后 input 内容不丢） */
   draftText?: string;
@@ -31,7 +31,7 @@ export function InputBar(props: {
   onAbort: () => void;
   onPickerOpen: () => void;
 }) {
-  const { busy, queue, conn, skills, commands, files, pickerLoading, bordered = true, onSend, onAbort, onPickerOpen, draftText, onDraftChange } = props;
+  const { busy, queue, conn, skills, commands, files, pickerLoading, composerMeta, onSend, onAbort, onPickerOpen, draftText, onDraftChange } = props;
   const [hasInput, setHasInput] = useState(false);
   // mention 状态机用 ref 同步更新（连续按键同 tick 时 React 批量更新会让第二次 keydown 读到旧状态，
   // 导致 space 后紧跟 / 的触发序列丢失）；tick 仅驱动渲染
@@ -377,64 +377,70 @@ export function InputBar(props: {
   const queued = queue.followUp.length;
 
   return (
-    <footer className={`p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] ${bordered ? "border-t" : ""}`}>
+    <footer className="px-4 pt-2 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
       {queued > 0 && (
-        <div className="text-muted-foreground mb-2 flex items-center gap-1.5 text-xs">
+        <div className="text-muted-foreground mx-auto mb-2 flex max-w-[780px] items-center gap-1.5 px-3 text-xs">
           <span className="bg-muted size-1.5 animate-pulse rounded-full" />
           已排队 {queued} 条，当前任务结束后自动发送
         </div>
       )}
-      <div className="relative flex items-end gap-2">
-        <div
-          ref={editorRef}
-          contentEditable
-          suppressContentEditableWarning
-          role="textbox"
-          aria-multiline="true"
-          className="border-input bg-raised shadow-sm focus-visible:ring-ring scrollbar-thin scrollbar-gutter-stable min-h-10 max-h-40 flex-1 resize-none overflow-y-auto rounded-md border px-3 py-2 text-sm focus-visible:ring-[3px] focus-visible:outline-none"
-          onInput={handleInput}
-          onKeyDown={handleKeyDown}
-          onPaste={handlePaste}
-          onFocus={() => setHasInput(!isContentEmpty(editorRef.current as HTMLElement))}
-        />
-        <MentionMenu
-          open={mention.active}
-          kind={mention.kind}
-          items={mentionItems}
-          activeIndex={activeIndex}
-          loading={pickerLoading}
-          emptyLabel={mentionEmptyLabel}
-          onSelect={selectMention}
-          onHover={setActiveIndex}
-        />
-        {busy ? (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="bg-primary text-primary-foreground hover:bg-primary/90 size-9 shrink-0 cursor-pointer rounded-full"
-            onClick={onAbort}
-            title="停止生成"
-          >
-            <Square className="size-4 fill-current" />
-          </Button>
-        ) : (
-          <Button
-            size="icon"
-            className="size-9 shrink-0 cursor-pointer rounded-full"
-            onClick={() => {
-              // 上拉框打开时点击发送 → 关闭面板不发送
-              if (mention.active) {
-                resetMention();
-                return;
-              }
-              submit();
-            }}
-            disabled={conn !== "open" || !hasInput}
-            title="发送"
-          >
-            <ArrowUp className="size-4" />
-          </Button>
-        )}
+      <div className="border-foreground/10 bg-raised mx-auto w-full max-w-[780px] rounded-[22px] border shadow-[0_2px_10px_color-mix(in_oklab,var(--foreground)_6%,transparent)] focus-within:border-focus focus-within:ring-2 focus-within:ring-focus">
+        <div className="relative">
+          <div
+            ref={editorRef}
+            contentEditable
+            suppressContentEditableWarning
+            role="textbox"
+            aria-label="消息输入"
+            aria-multiline="true"
+            className="scrollbar-thin scrollbar-gutter-stable min-h-12 max-h-40 w-full resize-none overflow-y-auto bg-transparent px-4 pt-3 pb-1 text-[15px] leading-6 outline-none"
+            onInput={handleInput}
+            onKeyDown={handleKeyDown}
+            onPaste={handlePaste}
+            onFocus={() => setHasInput(!isContentEmpty(editorRef.current as HTMLElement))}
+          />
+          <MentionMenu
+            open={mention.active}
+            kind={mention.kind}
+            items={mentionItems}
+            activeIndex={activeIndex}
+            loading={pickerLoading}
+            emptyLabel={mentionEmptyLabel}
+            onSelect={selectMention}
+            onHover={setActiveIndex}
+          />
+        </div>
+        <div className="flex min-h-10 items-center gap-2 px-3 pb-2">
+          <div className="min-w-0 flex-1">{composerMeta}</div>
+          {busy ? (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="bg-primary text-primary-foreground hover:bg-primary/90 size-8 shrink-0 cursor-pointer rounded-full"
+              onClick={onAbort}
+              title="停止生成"
+            >
+              <Square className="size-4 fill-current" />
+            </Button>
+          ) : (
+            <Button
+              size="icon"
+              className="size-8 shrink-0 cursor-pointer rounded-full"
+              onClick={() => {
+                // 上拉框打开时点击发送 → 关闭面板不发送
+                if (mention.active) {
+                  resetMention();
+                  return;
+                }
+                submit();
+              }}
+              disabled={conn !== "open" || !hasInput}
+              title="发送"
+            >
+              <ArrowUp className="size-4" />
+            </Button>
+          )}
+        </div>
       </div>
     </footer>
   );

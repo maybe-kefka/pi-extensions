@@ -187,39 +187,35 @@ export const ChatTab = memo(function ChatTab({
         scrollAnchor={scrollAnchor}
         onScrollAnchorChange={(anchor) => onScrollAnchorSave?.(sessionId, anchor)}
       />
-      <div className="flex items-start gap-2 border-t px-3">
-        {/* context meter 与相邻详情按钮：per-tab 实例占用；详情入口打开 ContextPanel */}
-        <div className="mt-3">
-          <ContextMeter percent={usage?.percent ?? null} />
-        </div>
-        <Popover>
-          <PopoverTrigger asChild>
-            <Button type="button" variant="ghost" size="icon" className="mt-3 size-7 shrink-0" title="上下文占用详情" aria-label="查看上下文占用详情">
-              <Info aria-hidden="true" className="size-3.5" />
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent align="start" side="top" className="mb-2">
-            <ContextPanel getRequest={getRequestStable} onCompact={compact} processId={processId} />
-          </PopoverContent>
-        </Popover>
-        <div className="min-w-0 flex-1">
-          <InputBar
-            bordered={false}
-            busy={state.streaming}
-            queue={state.queue}
-            conn={conn}
-            skills={skills}
-            commands={commands}
-            files={files}
-            pickerLoading={pickerLoading}
-            onSend={send}
-            onAbort={abort}
-            onPickerOpen={onPickerOpen}
-            draftText={draftText}
-            onDraftChange={onDraftChange}
-          />
-        </div>
-      </div>
+      <InputBar
+        busy={state.streaming}
+        queue={state.queue}
+        conn={conn}
+        skills={skills}
+        commands={commands}
+        files={files}
+        pickerLoading={pickerLoading}
+        onSend={send}
+        onAbort={abort}
+        onPickerOpen={onPickerOpen}
+        draftText={draftText}
+        onDraftChange={onDraftChange}
+        composerMeta={
+          <div className="flex min-w-0 items-center gap-1">
+            <ContextMeter percent={usage?.percent ?? null} />
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button type="button" variant="ghost" size="icon" className="size-7 shrink-0" title="上下文占用详情" aria-label="查看上下文占用详情">
+                  <Info aria-hidden="true" className="size-3.5" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="start" side="top" className="mb-2">
+                <ContextPanel getRequest={getRequestStable} onCompact={compact} processId={processId} />
+              </PopoverContent>
+            </Popover>
+          </div>
+        }
+      />
     </div>
   );
 });

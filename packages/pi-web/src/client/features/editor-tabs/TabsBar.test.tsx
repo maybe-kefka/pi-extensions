@@ -10,7 +10,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-/** jsdom 无布局——mock rect：tablist（role=tablist）= [0,300)；tab 按 title（聊天/a.ts/b.ts）= 每 100px 一个 */
+/** jsdom 无布局——mock rect：drop target = [0,300)；tab 按 title（聊天/a.ts/b.ts）= 每 100px 一个 */
 function mockTabRects() {
   const byTitle: Record<string, { left: number; width: number }> = {
     聊天: { left: 0, width: 100 },
@@ -19,8 +19,8 @@ function mockTabRects() {
   };
   vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function (this: Element) {
     const base = { top: 0, right: 0, bottom: 0, x: 0, y: 0, height: 0, toJSON: () => ({}) } as DOMRect;
-    if (this.getAttribute?.("role") === "tablist") return { ...base, left: 0, width: 300, right: 300 } as DOMRect;
-    const label = this.getAttribute?.("title") ?? this.querySelector?.('[role="tab"]')?.getAttribute("aria-label") ?? "";
+    if (this.getAttribute?.("data-slot") === "tab-drop-target") return { ...base, left: 0, width: 300, right: 300 } as DOMRect;
+    const label = this.getAttribute?.("title") ?? "";
     const r = byTitle[label];
     if (r) return { ...base, left: r.left, width: r.width, right: r.left + r.width } as DOMRect;
     return { ...base, left: 0, width: 0 } as DOMRect;
@@ -66,7 +66,7 @@ describe("TabsBar", () => {
         onMove={vi.fn()}
       />,
     );
-    const closeBtns = container.querySelectorAll('button[title="关闭 tab"]');
+    const closeBtns = container.querySelectorAll('[title="关闭 tab"]');
     expect(closeBtns.length).toBe(2);
     fireEvent.click(closeBtns[1]!);
     expect(onClose).toHaveBeenCalledWith("chat:/s/b.jsonl");
@@ -78,6 +78,12 @@ describe("TabsBar", () => {
     );
     const active = container.querySelector('[aria-selected="true"]');
     expect(active?.textContent).toContain("a.ts");
+  });
+
+  it("tablist 的直接子项全部是可激活 tab", () => {
+    render(<TabsBar tabs={tabs} active="a.ts" onActivate={vi.fn()} onClose={vi.fn()} onMove={vi.fn()} />);
+    const tablist = screen.getByRole("tablist", { name: "工作区标签" });
+    expect(Array.from(tablist.children).filter((child) => child.getAttribute("role") === "tab")).toHaveLength(tabs.length);
   });
 
   it("点击 tab 触发激活", () => {
@@ -124,6 +130,17 @@ describe("TabsBar", () => {
     fireEvent.click(closeBtns[2]); // b.ts 的关闭（0=chat, 1=a.ts, 2=b.ts）
     expect(onClose).toHaveBeenCalledWith("b.ts");
     expect(onActivate).not.toHaveBeenCalled();
+  });
+
+  it("焦点在 tab 上时按 Delete 关闭当前 tab", () => {
+    const onClose = vi.fn();
+    render(<TabsBar tabs={tabs} active="a.ts" onActivate={vi.fn()} onClose={onClose} onMove={vi.fn()} />);
+    const current = screen.getByRole("tab", { name: "a.ts" });
+
+    current.focus();
+    fireEvent.keyDown(current, { key: "Delete" });
+
+    expect(onClose).toHaveBeenCalledWith("a.ts");
   });
 
   it("聊天 tab 有关闭按钮（与 file 同级）", () => {
@@ -203,15 +220,4 @@ describe("TabsBar 拖拽调序", () => {
     expect(onDropTab).toHaveBeenCalledWith("chat:/other.jsonl");
   });
 
-  it("dragover 显示插入指示器（data-slot=tab-insert-indicator），drop 后清除", () => {
-    mockTabRects();
-    render(<TabsBar tabs={tabs} active="a.ts" onActivate={vi.fn()} onClose={vi.fn()} onMove={vi.fn()} dragId="chat:/other.jsonl" />);
-    const tablist = screen.getByRole("tablist");
-    dragOverAt(tablist, 160); // a.ts 右半
-    let indicator = tablist.querySelector('[data-slot="tab-insert-indicator"]');
-    expect(indicator).toBeTruthy();
-    fireEvent.drop(tablist);
-    indicator = tablist.querySelector('[data-slot="tab-insert-indicator"]');
-    expect(indicator).toBeNull();
-  });
 });

@@ -31,8 +31,8 @@ export function ActivityBar({ active, onSelect }: ActivityBarProps) {
         aria-label={item.title}
         aria-pressed={isActive}
         title={item.title}
-        className={`focus-visible:ring-ring focus-visible:ring-2 flex size-9 cursor-pointer items-center justify-center rounded-md transition-[background-color,color,box-shadow] duration-150 ${
-          isActive ? "bg-active text-accent-foreground before:bg-primary relative before:absolute before:inset-y-1 before:left-0 before:w-0.5 before:rounded-full" : "text-muted-foreground hover:bg-hover hover:text-foreground"
+        className={`focus-visible:ring-ring focus-visible:ring-2 flex size-9 cursor-pointer items-center justify-center rounded-lg transition-[background-color,color,box-shadow] duration-150 ${
+          isActive ? "bg-active text-foreground" : "text-muted-foreground hover:bg-hover hover:text-foreground"
         }`}
         onClick={() => onSelect(isActive ? null : item.id)}
       >
@@ -41,7 +41,7 @@ export function ActivityBar({ active, onSelect }: ActivityBarProps) {
     );
   };
   return (
-    <nav aria-label="工作区工具" className="border-border bg-sidebar flex w-12 shrink-0 flex-col items-center gap-1 border-r py-2">
+    <nav aria-label="工作区工具" className={`border-border bg-sidebar flex w-12 shrink-0 flex-col items-center gap-1 py-2 ${active === null ? "border-r" : ""}`}>
       {MAIN_ITEMS.map(renderItem)}
       <div className="mt-auto">{renderItem(BOTTOM_ITEM)}</div>
     </nav>

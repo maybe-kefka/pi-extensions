@@ -68,6 +68,11 @@ export function Markdown({ text }: { text: string }) {
                 {children}
               </a>
             ),
+            th: ({ children, node: _node, ...props }) => (
+              <th {...props}>
+                {nodeText(children).trim() ? children : <span className="sr-only">未命名列</span>}
+              </th>
+            ),
             pre: ({ children }) => <>{children}</>,
             code: ({ className, children }) => {
               const lang = /language-(\w+)/.exec(className ?? "")?.[1];

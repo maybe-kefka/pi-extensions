@@ -89,8 +89,8 @@ function Row({
         <ContextMenuTrigger asChild>
       <div className="group relative">
         <button
-          className={`flex w-full cursor-pointer items-center gap-1.5 rounded px-2 py-1 text-left text-xs ${
-            selected ? "bg-primary/15 text-primary" : "hover:bg-muted/60"
+          className={`flex w-full cursor-pointer items-center gap-1.5 rounded-lg px-2 py-1 text-left text-xs ${
+            selected ? "bg-active text-foreground" : "hover:bg-hover"
           }`}
           style={{ paddingLeft: `${8 + depth * 14}px` }}
           onClick={() => (isDir ? onToggleDir(node.path) : onOpenFile(node.path, true))}

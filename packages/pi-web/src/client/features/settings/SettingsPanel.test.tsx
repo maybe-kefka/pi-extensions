@@ -1,7 +1,13 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen, fireEvent } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SettingsPanel } from "./SettingsPanel";
+
+HTMLElement.prototype.hasPointerCapture ??= vi.fn(() => false);
+HTMLElement.prototype.setPointerCapture ??= vi.fn();
+HTMLElement.prototype.releasePointerCapture ??= vi.fn();
+HTMLElement.prototype.scrollIntoView ??= vi.fn();
 
 const props = {
   models: [{ provider: "openai", id: "gpt", name: "A very long model name" }],
@@ -31,5 +37,11 @@ describe("SettingsPanel", () => {
     render(<SettingsPanel {...props} />);
     const model = screen.getByRole("combobox", { name: /模型：A very long model name/ });
     expect(model.getAttribute("title")).toBe("A very long model name");
+  });
+
+  it("主题选项组在浮层中保留明确名称", async () => {
+    render(<SettingsPanel {...props} />);
+    await userEvent.click(screen.getByRole("combobox", { name: "主题" }));
+    expect(await screen.findByRole("group", { name: "主题" })).toBeTruthy();
   });
 });

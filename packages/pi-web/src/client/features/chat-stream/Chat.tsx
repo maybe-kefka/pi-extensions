@@ -1,8 +1,6 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type * as React from "react";
-import { Bot, ChevronDown, ChevronRight, CircleCheck, CircleX, GitFork, Loader2, User, Wrench } from "lucide-react";
-import { Avatar, AvatarFallback } from "@/shared/ui";
-import { Badge } from "@/shared/ui";
+import { ChevronDown, ChevronRight, CircleCheck, CircleX, GitFork, Loader2, Wrench } from "lucide-react";
 import { Button } from "@/shared/ui";
 import { Bubble, BubbleContent } from "@/shared/ui";
 import { Markdown } from "@/shared/ui";
@@ -10,7 +8,7 @@ import { UserContentChip } from "./user-content";
 import { toolsForBubble } from "./tools-for-bubble";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/shared/ui";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/shared/ui";
-import { Message, MessageAvatar, MessageContent, MessageGroup, MessageHeader } from "@/shared/ui";
+import { Message, MessageContent, MessageGroup } from "@/shared/ui";
 import {
   MessageScroller,
   MessageScrollerButton,
@@ -31,26 +29,6 @@ import {
   type TurnStep,
 } from "@/entities/chat";
 
-function BotAvatar() {
-  return (
-    <Avatar className="size-7 sm:size-8">
-      <AvatarFallback className="bg-muted text-foreground">
-        <Bot className="size-4" />
-      </AvatarFallback>
-    </Avatar>
-  );
-}
-
-function UserAvatar() {
-  return (
-    <Avatar className="size-7 sm:size-8">
-      <AvatarFallback className="bg-muted text-foreground">
-        <User className="size-4" />
-      </AvatarFallback>
-    </Avatar>
-  );
-}
-
 type ToolStatus = "running" | "done" | "error";
 
 function toolStatus(row: StreamState["tools"][number]): ToolStatus {
@@ -59,9 +37,9 @@ function toolStatus(row: StreamState["tools"][number]): ToolStatus {
 }
 
 function StatusIcon({ status }: { status: ToolStatus }) {
-  if (status === "running") return <Loader2 className="text-muted-foreground size-3.5 animate-spin" />;
-  if (status === "error") return <CircleX className="text-destructive size-3.5" />;
-  return <CircleCheck className="text-success size-3.5" />;
+  if (status === "running") return <Loader2 aria-hidden="true" className="text-muted-foreground size-3.5 animate-spin" />;
+  if (status === "error") return <CircleX aria-hidden="true" className="text-destructive size-3.5" />;
+  return <CircleCheck aria-hidden="true" className="text-success size-3.5" />;
 }
 
 /**
@@ -85,11 +63,11 @@ function ToolCard({ row }: { row: StreamState["tools"][number] }) {
     row.output.trim() ||
     (argsJson ? (argsJson.length > 120 ? argsJson.slice(0, 120) + "…" : argsJson) : "");
   return (
-    <div className="flex flex-col gap-1" data-slot="step-tool">
+    <div className="border-muted flex flex-col gap-1 border-l-2 pl-2" data-slot="step-tool">
       <button
         type="button"
         data-slot="tool-toggle"
-        className="border-border bg-muted/30 hover:bg-muted/50 flex w-full cursor-pointer items-center gap-2 rounded-xl border px-3 py-2 text-left text-xs"
+        className="hover:bg-hover focus-visible:ring-ring flex w-full cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs focus-visible:ring-2 focus-visible:outline-none"
         onClick={() => setOpen((o) => !o)}
       >
         {open ? <ChevronDown className="size-3.5 shrink-0" /> : <ChevronRight className="size-3.5 shrink-0" />}
@@ -98,18 +76,18 @@ function ToolCard({ row }: { row: StreamState["tools"][number] }) {
         {preview && <span className="text-muted-foreground min-w-0 flex-1 truncate">{preview}</span>}
       </button>
       {open && (
-        <div className="border-border bg-muted/30 flex flex-col gap-1 rounded-xl border p-2">
+        <div className="bg-sunken ml-4 flex flex-col gap-2 rounded-xl p-3">
           {row.args !== null && row.args !== undefined && (
             <div className="min-w-0">
               <div className="text-muted-foreground mb-0.5 text-[11px]">参数</div>
-              <pre className="text-muted-foreground border-border rounded-md border p-2 text-xs whitespace-pre-wrap [overflow-wrap:anywhere]">
+              <pre className="bg-canvas text-muted-foreground rounded-lg p-2 text-xs whitespace-pre-wrap [overflow-wrap:anywhere]">
                 {argsJsonPretty}
               </pre>
             </div>
           )}
           <div className="min-w-0">
             <div className="text-muted-foreground mb-0.5 text-[11px]">输出</div>
-            <pre className="text-muted-foreground border-border rounded-md border p-2 text-xs whitespace-pre-wrap [overflow-wrap:anywhere]">
+            <pre className="bg-canvas text-muted-foreground rounded-lg p-2 text-xs whitespace-pre-wrap [overflow-wrap:anywhere]">
               {row.output || "(空)"}
             </pre>
           </div>
@@ -158,9 +136,9 @@ function WebAskCard({
 
   if (answered) {
     return (
-      <div data-slot="web-ask" data-answered="true" className="border-border bg-muted/30 flex flex-col gap-1.5 rounded-xl border p-3 text-xs">
+      <div data-slot="web-ask" data-answered="true" className="bg-sunken flex flex-col gap-1.5 rounded-xl p-3 text-xs">
         <div className="text-foreground font-medium">❓ {question}</div>
-        <div className="text-muted-foreground border-border rounded-md border p-2 whitespace-pre-wrap">
+        <div className="bg-canvas text-muted-foreground rounded-lg p-2 whitespace-pre-wrap">
           已回答：{row.output}
         </div>
       </div>
@@ -168,7 +146,7 @@ function WebAskCard({
   }
 
   return (
-    <div data-slot="web-ask" className="border-border bg-muted/30 flex flex-col gap-2 rounded-xl border p-3 text-xs">
+    <div data-slot="web-ask" className="bg-sunken flex flex-col gap-2 rounded-xl p-3 text-xs">
       <div className="text-foreground font-medium">❓ {question}</div>
       {row.toolName === "web_ask_text" ? (
         <textarea
@@ -234,7 +212,10 @@ function ThinkingBlock({ text, active }: { text: string; active: boolean }) {
     <div
       ref={ref}
       data-slot="step-thinking"
-      className="bg-muted/40 text-muted-foreground scrollbar-thin max-h-16 overflow-y-auto rounded-md px-2 py-1 text-xs"
+      role="region"
+      aria-label="思考过程"
+      tabIndex={0}
+      className="border-muted text-muted-foreground scrollbar-thin max-h-24 overflow-y-auto border-l-2 px-3 py-1 text-sm leading-6"
     >
       {text}
     </div>
@@ -371,7 +352,7 @@ function ProgressDialog({
                     <pre
                       key={i}
                       data-slot="progress-reasoning"
-                      className="text-muted-foreground bg-muted/30 border-border rounded-md border p-2 text-xs whitespace-pre-wrap [overflow-wrap:anywhere]"
+                      className="border-muted text-muted-foreground border-l-2 px-3 py-1 text-xs leading-5 whitespace-pre-wrap [overflow-wrap:anywhere]"
                     >
                       {st.text}
                     </pre>
@@ -436,9 +417,6 @@ function TurnBubbleView({
     <>
       {hasUser && (
         <Message align="end">
-          <MessageAvatar>
-            <UserAvatar />
-          </MessageAvatar>
           <MessageContent>
             <Bubble variant="tinted" align="end">
               <BubbleContent>
@@ -457,16 +435,13 @@ function TurnBubbleView({
       )}
       {bubble.turns.length > 0 && (
         <Message align="start">
-          <MessageAvatar>
-            <BotAvatar />
-          </MessageAvatar>
           <MessageContent>
             <Bubble variant="ghost" className="w-full">
               {/* R24：工具结果窗口期指示器（LLM 处理工具结果中）——气泡内容区第一行，与头像齐平 */}
               {processing !== null && (
                 <div
                   data-slot="tool-processing"
-                  className="bg-muted/40 text-muted-foreground flex items-center gap-1.5 rounded-md px-2 py-1 text-xs"
+                  className="border-muted text-muted-foreground flex items-center gap-1.5 border-l-2 px-3 py-1 text-xs"
                 >
                   <Loader2 className="size-3 shrink-0 animate-spin" />
                   <span className="min-w-0 truncate">{processing || "thinking......"}</span>
@@ -577,7 +552,7 @@ export function Chat({
   const compactRecord =
     compacting && (compacting.phase === "before" || compacting.phase === "done") ? (
       <div data-slot="compact-record" className="text-muted-foreground flex justify-center py-1">
-        <span className="bg-muted/40 border-border rounded-full border px-3 py-1 text-[11px]">
+        <span className="bg-sunken rounded-full px-3 py-1 text-[11px]">
           {compacting.phase === "before" ? (
             <span className="flex items-center gap-1.5">
               <Loader2 data-slot="compact-spinner" className="size-3 animate-spin" />
@@ -598,7 +573,7 @@ export function Chat({
   const viewportRef = useRef<HTMLDivElement | null>(null);
 
   return (
-    <main className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+    <section aria-label="会话内容" className="relative flex min-h-0 min-w-0 flex-1 flex-col">
       <MessageScrollerProvider autoScroll>
         <ScrollAnchorManager
           scrollAnchor={scrollAnchor}
@@ -608,7 +583,7 @@ export function Chat({
         />
         <MessageScroller className="min-h-0 flex-1">
           <MessageScrollerViewport ref={viewportRef}>
-            <MessageScrollerContent className="mx-auto w-full max-w-3xl gap-3 px-4 pt-3 pb-[25vh]">
+            <MessageScrollerContent className="mx-auto w-full max-w-[780px] gap-6 px-6 pt-8 pb-[20vh]">
               {!hasContent ? (
                 <Empty className="mt-16">
                   <EmptyHeader>
@@ -647,7 +622,7 @@ export function Chat({
           <MessageScrollerButton />
         </MessageScroller>
       </MessageScrollerProvider>
-    </main>
+    </section>
   );
 }
 
