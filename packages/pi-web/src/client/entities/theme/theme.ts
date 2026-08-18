@@ -394,7 +394,7 @@ const SYNTAX_SOURCES: Record<ThemeName, { light: SyntaxTokenSource; dark: Syntax
     dark: { syntaxKeyword: "#56b6c2", syntaxType: "#61afef", syntaxFunction: "#c678dd", syntaxString: "#98c379", syntaxNumber: "#e5c07b", syntaxOperator: "#abb2bf", syntaxProperty: "#61afef", syntaxComment: "#abb2bf" },
   },
   dracula: {
-    light: { syntaxKeyword: "#087e9a", syntaxType: "#6d28d9", syntaxFunction: "#9b246f", syntaxString: "#287a4a", syntaxNumber: "#7a5a00", syntaxOperator: "#44475a", syntaxProperty: "#6d28d9", syntaxComment: "#44475a" },
+    light: { syntaxKeyword: "#087c98", syntaxType: "#6d28d9", syntaxFunction: "#9b246f", syntaxString: "#287a4a", syntaxNumber: "#7a5a00", syntaxOperator: "#44475a", syntaxProperty: "#6d28d9", syntaxComment: "#44475a" },
     dark: { syntaxKeyword: "#8be9fd", syntaxType: "#bd93f9", syntaxFunction: "#ff79c6", syntaxString: "#50fa7b", syntaxNumber: "#f1fa8c", syntaxOperator: "#f8f8f2", syntaxProperty: "#bd93f9", syntaxComment: "#abb2bf" },
   },
   nord: {
@@ -449,6 +449,20 @@ export const THEMES: Record<ThemeName, ThemeDefinition> = Object.fromEntries(
     dark: enrichTokens(PALETTES[name].dark, SYNTAX_SOURCES[name].dark, NEUTRAL_SURFACES.dark),
   }]),
 ) as Record<ThemeName, ThemeDefinition>;
+
+export interface ThemePreview {
+  light: readonly [accent: string, syntax: string, status: string];
+  dark: readonly [accent: string, syntax: string, status: string];
+}
+
+/** Settings 等目录消费者使用的个性预览：强调色、语法色与状态色，不依赖中性 surface。 */
+export function getThemePreview(theme: ThemeName): ThemePreview {
+  const preview = (scheme: Scheme) => {
+    const tokens = THEMES[theme][scheme];
+    return [tokens.accent, tokens.syntaxFunction, tokens.success] as const;
+  };
+  return { light: preview("light"), dark: preview("dark") };
+}
 
 const kebab = (key: string): string => key.replace(/[A-Z]/g, (character) => `-${character.toLowerCase()}`).replace(/([a-z])(\d)/g, "$1-$2");
 

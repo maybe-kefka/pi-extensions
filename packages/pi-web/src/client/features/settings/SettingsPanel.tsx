@@ -1,7 +1,7 @@
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/shared/ui";
 import { ToggleGroup } from "radix-ui";
 import type { ModelInfo } from "@/entities/chat";
-import { THEMES, THEME_NAMES, type ThemePreference } from "@/entities/theme";
+import { getThemePreview, THEMES, THEME_NAMES, type ThemePreference } from "@/entities/theme";
 
 export interface SettingsPanelProps {
   models: ModelInfo[];
@@ -108,27 +108,26 @@ export function SettingsPanel(props: SettingsPanelProps) {
                   <SelectContent>
                     <SelectGroup>
                       <SelectLabel className="sr-only">主题</SelectLabel>
-                      {THEME_NAMES.map((name) => (
-                        <SelectItem key={name} value={name}>
-                          <span className="flex min-w-0 items-center gap-2">
-                            <span className="flex shrink-0 gap-0.5" aria-hidden="true">
-                              <span
-                                className="size-3 rounded-sm border"
-                                style={{
-                                  backgroundColor: THEMES[name].light.canvas,
-                                }}
-                              />
-                              <span
-                                className="size-3 rounded-sm border"
-                                style={{
-                                  backgroundColor: THEMES[name].dark.canvas,
-                                }}
-                              />
+                      {THEME_NAMES.map((name) => {
+                        const preview = getThemePreview(name);
+                        return (
+                          <SelectItem key={name} value={name}>
+                            <span className="flex min-w-0 items-center gap-2">
+                              <span className="flex shrink-0 items-center gap-1.5" aria-hidden="true" title="浅色 / 深色主题预览">
+                                {(["light", "dark"] as const).map((scheme) => (
+                                  <span key={scheme} className="flex items-center gap-0.5">
+                                    <span className="text-muted-foreground text-[11px]">{scheme === "light" ? "浅" : "深"}</span>
+                                    {preview[scheme].map((color, index) => (
+                                      <span key={index} className="size-2.5 rounded-sm" style={{ backgroundColor: color }} />
+                                    ))}
+                                  </span>
+                                ))}
+                              </span>
+                              <span className="truncate">{THEMES[name].label}</span>
                             </span>
-                            <span className="truncate">{THEMES[name].label}</span>
-                          </span>
-                        </SelectItem>
-                      ))}
+                          </SelectItem>
+                        );
+                      })}
                     </SelectGroup>
                   </SelectContent>
                 </Select>

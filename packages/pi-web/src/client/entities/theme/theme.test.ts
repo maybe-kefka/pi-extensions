@@ -9,6 +9,7 @@ import {
   DEFAULT_PREFERENCE,
   generateThemeCss,
   generateAllThemesCss,
+  getThemePreview,
   THEMES,
   THEME_NAMES,
   loadPreference,
@@ -17,7 +18,7 @@ import {
   savePreference,
   type ThemeTokens,
 } from "./theme.js";
-import { blendHex, contrastRatio } from "./contrast-test-helpers.js";
+import { blendHex, blendRgb, contrastRatio } from "./contrast-test-helpers.js";
 
 const TOKEN_KEYS: (keyof ThemeTokens)[] = [
   "background",
@@ -76,6 +77,15 @@ function makeStorage(init: Record<string, string> = {}) {
 }
 
 describe("THEMES 定义完整性", () => {
+  it("公开的主题预览使用 light/dark 个性色且五套组合可区分", () => {
+    expect(getThemePreview("github")).toEqual({
+      light: ["#0969da", "#8250df", "#1a7f37"],
+      dark: ["#4493f8", "#a371f7", "#3fb950"],
+    });
+    const signatures = THEME_NAMES.map((name) => JSON.stringify(getThemePreview(name)));
+    expect(new Set(signatures).size).toBe(5);
+  });
+
   it("公开确定性的 CSS 生成契约", () => {
     expect(generateThemeCss("github", "light")).toContain(
       '[data-theme="github"] {\n  --background: #ffffff;\n',
@@ -182,10 +192,10 @@ describe("THEMES 定义完整性", () => {
           const ratio = contrastRatio(tokens[token], tokens.sunken);
           if (ratio < 3) failures.push(`${name}/${scheme}/${token}/context-meter-sunken=${ratio.toFixed(2)}<3`);
         }
-        const markdownCodeSurface = blendHex(tokens.muted, tokens.canvas, 0.5);
+        const markdownCodeSurface = blendRgb(tokens.muted, tokens.canvas, 0.5);
         for (const token of syntaxTokens) {
           const ratio = contrastRatio(tokens[token], markdownCodeSurface);
-          if (ratio < 4.5) failures.push(`${name}/${scheme}/${token}/markdown-muted-alpha-50=${ratio.toFixed(2)}<4.5`);
+          if (ratio < 4.55) failures.push(`${name}/${scheme}/${token}/markdown-muted-alpha-50=${ratio.toFixed(2)}<4.55`);
         }
       }
     }

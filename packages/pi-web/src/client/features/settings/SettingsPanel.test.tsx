@@ -43,5 +43,8 @@ describe("SettingsPanel", () => {
     render(<SettingsPanel {...props} />);
     await userEvent.click(screen.getByRole("combobox", { name: "主题" }));
     expect(await screen.findByRole("group", { name: "主题" })).toBeTruthy();
+    const options = await screen.findAllByRole("option");
+    expect(options).toHaveLength(5);
+    expect(options.every((option) => option.textContent?.includes("浅") && option.textContent.includes("深"))).toBe(true);
   });
 });
