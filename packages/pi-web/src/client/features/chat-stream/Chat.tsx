@@ -195,7 +195,7 @@ function WebAskCard({
                   selected.includes(opt) ? "bg-primary border-primary" : "border-border bg-background"
                 }`}
               >
-                {selected.includes(opt) && <span className="text-background text-[10px] leading-none">✓</span>}
+                {selected.includes(opt) && <span className="text-background text-[11px] leading-none">✓</span>}
               </span>
               <span className="min-w-0">{opt}</span>
             </button>

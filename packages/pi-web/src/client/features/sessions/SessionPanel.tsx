@@ -25,20 +25,17 @@ export function SessionPanel(props: SessionPanelProps) {
   }, [refreshKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <div className="scrollbar-thin scrollbar-gutter-stable flex h-full flex-col gap-4 overflow-y-auto p-3">
+    <div className="flex h-full min-h-0 flex-col">
+      <header className="flex h-9 shrink-0 items-center gap-2 border-b px-3">
+        <span className="text-sm font-semibold">会话</span>
+        <Button variant="ghost" size="icon" className="ml-auto size-7" aria-label="刷新会话" title="刷新" onClick={() => setRefreshKey((k) => k + 1)}>
+          <RefreshCw />
+        </Button>
+      </header>
+      <div className="scrollbar-thin scrollbar-gutter-stable min-h-0 flex-1 overflow-y-auto p-3">
       <section className="flex flex-col gap-2 border-b pb-4" aria-labelledby="sessions-heading">
         <div className="flex items-center justify-between">
-          <h2 id="sessions-heading" className="text-muted-foreground text-[11px] font-semibold tracking-wide uppercase">会话</h2>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-6"
-            aria-label="刷新会话"
-            title="刷新"
-            onClick={() => setRefreshKey((k) => k + 1)}
-          >
-            <RefreshCw />
-          </Button>
+          <h2 id="sessions-heading" className="text-muted-foreground text-[11px] font-semibold tracking-wide uppercase">会话列表</h2>
         </div>
         <div>
           <SessionList
@@ -91,6 +88,7 @@ export function SessionPanel(props: SessionPanelProps) {
             )}
         </div>
       </section>
+      </div>
     </div>
   );
 }

@@ -75,7 +75,7 @@ export function MentionMenu({
       ) : (
         groups.map((g) => (
           <div key={g.group}>
-            <div className="text-muted-foreground px-2 py-1 text-[10px] font-semibold tracking-wide uppercase">
+            <div className="text-muted-foreground px-2 py-1 text-[11px] font-semibold tracking-wide uppercase">
               {g.group}
             </div>
             {g.items.map((it) => {
@@ -95,7 +95,7 @@ export function MentionMenu({
                 >
                   <Icon className="text-muted-foreground size-3 shrink-0" />
                   <span className="min-w-0 flex-1 truncate font-mono">{it.label}</span>
-                  {it.chip && <span className="text-muted-foreground/60 shrink-0 text-[10px]">chip</span>}
+                  {it.chip && <span className="text-muted-foreground/60 shrink-0 text-[11px]">chip</span>}
                 </button>
               );
             })}

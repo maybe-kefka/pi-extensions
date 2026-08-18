@@ -64,8 +64,8 @@ export function DiffSplitView({ path, request, repoRoot }: DiffSplitViewProps) {
       <div className="flex items-center gap-2 border-b px-3 py-1.5">
         <span className="truncate font-mono text-xs">{path}</span>
         <span className="text-muted-foreground text-[11px]">diff vs HEAD（只读）</span>
-        <span className="bg-muted text-muted-foreground rounded px-1.5 py-0.5 font-mono text-[10px]">左：HEAD</span>
-        <span className="bg-muted text-muted-foreground rounded px-1.5 py-0.5 font-mono text-[10px]">右：工作区</span>
+        <span className="bg-muted text-muted-foreground rounded px-1.5 py-0.5 font-mono text-[11px]">左：HEAD</span>
+        <span className="bg-muted text-muted-foreground rounded px-1.5 py-0.5 font-mono text-[11px]">右：工作区</span>
       </div>
       <div className="scrollbar-thin scrollbar-gutter-stable min-h-0 flex-1 overflow-auto">
         {rows.length === 0 && <div className="text-muted-foreground p-4 text-xs">无差异（与 HEAD 一致）</div>}

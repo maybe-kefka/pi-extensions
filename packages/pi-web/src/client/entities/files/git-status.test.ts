@@ -17,9 +17,11 @@ describe("statusMarker", () => {
 });
 
 describe("statusColorVar", () => {
-  it("全部返回语义变量", () => {
-    for (const s of ["M", "A", "D", "U", "??"]) {
-      expect(statusColorVar(s)).toMatch(/^var\(--/);
-    }
+  it("按文件状态返回稳定的语义变量", () => {
+    expect(statusColorVar("M")).toBe("var(--warning)");
+    expect(statusColorVar("A")).toBe("var(--success)");
+    expect(statusColorVar("D")).toBe("var(--destructive)");
+    expect(statusColorVar("U")).toBe("var(--destructive)");
+    expect(statusColorVar("??")).toBe("var(--muted-foreground)");
   });
 });

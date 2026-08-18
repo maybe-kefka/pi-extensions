@@ -248,10 +248,10 @@ describe("RepoItem popover 工具栏", () => {
   });
 });
 
-describe("review 回归：分支行 hover 操作可达", () => {
+describe("review 回归：分支选择与 sibling actions 可达", () => {
   afterEach(cleanup);
 
-  it("popover 分支行含 group 类（hover 按钮可达）", async () => {
+  it("分支选择是独立按钮，action 不触发分支切换", async () => {
     const calls: string[] = [];
     const request = (async (method: string) => {
       calls.push(method);
@@ -264,12 +264,13 @@ describe("review 回归：分支行 hover 操作可达", () => {
     await screen.findByText("pi-extensions");
     fireEvent.click(screen.getAllByTitle("更多操作")[0]);
     await screen.findByText("feat");
-    const feats = screen.getAllByText("feat");
-    const row = feats[feats.length - 1].closest(".group")!;
-    expect(row).toBeTruthy();
-    // hover 按钮存在于 DOM（group-hover:flex 仅视觉隐藏）
-    expect(row.querySelector('button[title="删除分支"]')).toBeTruthy();
-    expect(row.querySelector('button[title="合并到当前分支"]')).toBeTruthy();
+    expect(screen.getByRole("button", { name: "切换到 feat" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "合并 feat" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "rebase feat" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "删除分支 feat" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "合并 feat" }));
+    expect(calls.some((method) => method === "pi:gitSwitch")).toBe(false);
+    expect(await screen.findByRole("dialog")).toBeTruthy();
   });
 });
 

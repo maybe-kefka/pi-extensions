@@ -22,7 +22,7 @@ import { Button } from "@/shared/ui";
 import { Input } from "@/shared/ui";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/shared/ui";
 import { Popover, PopoverContent, PopoverTrigger } from "@/shared/ui";
-import { statusMarker } from "@/entities/files";
+import { statusColorVar, statusMarker } from "@/entities/files";
 import type { RpcClient } from "@/shared/api";
 
 export interface GitStatusEntry {
@@ -329,6 +329,8 @@ export function RepoItem({
     <div className="border-border border-b">
       <div className="flex items-center gap-1.5 px-2 py-1.5 text-xs">
         <button
+          type="button"
+          aria-label={expanded ? "折叠仓库" : "展开仓库"}
           className="hover:bg-muted cursor-pointer rounded p-0.5"
           title={expanded ? "折叠" : "展开"}
           onClick={() => setExpanded((e) => !e)}
@@ -339,7 +341,7 @@ export function RepoItem({
         <span className="min-w-0 flex-1 truncate font-medium">{repo.name}</span>
         {repo.branch && (
           <button
-            className="bg-muted text-muted-foreground hover:bg-primary/20 hover:text-primary cursor-pointer rounded px-1 py-0.5 font-mono text-[10px]"
+            className="bg-muted text-muted-foreground hover:bg-primary/20 hover:text-primary cursor-pointer rounded px-1 py-0.5 font-mono text-[11px] outline-none focus-visible:ring-2 focus-visible:ring-ring"
             title={`当前分支 ${repo.branch}（点击选择）`}
             onClick={() => {
               setPickerOpen(true);
@@ -349,16 +351,16 @@ export function RepoItem({
             {repo.branch}
           </button>
         )}
-        <button className="hover:bg-muted cursor-pointer rounded p-0.5" title="刷新" onClick={() => void refreshBrief()}>
+        <button type="button" aria-label="刷新仓库" className="hover:bg-muted cursor-pointer rounded p-0.5" title="刷新" onClick={() => void refreshBrief()}>
           <RefreshCw className={`size-3 ${refreshing ? "animate-spin" : ""}`} />
         </button>
         {repo.behind > 0 && (
-          <span className="text-blue-600 dark:text-blue-400 shrink-0 font-mono text-[10px]" title={`可拉取 ${repo.behind}`}>
+        <span className="text-warning shrink-0 font-mono text-[11px]" title={`可拉取 ${repo.behind}`} aria-label={`可拉取 ${repo.behind} 个提交`}>
             ↓{repo.behind}
           </span>
         )}
         {repo.ahead > 0 && (
-          <span className="text-green-600 dark:text-green-400 shrink-0 font-mono text-[10px]" title={`可推送 ${repo.ahead}`}>
+        <span className="text-success shrink-0 font-mono text-[11px]" title={`可推送 ${repo.ahead}`} aria-label={`可推送 ${repo.ahead} 个提交`}>
             ↑{repo.ahead}
           </span>
         )}
@@ -370,33 +372,30 @@ export function RepoItem({
           }}
         >
           <PopoverTrigger asChild>
-            <button className="hover:bg-muted cursor-pointer rounded p-0.5" title="更多操作">
+            <button type="button" className="hover:bg-muted cursor-pointer rounded p-0.5" title="更多操作" aria-label="更多操作">
               <MoreHorizontal />
             </button>
           </PopoverTrigger>
           <PopoverContent align="end" side="right" className="w-64 p-2">
-            <div className="mb-1 text-[10px] font-semibold tracking-wide uppercase">分支</div>
+            <div className="mb-1 text-[11px] font-semibold tracking-wide uppercase">分支</div>
             <div className="scrollbar-thin mb-1 max-h-40 overflow-y-auto">
               {branches.map((branch) => {
                 const isCurrent = branch === currentBranch;
                 return (
-                  <div
-                    key={branch}
-                    className={`group flex cursor-pointer items-center gap-1.5 rounded px-1.5 py-1 text-[11px] ${isCurrent ? "bg-primary/10 text-primary" : "hover:bg-muted"}`}
-                    onClick={() => !isCurrent && void switchBranch(branch)}
-                    title={isCurrent ? "当前分支" : `切换到 ${branch}`}
-                  >
+                  <div key={branch} className={`group flex items-center gap-1.5 rounded px-1.5 py-1 text-[11px] ${isCurrent ? "bg-primary/10 text-primary" : "hover:bg-muted"}`}>
                     {isCurrent ? <Check className="size-3 shrink-0" /> : <GitBranch className="text-muted-foreground size-3 shrink-0" />}
-                    <span className="min-w-0 flex-1 truncate">{branch}</span>
+                    <button type="button" className="min-w-0 flex-1 truncate text-left outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={() => !isCurrent && void switchBranch(branch)} disabled={isCurrent} aria-label={isCurrent ? `当前分支 ${branch}` : `切换到 ${branch}`} title={isCurrent ? "当前分支" : `切换到 ${branch}`}>
+                      {branch}
+                    </button>
                     {!isCurrent && (
                       <span className="hidden shrink-0 items-center gap-0.5 group-hover:flex">
-                        <button title="合并到当前分支" className="cursor-pointer p-0.5" onClick={(e) => { e.stopPropagation(); setConfirmOp({ kind: "merge", branch }); }}>
+                        <button type="button" title="合并到当前分支" aria-label={`合并 ${branch}`} className="cursor-pointer p-0.5 outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={() => setConfirmOp({ kind: "merge", branch })}>
                           <GitMerge className="size-3" />
                         </button>
-                        <button title="rebase 到当前分支" className="cursor-pointer p-0.5" onClick={(e) => { e.stopPropagation(); setConfirmOp({ kind: "rebase", branch }); }}>
+                        <button type="button" title="rebase 到当前分支" aria-label={`rebase ${branch}`} className="cursor-pointer p-0.5 outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={() => setConfirmOp({ kind: "rebase", branch })}>
                           <GitPullRequest className="size-3" />
                         </button>
-                        <button title="删除分支" className="cursor-pointer p-0.5" onClick={(e) => { e.stopPropagation(); setConfirmOp({ kind: "delete", branch }); }}>
+                        <button type="button" title="删除分支" aria-label={`删除分支 ${branch}`} className="cursor-pointer p-0.5 outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={() => setConfirmOp({ kind: "delete", branch })}>
                           <Trash2 className="size-3" />
                         </button>
                       </span>
@@ -408,6 +407,7 @@ export function RepoItem({
             </div>
             <div className="mb-2 flex items-center gap-1">
               <input
+                aria-label="新分支名"
                 value={newBranchName}
                 onChange={(e) => setNewBranchName(e.target.value)}
                 placeholder="新分支名"
@@ -416,13 +416,13 @@ export function RepoItem({
                   if (e.key === "Enter") void createBranch();
                 }}
               />
-              <Button size="sm" className="h-6 shrink-0 px-1.5 text-[10px]" disabled={newBranchName.trim() === ""} onClick={() => void createBranch()}>
+              <Button size="sm" className="h-6 shrink-0 px-1.5 text-[11px]" disabled={newBranchName.trim() === ""} onClick={() => void createBranch()}>
                 <Plus className="size-3" />
                 新建
               </Button>
             </div>
 
-            <div className="mb-1 text-[10px] font-semibold tracking-wide uppercase">远程</div>
+            <div className="mb-1 text-[11px] font-semibold tracking-wide uppercase">远程</div>
             <div className="mb-2 flex gap-1">
               <Button size="sm" variant="outline" className="h-6 flex-1 text-[11px]" onClick={() => void runRemote("pull")}>
                 <ArrowDownToLine className="size-3" />
@@ -434,19 +434,19 @@ export function RepoItem({
               </Button>
             </div>
 
-            <div className="mb-1 text-[10px] font-semibold tracking-wide uppercase">stash</div>
+            <div className="mb-1 text-[11px] font-semibold tracking-wide uppercase">stash</div>
             <div className="flex flex-wrap gap-1">
-              <Button size="sm" variant="outline" className="h-6 text-[10px]" title="暂存全部改动" onClick={() => void runStash("push")}>
+              <Button size="sm" variant="outline" className="h-6 text-[11px]" title="暂存全部改动" onClick={() => void runStash("push")}>
                 <PackageOpen className="mr-0.5 size-3" />
                 暂存
               </Button>
-              <Button size="sm" variant="outline" className="h-6 text-[10px]" onClick={() => void runStash("pop")}>
+              <Button size="sm" variant="outline" className="h-6 text-[11px]" onClick={() => void runStash("pop")}>
                 Pop
               </Button>
-              <Button size="sm" variant="outline" className="h-6 text-[10px]" onClick={() => void runStash("apply")}>
+              <Button size="sm" variant="outline" className="h-6 text-[11px]" onClick={() => void runStash("apply")}>
                 Apply
               </Button>
-              <Button size="sm" variant="outline" className="h-6 text-[10px]" onClick={() => void runStash("drop")}>
+              <Button size="sm" variant="outline" className="h-6 text-[11px]" onClick={() => void runStash("drop")}>
                 Drop
               </Button>
             </div>
@@ -458,6 +458,7 @@ export function RepoItem({
           {(staged.length > 0 || unstaged.length > 0) && (
             <div className="mb-1.5 flex items-center gap-1.5">
               <textarea
+                aria-label="提交信息"
                 ref={commitAreaRef}
                 value={commitMessage}
                 onChange={(e) => {
@@ -496,7 +497,7 @@ export function RepoItem({
 
           {staged.length > 0 && (
             <div>
-              <div className="text-muted-foreground flex items-center gap-1 py-0.5 text-[10px] font-semibold tracking-wide uppercase">
+                <div className="text-muted-foreground flex items-center gap-1 py-0.5 text-[11px] font-semibold tracking-wide uppercase">
                 已暂存（{staged.length}）
                 <button className="hover:text-foreground ml-auto cursor-pointer" title="全部取消暂存" onClick={() => void unstagePath(".")}>
                   <ArrowDownToLine className="size-3" />
@@ -504,14 +505,14 @@ export function RepoItem({
               </div>
               {staged.map((e) => (
                 <div key={e.path} className="group flex items-center gap-1.5 py-0.5 text-[11px]">
-                  <span className="text-primary w-3 shrink-0 font-mono text-[10px]">{statusMarker(e.status)}</span>
-                  <span
-                    className="hover:text-primary min-w-0 flex-1 cursor-pointer truncate"
+                  <span className="w-3 shrink-0 font-mono text-[11px]" style={{ color: statusColorVar(e.status) }}>{statusMarker(e.status)}</span>
+                  <button type="button"
+                    className="hover:text-primary min-w-0 flex-1 cursor-pointer truncate text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     title={e.path}
                     onClick={() => onOpenFile?.(e.path, repo.root)}
                   >
                     {e.path}
-                  </span>
+                  </button>
                   <button title="取消暂存" className="hover:text-foreground text-muted-foreground shrink-0 cursor-pointer p-0.5" onClick={() => void unstagePath(e.path)}>
                     <ArrowDownToLine className="size-3" />
                   </button>
@@ -521,7 +522,7 @@ export function RepoItem({
           )}
           {unstaged.length > 0 && (
             <div className="mb-1">
-              <div className="text-muted-foreground flex items-center gap-1 py-0.5 text-[10px] font-semibold tracking-wide uppercase">
+                <div className="text-muted-foreground flex items-center gap-1 py-0.5 text-[11px] font-semibold tracking-wide uppercase">
                 未暂存（{unstaged.length}）
                 <button className="hover:text-foreground ml-auto cursor-pointer" title="全部暂存" onClick={() => void stagePath(null)}>
                   <CirclePlus className="size-3" />
@@ -529,14 +530,14 @@ export function RepoItem({
               </div>
               {unstaged.map((e) => (
                 <div key={e.path} className="group flex items-center gap-1.5 py-0.5 text-[11px]">
-                  <span className="text-muted-foreground w-3 shrink-0 font-mono text-[10px]">{statusMarker(e.status)}</span>
-                  <span
-                    className="hover:text-primary min-w-0 flex-1 cursor-pointer truncate"
+                  <span className="w-3 shrink-0 font-mono text-[11px]" style={{ color: statusColorVar(e.status) }}>{statusMarker(e.status)}</span>
+                  <button type="button"
+                    className="hover:text-primary min-w-0 flex-1 cursor-pointer truncate text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     title={e.path}
                     onClick={() => onOpenFile?.(e.path, repo.root)}
                   >
                     {e.path}
-                  </span>
+                  </button>
                   <button title="暂存" className="hover:text-foreground text-muted-foreground shrink-0 cursor-pointer p-0.5" onClick={() => void stagePath(e.path)}>
                     <ArrowUpFromLine className="size-3" />
                   </button>
@@ -578,7 +579,7 @@ export function RepoItem({
           />
           {pickerStep === "create" ? (
             <div className="mt-1">
-              <div className="text-muted-foreground mb-1 text-[10px] font-semibold tracking-wide uppercase">从哪个分支创建「{pickerQuery.trim()}」？</div>
+              <div className="text-muted-foreground mb-1 text-[11px] font-semibold tracking-wide uppercase">从哪个分支创建「{pickerQuery.trim()}」？</div>
               <div className="scrollbar-thin max-h-40 overflow-y-auto">
                 {pickBases.map((b) => (
                   <button
@@ -603,7 +604,7 @@ export function RepoItem({
             </div>
           ) : (
             <div className="mt-1">
-              <div className="text-muted-foreground mb-1 text-[10px] font-semibold tracking-wide uppercase">本地分支</div>
+              <div className="text-muted-foreground mb-1 text-[11px] font-semibold tracking-wide uppercase">本地分支</div>
               <div className="scrollbar-thin max-h-32 overflow-y-auto">
                 {pickLocal.map((b) => {
                   const isCurrent = b === currentBranch;
@@ -623,7 +624,7 @@ export function RepoItem({
                 })}
                 {pickLocal.length === 0 && <div className="text-muted-foreground px-1.5 py-1 text-[11px]">无匹配分支</div>}
               </div>
-              <div className="text-muted-foreground mt-2 mb-1 text-[10px] font-semibold tracking-wide uppercase">远程分支</div>
+              <div className="text-muted-foreground mt-2 mb-1 text-[11px] font-semibold tracking-wide uppercase">远程分支</div>
               <div className="scrollbar-thin max-h-32 overflow-y-auto">
                 {pickRemote.map((r) => (
                   <button

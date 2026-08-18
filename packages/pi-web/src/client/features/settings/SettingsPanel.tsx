@@ -26,7 +26,11 @@ export function SettingsPanel(props: SettingsPanelProps) {
   const { models, currentModel, thinkingLevel, thinkingLevels, onSetModel, onSetThinking, themePreference, onThemeChange } = props;
   const currentModelLabel = models.find((model) => `${model.provider}/${model.id}` === currentModel)?.name ?? currentModel ?? "未选择";
   return (
-    <div className="scrollbar-thin scrollbar-gutter-stable flex h-full flex-col gap-4 overflow-y-auto p-3">
+    <div className="flex h-full min-h-0 flex-col">
+      <header className="flex h-9 shrink-0 items-center gap-2 border-b px-3">
+        <span className="text-sm font-semibold">设置</span>
+      </header>
+      <div className="scrollbar-thin scrollbar-gutter-stable min-h-0 flex-1 overflow-y-auto p-3">
       <section className="flex flex-col gap-2 border-b pb-4" aria-labelledby="settings-model-heading">
         <h2 id="settings-model-heading" className="text-muted-foreground text-[11px] font-semibold tracking-wide uppercase">模型</h2>
         <div className="flex flex-col gap-2">
@@ -134,6 +138,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
           </div>
         </div>
       </section>
+      </div>
     </div>
   );
 }

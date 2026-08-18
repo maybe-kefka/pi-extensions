@@ -132,7 +132,7 @@ function Row({
             <span className="truncate">{label}</span>
           )}
           {marker && (
-            <span className="shrink-0 font-mono text-[10px] font-bold" style={{ color: statusColorVar(marker) }} title={`git: ${marker}`}>
+            <span className="shrink-0 font-mono text-[11px] font-bold" style={{ color: statusColorVar(marker) }} title={`git: ${marker}`}>
               {statusMarker(marker)}
             </span>
           )}

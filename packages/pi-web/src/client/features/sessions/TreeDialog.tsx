@@ -77,7 +77,7 @@ function TreeNodeView({
           <Button
             variant="ghost"
             size="sm"
-            className="text-muted-foreground h-5 cursor-pointer px-1.5 text-[10px] opacity-0 group-hover:opacity-100"
+            className="text-muted-foreground h-5 cursor-pointer px-1.5 text-[11px] opacity-0 group-hover:opacity-100"
             onClick={() => setConfirming(true)}
           >
             导航

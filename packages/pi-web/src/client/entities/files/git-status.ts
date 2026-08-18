@@ -24,13 +24,13 @@ export function statusMarker(status: string): string {
 export function statusColorVar(status: string): string {
   switch (status) {
     case "M":
-      return "var(--chart-4)"; // 橙
+      return "var(--warning)";
     case "A":
       return "var(--success)"; // 绿
     case "D":
       return "var(--destructive)"; // 红
     case "U":
-      return "var(--warning)"; // 黄
+      return "var(--destructive)";
     default:
       return "var(--muted-foreground)"; // 灰（??）
   }
